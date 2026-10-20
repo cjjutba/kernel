@@ -139,25 +139,22 @@ describe('a workspace per chat with Kernel (KERNEL-405)', () => {
     expect(await sha(ws.path, 'HEAD')).toBe(release)
   })
 
-  it('copies files and runs setup like a teammate, holds the message through a failed setup with Wait for setup on, and Run again sends it', async () => {
+  it('copies files and runs setup like a teammate, and a failed setup holds nothing: a message sent after it goes out at once (KERNEL-1086)', async () => {
     const repo = await tempRepo({ ...REPO, '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt && echo set up"\n' })
     await writeFile(join(repo, '.env.local'), 'SECRET=1\n')
-    const k = await boot(await dirs({ leadWaitForSetup: true }))
+    const k = await boot(await dirs())
     const project = await k.addProject(repo)
     sdk.calls.length = 0
     const chat = await k.lead.startLeadChat(project.id, { prompt: 'Plan it' })
-    const ws = await setUp(k, chat.id, 'failed')
+    const ws = await setUp(k, chat.id)
+    expect(ws).toMatchObject({ status: 'ready', setupRun: { end: 1 } })
     expect(await readFile(join(ws.path, '.env.local'), 'utf8')).toBe('SECRET=1\n')
-    expect(queuedText(k, chat.id)).toEqual(['Plan it'])
-    // A second tab of a chat whose setup failed waits with it.
-    const tab = await k.handlers()['chats.create']({ workspaceId: ws.id })
-    await k.sessions.send(tab.id, [{ type: 'text', text: 'And this' }])
-    expect(queuedText(k, tab.id)).toEqual(['And this'])
-    expect(callIn(ws.path)).toHaveLength(0)
-    await writeFile(join(ws.path, 'ok.txt'), 'ok\n')
-    expect((await k.setup.retrySetup(ws.id)).status).toBe('ready')
-    await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(2))
+    await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(1))
     expect(k.sessions.queued(chat.id)).toEqual([])
+    // A second tab, after setup failed, isn't held either.
+    const tab = await k.handlers()['chats.create']({ workspaceId: ws.id })
+    expect(await k.sessions.send(tab.id, [{ type: 'text', text: 'And this' }])).toMatchObject({ queued: false })
+    await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(2))
     expect(k.sessions.queued(tab.id)).toEqual([])
   })
 
@@ -222,8 +219,8 @@ describe('a workspace per chat with Kernel (KERNEL-405)', () => {
   })
 })
 
-// KERNEL-490: Kernel's first message waits only when Wait for setup is on and a setup script runs on create. A teammate's brief
-// always waits.
+// KERNEL-490, KERNEL-1086: nothing waits for setup. Kernel's first message and a teammate's brief go once the worktree exists, and
+// the setup script runs alongside them.
 describe('what waits for setup (KERNEL-490)', () => {
   const SETUP = { '.kernel/settings.toml': '[scripts]\nsetup = "sleep 1 && echo set up"\n' }
 
@@ -256,20 +253,8 @@ describe('what waits for setup (KERNEL-490)', () => {
     expect((await setUp(k, chat.id)).setupRun).toMatchObject({ end: 0 })
   })
 
-  it('holds it until setup passes with Wait for setup on and a setup script', async () => {
-    const { k, project: r } = await project(SETUP, { leadWaitForSetup: true })
-    const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
-    const ws = k.store.workspace(chat.workspaceId)!
-    expect(queuedText(k, chat.id)).toEqual(['Plan it'])
-    expect(k.sessions.queueReason(chat.id)).toBe('setup')
-    expect(callIn(ws.path)).toHaveLength(0)
-    await setUp(k, chat.id)
-    await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(1))
-    expect(k.sessions.queued(chat.id)).toEqual([])
-  })
-
-  it("keeps the window's id on the prompt through setup and on what the chat's handlers send next (KERNEL-894)", async () => {
-    const { k, project: r } = await project(SETUP, { leadWaitForSetup: true })
+  it("keeps the window's id on the prompt while the worktree is made and on what the chat's handlers send next (KERNEL-894)", async () => {
+    const { k, project: r } = await project(SETUP)
     const h = k.handlers()
     const chat = await h['lead.start']({ projectId: r.id, prompt: 'Plan it', clientId: 'c-start' })
     expect(k.sessions.queued(chat.id).map((q) => q.id)).toEqual(['c-start'])
@@ -285,16 +270,17 @@ describe('what waits for setup (KERNEL-490)', () => {
   it.each([
     ['the project has no setup script', {}, true],
     ['Run setup on create is off', SETUP, false]
-  ] as const)('sends it at once with Wait for setup on when %s, and runs no setup', async (_, files, setupOnCreate) => {
-    const { k, project: r } = await project(files, { leadWaitForSetup: true })
+  ] as const)('sends it at once when %s, and runs no setup', async (_, files, setupOnCreate) => {
+    const { k, project: r } = await project(files)
     if (!setupOnCreate) await k.config.setSettings({ scripts: { setupOnCreate } })
     const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
     await sentAtOnce(k, chat)
     expect((await setUp(k, chat.id)).setupRun).toBeUndefined()
   })
 
-  it("sends it at once when the project's own file turns Wait for setup off", async () => {
-    const { k, project: r } = await project({ ...SETUP, '.kernel/settings.local.toml': '[workspace]\nlead_wait_for_setup = false\n' }, { leadWaitForSetup: true })
+  it('sends it at once though an older settings file still turns Wait for setup on (KERNEL-1086)', async () => {
+    const { k, project: r } = await project({ ...SETUP, '.kernel/settings.local.toml': '[workspace]\nlead_wait_for_setup = true\n' }, { leadWaitForSetup: true })
+    expect(k.settings.workspace).not.toHaveProperty('leadWaitForSetup')
     const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
     await sentAtOnce(k, chat)
     await setUp(k, chat.id)
@@ -302,14 +288,15 @@ describe('what waits for setup (KERNEL-490)', () => {
 
   const FAILS = { '.kernel/settings.toml': '[scripts]\nsetup = "exit 3"\n' }
 
-  it("holds a teammate's brief through a failed setup with Wait for setup on", async () => {
-    const { k, project: r } = await project(FAILS, { leadWaitForSetup: true })
+  it("sends a teammate's brief at once, and a failed setup alongside it holds nothing (KERNEL-1086)", async () => {
+    const { k, project: r } = await project(FAILS)
     const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'Build the invoice list', agentId: 'christian' })
-    expect(ws.status).toBe('failed')
+    expect(ws.status).toBe('ready')
     const brief = k.chatTabs(ws.id).find((c) => c.kind !== 'terminal')!
-    expect(queuedText(k, brief.id)).toEqual(['Build the invoice list'])
-    expect(k.sessions.queueReason(brief.id)).toBe('setup')
-    expect(callIn(ws.path)).toHaveLength(0)
+    expect(k.sessions.queued(brief.id)).toEqual([])
+    await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(1))
+    expect((await setUp(k, ws.id)).setupRun).toMatchObject({ end: 3 })
+    expect(k.sessions.queueReason(brief.id)).toBeUndefined()
   })
 
   it("sends the Lead's message to a started teammate at once, after the brief, while setup runs (KERNEL-1012)", async () => {
@@ -541,7 +528,7 @@ describe('chats in Hand off on the shared main folder (KERNEL-1050)', () => {
 
   it('starts with no worktree, branch, ports or setup, and sends the first message at once', async () => {
     const { repo, bare } = await withOrigin({ '.kernel/settings.toml': '[scripts]\nsetup = "touch setup-ran.txt"\n' })
-    const k = await boot(await dirs({ leadWaitForSetup: true }))
+    const k = await boot(await dirs())
     const project = await k.addProject(repo)
     const merged = await pushElsewhere(bare, 'merged')
     await run('git', ['-C', repo, 'fetch', '-q', 'origin'])

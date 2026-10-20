@@ -76,6 +76,8 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live round trip', () => {
       const ws = await h['workspaces.create']({ projectId: project.id, agentId: agent.id, prompt: 'Check the working tree. First think it through: which is larger, 2^10 or 10^3, and by how much? Then run exactly `git status --short` with the Bash tool and reply in two short sentences. Run nothing else.' })
       wsId = ws.id
       const chat = (await h['chats.list']({ workspaceId: ws.id }))[0]
+      // Setup runs alongside the first prompt (KERNEL-1086).
+      await k.setup.settled(ws.id)
       const setup = pushes.flatMap((e) => (e.type === 'script.output' && e.workspaceId === ws.id && e.kind === 'setup' ? e.lines.map((l) => l.line) : []))
       const setupExit = pushes.find((e) => e.type === 'script.exit' && e.workspaceId === ws.id && e.kind === 'setup')
       evidence.workspace = { branch: ws.branch, path: ws.path, status: ws.status, port: ws.port, setup, setupExit }

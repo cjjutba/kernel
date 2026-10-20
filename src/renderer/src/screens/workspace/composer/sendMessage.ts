@@ -6,12 +6,12 @@ import { actions, getState } from '../../../store'
 
 type Sent = KernelApi['chats.send']['res']
 
-/** Where a message sent now goes, from what the window already knows: the chat's tray when a turn runs, setup or something else holds it or the Mac is offline, else the chat. */
+/** Where a message sent now goes, from what the window already knows: the chat's tray when a turn runs, its worktree isn't made yet, something else holds it or the Mac is offline, else the chat. */
 export function destinationOf(chatId: string): { queued: false } | { queued: true; why?: QueueReason } {
   const s = getState()
   const ws = Object.values(s.chats).flat().find((c) => c.id === chatId)?.workspaceId
   const worktreePending = ws ? s.workspaces.find((w) => w.id === ws)?.worktreePending : undefined
-  const why = s.queueWhy[chatId] ?? (worktreePending ? 'setup' : !s.system.online ? 'offline' : undefined)
+  const why = s.queueWhy[chatId] ?? (worktreePending ? 'worktree' : !s.system.online ? 'offline' : undefined)
   if (why) return { queued: true, why }
   return s.running[chatId] ? { queued: true } : { queued: false }
 }
@@ -126,6 +126,6 @@ export function drawStarted(chatId: string, id: string, parts: ChatPart[]): void
   const ws = Object.values(s.chats).flat().find((c) => c.id === chatId)?.workspaceId
   const making = ws ? s.workspaces.find((w) => w.id === ws)?.worktreePending : undefined
   const ts = sentAt(id) ?? Date.now()
-  if (making || s.running[chatId] || !s.system.online) actions.chats.draw(chatId, { queue: [...(s.queue[chatId] ?? []), { id, chatId, parts, ts, clientId: id }], why: making ? 'setup' : s.system.online ? undefined : 'offline' })
+  if (making || s.running[chatId] || !s.system.online) actions.chats.draw(chatId, { queue: [...(s.queue[chatId] ?? []), { id, chatId, parts, ts, clientId: id }], why: making ? 'worktree' : s.system.online ? undefined : 'offline' })
   else actions.chats.draw(chatId, { item: { kind: 'user', id, ts, parts }, running: true })
 }

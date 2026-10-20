@@ -108,7 +108,7 @@ describe('lead.start answers before the worktree exists (KERNEL-542)', () => {
     expect(ws.path).toBe(join(projectWorktreeRoot(join(where.home, 'wt'), r), 'kernel-plan-pdf-export'))
     expect(existsSync(ws.path)).toBe(false)
     expect(queuedText(k, chat.id)).toEqual(['Plan the PDF export'])
-    expect(k.sessions.queueReason(chat.id)).toBe('setup')
+    expect(k.sessions.queueReason(chat.id)).toBe('worktree')
     open()
     await k.workspaces.worktreeMade(ws.id)
     expect(wsOf(k, chat).worktreePending).toBeUndefined()
@@ -117,7 +117,7 @@ describe('lead.start answers before the worktree exists (KERNEL-542)', () => {
     expect(k.sessions.queued(chat.id)).toEqual([])
   })
 
-  it('sends the held message once the worktree exists, while setup runs, with Wait for setup off', async () => {
+  it('sends the held message once the worktree exists, while setup runs (KERNEL-1086)', async () => {
     const { k, project: r } = await project({ '.kernel/settings.toml': '[scripts]\nsetup = "sleep 1 && echo set up"\n' })
     const open = slowNetwork()
     const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
@@ -128,20 +128,6 @@ describe('lead.start answers before the worktree exists (KERNEL-542)', () => {
     expect(k.sessions.queued(chat.id)).toEqual([])
     expect(wsOf(k, chat).status).toBe('setup')
     expect((await setUp(k, chat.id)).setupRun).toMatchObject({ end: 0 })
-  })
-
-  it('keeps the message held through setup once the worktree exists, with Wait for setup on', async () => {
-    const { k, project: r } = await project({ '.kernel/settings.toml': '[scripts]\nsetup = "sleep 1 && echo set up"\n' }, { leadWaitForSetup: true })
-    const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
-    await k.workspaces.worktreeMade(chat.workspaceId)
-    const ws = wsOf(k, chat)
-    expect(ws.worktreePending).toBeUndefined()
-    expect(existsSync(ws.path)).toBe(true)
-    expect(queuedText(k, chat.id)).toEqual(['Plan it'])
-    expect(k.sessions.queueReason(chat.id)).toBe('setup')
-    await setUp(k, chat.id)
-    await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(1))
-    expect(k.sessions.queued(chat.id)).toEqual([])
   })
 
   it('reuses the fetch New chat started when it opened', async () => {
@@ -239,7 +225,7 @@ describe('lead.start answers before the worktree exists (KERNEL-542)', () => {
 })
 
 describe('a worktree git would not make (KERNEL-542)', () => {
-  it('fails the workspace with git\'s reason, keeps the message queued, and Run again makes it and sends', async () => {
+  it('fails the workspace with git\'s reason, keeps the message not sent, says so in an event, and Try again makes it and sends (KERNEL-1086)', async () => {
     const { k, project: r, where } = await project()
     // git can't make a folder in a worktree root it can't write to.
     const root = projectWorktreeRoot(join(where.home, 'wt'), r)
@@ -247,27 +233,35 @@ describe('a worktree git would not make (KERNEL-542)', () => {
     await chmod(root, 0o555)
     onTestFinished(() => chmod(root, 0o755))
     const lines: string[] = []
-    const onPush = (e: PushEvent) => { if (e.type === 'script.output' && e.kind === 'setup') lines.push(...e.lines.map((l) => l.line)) }
+    const failures: PushEvent[] = []
+    const onPush = (e: PushEvent) => {
+      if (e.type === 'script.output' && e.kind === 'setup') lines.push(...e.lines.map((l) => l.line))
+      if (e.type === 'worktree.failed') failures.push(e)
+    }
     bus.on('push', onPush)
     onTestFinished(() => { bus.off('push', onPush) })
     const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
     const failed = await setUp(k, chat.id, 'failed')
     expect(failed.worktreePending?.error).toMatch(/^fatal: /)
     expect(lines).toEqual([`Kernel couldn't make the worktree: ${failed.worktreePending!.error}`])
+    expect(failures).toEqual([{ type: 'worktree.failed', workspaceId: failed.id, chatId: chat.id, error: failed.worktreePending!.error }])
     expect(existsSync(failed.path)).toBe(false)
     // The branch git made before it gave up is gone again, so Run again can make it.
     expect(await git(r.path, 'branch', '--list', failed.branch)).toBe('')
     expect(queuedText(k, chat.id)).toEqual(['Plan it'])
-    expect(k.sessions.queueReason(chat.id)).toBe('setup')
+    expect(k.sessions.queueReason(chat.id)).toBe('worktree')
     // Send anyway has nowhere to send to.
     await k.handlers()['scripts.skipSetup']({ workspaceId: failed.id })
     expect(wsOf(k, chat).status).toBe('failed')
     expect(sdk.calls).toEqual([])
 
     await chmod(root, 0o755)
-    await k.handlers()['scripts.run']({ workspaceId: failed.id, kind: 'setup' })
+    const retried = await k.handlers()['workspaces.retryWorktree']({ workspaceId: failed.id })
+    expect(retried.status).toBe('setup')
+    expect(retried.worktreePending?.error).toBeUndefined()
     const ready = await setUp(k, chat.id)
     expect(ready.worktreePending).toBeUndefined()
+    expect(failures).toHaveLength(1)
     expect((await git(ready.path, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()).toBe(ready.branch)
     await vi.waitFor(() => expect(callIn(ready.path)).toHaveLength(1))
     expect(k.sessions.queued(chat.id)).toEqual([])

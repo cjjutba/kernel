@@ -110,7 +110,6 @@ const TEAMMATES_AND_BUILD = 'Applies to teammates and to chats when they switch 
 const CHAT_AUDIENCE: Record<string, string> = {
   'workspace.mode': TEAMMATES_AND_BUILD,
   'scripts.setupOnCreate': TEAMMATES_AND_BUILD,
-  'workspace.leadWaitForSetup': BOTH,
   'workspace.oneCurrentBranchPerProject': BOTH
 }
 

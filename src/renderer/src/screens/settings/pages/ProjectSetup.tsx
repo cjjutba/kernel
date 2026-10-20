@@ -96,18 +96,11 @@ function ScriptEditor({ projectId, kind, rs, offer }: { projectId: string; kind:
 export function ProjectSetup({ projectId }: { projectId?: string }) {
   const { project, rs } = useProjectPage(projectId)
   const found = useSuggestions(projectId)
-  const appWait = useStore((x) => x.settings?.workspace.leadWaitForSetup)
   if (!project || !projectId) return <NoProject />
   const offerFor = (kind: ScriptKey) => found.find((s) => s.patch.scripts?.[kind]?.trim())
-  const wait = rs?.workspace.leadWaitForSetup
   return (
     <ProjectPage project={project} rs={rs} title="Scripts">
       <ScriptEditor projectId={projectId} kind="setup" rs={rs} offer={offerFor('setup')} />
-      <Section label="Setup">
-        <Row id="wait-for-setup" setting="workspace.leadWaitForSetup" label="Wait for setup before agents start" {...projectValue(rs, 'workspace.leadWaitForSetup', () => void patchProjectSettings(projectId, { workspace: { leadWaitForSetup: null } }), { to: { page: 'git' }, label: 'Settings, Git' })}>
-          <Toggle label="Wait for setup before agents start" checked={wait ?? appWait ?? false} onChange={(v) => void patchProjectSettings(projectId, { workspace: { leadWaitForSetup: v } })} />
-        </Row>
-      </Section>
       <ScriptEditor projectId={projectId} kind="archive" rs={rs} offer={offerFor('archive')} />
       <RunScripts projectId={projectId} rs={rs} />
       <RunMode projectId={projectId} rs={rs} />

@@ -26,7 +26,7 @@ describe('fixtures', () => {
     for (const [projectId, byAgent] of Object.entries(f.status)) for (const agentId of Object.keys(byAgent)) expect(agentIn(projectId, agentId), `status ${agentId}`).toBe(true)
     for (const e of f.push) {
       if ('workspaceId' in e) expect(workspaces.has(e.workspaceId), `push ${e.type} workspace`).toBe(true)
-      if ('chatId' in e) expect(chats.has(e.chatId), `push ${e.type} chat`).toBe(true)
+      if ('chatId' in e && e.chatId) expect(chats.has(e.chatId), `push ${e.type} chat`).toBe(true)
     }
     if (f.ui.route && 'projectId' in f.ui.route && f.ui.route.projectId) expect(projects.has(f.ui.route.projectId)).toBe(true)
     if (f.ui.route?.name === 'workspace') expect(workspaces.has(f.ui.route.workspaceId)).toBe(true)

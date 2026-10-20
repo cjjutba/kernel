@@ -97,7 +97,7 @@ export function listen(k: Kernel): () => void {
     // Someone signed in or out: Claude says so with `account`, Codex and account switches with `accounts`, so the next
     // team read checks pinned models again (KERNEL-634).
     if (e.type === 'account' || e.type === 'accounts') k.team.forgetOffers()
-    // A held brief waits for setup or for a merge by its workspace's state, so its queue's reason follows the workspace (KERNEL-361).
+    // A held brief waits for its workspace or for a merge by its workspace's state, so its queue's reason follows the workspace (KERNEL-361).
     if (e.type === 'workspace') k.sessions.pushReasons()
     // A PR every review approved may merge by itself, once the user turned auto-merge on (KERNEL-556). A workspace push carries
     // each verdict, each kept approval and each change of GitHub's block, so it is the one place that sees them all.

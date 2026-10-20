@@ -30,7 +30,7 @@ import { hasChanges } from './pr/model'
 import { copyBranch, PrHeader } from './pr/PrHeader'
 import { SkipNotice } from './terminal/SkipNotice'
 import { TerminalView } from './terminal/Terminal'
-import { SetupWait } from './SetupWait'
+import { WorktreeWait } from './WorktreeWait'
 import { setupGate, skipsSetup } from './setupGate'
 import { Transcript } from './Transcript'
 import { useBanner, useProblemToast, WorkspaceBanner } from './banners/Banners'
@@ -147,8 +147,9 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const diffs = tabs?.diffs ?? NO_TABS
   const shared = tabs?.shared ?? NO_TABS
   const running = useStore((s) => (chat ? !!s.running[chat.id] : false))
-  // A chat waiting for setup holds its messages in main (KERNEL-430), so you can keep typing: they queue behind it.
-  const heldForSetup = useStore((s) => (chat ? !!s.queue[chat.id]?.length && s.queueWhy[chat.id] === 'setup' : false))
+  // A chat whose worktree isn't made yet holds its messages in main (KERNEL-430), so you can keep typing: they queue behind it. The
+  // setup script never holds them (KERNEL-1086).
+  const heldForSetup = useStore((s) => (chat ? !!s.queue[chat.id]?.length && s.queueWhy[chat.id] === 'worktree' : false))
   const skips = !!ws && skipsSetup(heldForSetup)
   const empty = useStore((s) => (chat ? !s.items[chat.id]?.length : true))
   const found = useBanner(ws, chat, agent?.name ?? 'The agent', running, skips, !empty, heldForSetup)
@@ -199,9 +200,9 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   // the Lead's shared worktree and a current-branch workspace say what they follow instead of a branch. That label carries meaning, so it
   // stays, and it has no copy: the title is plain text there.
   const label = ws.mode === 'current' ? `current branch · ${ws.branch}` : ws.lead && ws.branch === 'HEAD' ? `latest ${leadBase(ws, project)}` : undefined
-  // A chat waiting for setup shows what waits and where setup stands (KERNEL-430). It draws a failed setup as its own card, so the
+  // A chat waiting for its worktree shows what waits and where setup stands (KERNEL-430). It draws a failure as its own card, so the
   // banner doesn't say it a second time. A teammate's brief still on its way keeps the box shut, so nothing goes out before it. A chat
-  // with the Lead that isn't held shows its transcript and stays open while setup runs (KERNEL-490).
+  // that isn't held shows its transcript and stays open while setup runs (KERNEL-490, KERNEL-1086).
   const gate = setupGate({ status: ws.status, skips, held: heldForSetup, empty })
   const setupWait = gate.wait && chat?.kind !== 'terminal'
   const problem = setupWait && found?.id === 'setup' ? undefined : found
@@ -303,7 +304,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                   ? <TextView name={text.name} text={text.text} />
                 // A chat waiting for setup shows what waits and where setup stands, not a skeleton or the New chat suggestions.
                 : setupWait
-                  ? <SetupWait ws={ws} chat={chat} />
+                  ? <WorktreeWait ws={ws} chat={chat} />
                   : showNewChat
                     ? <NewLeadChat projectId={ws.projectId} focusIn={workspaceId} />
                   : chat?.kind === 'terminal'

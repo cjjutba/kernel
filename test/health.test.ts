@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -411,7 +411,7 @@ async function kernel(files: Record<string, string> = {}, o: { settings?: object
   })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true }, ...o.settings }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...o.settings }))
   const k = new Kernel({ dataDir, home, ...o.options })
   await k.start()
   const project = await k.addProject(repo)
@@ -420,11 +420,11 @@ async function kernel(files: Record<string, string> = {}, o: { settings?: object
 
 describe('kernel recovery paths', () => {
   /** A Kernel on a temp repo that can quit and start again on the same data, as the app does (KERNEL-128). */
-  async function restartable(files: Record<string, string>, wait = true) {
+  async function restartable(files: Record<string, string>) {
     const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend.\n---\nYou are Christian.', ...files })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: wait } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     const project = await k.addProject(repo)
@@ -433,17 +433,30 @@ describe('kernel recovery paths', () => {
     return { k, project, again }
   }
   const texts = (k: Kernel, chatId: string) => k.sessions.queued(chatId).map((q) => [(q.parts[0] as { text: string }).text, q.from])
+  const sentTexts = (k: Kernel, chatId: string) => k.store.items(chatId).filter((i) => i.kind === 'user').map((i) => [((i as { parts: { text: string }[] }).parts[0]).text, (i as { from?: string }).from])
+  /** The `setup.failed` events pushed for one workspace, from now until the test ends (KERNEL-1086). */
+  const setupFailures = (workspaceId: () => string | undefined) => {
+    const seen: PushEvent[] = []
+    const on = (e: PushEvent) => { if (e.type === 'setup.failed' && e.workspaceId === workspaceId()) seen.push(e) }
+    bus.on('push', on)
+    onTestFinished(() => { bus.off('push', on) })
+    return seen
+  }
 
   it('leaves a started teammate alone when Kernel quits during setup: nothing is held, the setup line says it stopped, and Run again works (KERNEL-1012)', async () => {
-    const { k, project, again } = await restartable({ '.kernel/settings.toml': '[scripts]\nsetup = "sleep 30"\n' }, false)
+    const { k, project, again } = await restartable({ '.kernel/settings.toml': '[scripts]\nsetup = "sleep 30"\n' })
     const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table' })
+    const stopped = setupFailures(() => ws.id)
     expect(ws.status).toBe('ready')
     const chat = k.store.chats(ws.id)[0]
     await vi.waitFor(() => expect(k.store.workspace(ws.id)!.setupRun?.startedAt).toBeDefined())
     await vi.waitFor(() => expect(k.store.items(chat.id).filter((i) => i.kind === 'user')).toHaveLength(1))
     expect(k.store.workspace(ws.id)!.setupRun?.endedAt).toBeUndefined()
     await k.stop({ budgetMs: 0 })
+    // Kernel's quit stopped the script, which isn't news. The next start says it was stopped (KERNEL-1086).
+    expect(stopped).toEqual([])
     const k2 = await again()
+    expect(stopped).toEqual([{ type: 'setup.failed', workspaceId: ws.id, chatId: chat.id, kind: 'stopped' }])
     expect(k2.store.workspace(ws.id)).toMatchObject({ status: 'ready', setupRun: { end: null } })
     expect(k2.store.workspace(ws.id)!.setupRun?.endedAt).toBeDefined()
     expect(texts(k2, chat.id)).toEqual([])
@@ -452,171 +465,120 @@ describe('kernel recovery paths', () => {
     await k2.stop({ budgetMs: 0 })
   })
 
-  it('keeps a held brief, and the Lead\'s message behind it, across a restart, and Run again sends them in order (KERNEL-128)', async () => {
-    const { k, project, again } = await restartable({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
-    const lead = await k.leadChat(project.id)
-    // Kernel's own chat runs the same setup, which fails the same way (KERNEL-405).
-    await setUp(k, lead.id, 'failed')
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
-    expect(ws.status).toBe('failed')
-    await k.lead['messageWorkspace'](project.id, ws.id, 'Use EmptyState')
-    const chat = k.store.chats(ws.id)[0]
-    expect(texts(k, chat.id)).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
-    await k.stop({ budgetMs: 0 })
-    const k2 = await again()
-    expect(texts(k2, chat.id)).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
-    await writeFile(join(ws.path, 'ok.txt'), 'ok\n')
-    expect((await k2.retrySetup(ws.id)).status).toBe('ready')
-    // Nothing of Christian's is held any more, so nothing comes back after another restart.
-    expect(Object.keys(k2.store.meta<Record<string, unknown>>('held') ?? {})).not.toContain(chat.id)
-    sdk.calls[sdk.calls.length - 1].feed(result('r1'))
-    await flush()
-    const users = k2.store.items(chat.id).filter((i) => i.kind === 'user').map((i) => [((i as { parts: { text: string }[] }).parts[0]).text, (i as { from?: string }).from])
-    expect(users).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
-    await k2.stop({ budgetMs: 0 })
-  })
-
-  // A workspace that waits for a PR is ready with its brief still held (KERNEL-259), so this holds for the ones that don't.
-  it('marks a workspace that waits for nothing ready only as Run again sends its held brief, with nothing a quit could land between (KERNEL-136)', async () => {
-    const { k, project } = await restartable({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
-    const lead = await k.leadChat(project.id)
-    // Kernel's own chat runs the same setup, which fails the same way (KERNEL-405).
-    await setUp(k, lead.id, 'failed')
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
-    const chat = k.store.chats(ws.id)[0]
-    expect(ws.waitsFor).toBeUndefined()
-    await writeFile(join(ws.path, 'ok.txt'), 'ok\n')
-    let heldWhenReady: unknown = 'never ready'
-    const on = (e: PushEvent) => { if (e.type === 'workspace' && e.workspace.id === ws.id && e.workspace.status === 'ready') queueMicrotask(() => { heldWhenReady = k.store.meta<Record<string, unknown>>('held')?.[chat.id] ?? null }) }
-    bus.on('push', on)
-    try { expect((await k.retrySetup(ws.id)).status).toBe('ready') } finally { bus.off('push', on) }
-    // Anything Kernel saves after the workspace reads as ready already has the brief out of the held queue.
-    expect(heldWhenReady).toBeNull()
-    await k.stop({ budgetMs: 0 })
-  })
-
-  it('saves removing a held message in the composer, and drops an archived workspace\'s held queue (KERNEL-128)', async () => {
-    const { k, project, again } = await restartable({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
-    const lead = await k.leadChat(project.id)
-    // Kernel's own chat runs the same setup, which fails the same way (KERNEL-405).
-    await setUp(k, lead.id, 'failed')
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
-    const other = await k.createWorkspace(project.id, { prompt: 'Build T-15', agentId: 'christian', title: 'Invoice export', leadChatId: lead.id })
-    await k.lead['messageWorkspace'](project.id, ws.id, 'Use EmptyState')
-    const chat = k.store.chats(ws.id)[0]
-    k.sessions.unqueue(chat.id, k.sessions.queued(chat.id)[1].id)
-    await k.archiveWorkspace(other.id)
-    await k.archive.cleanedUp(other.id)
-    await k.stop({ budgetMs: 0 })
-    const k2 = await again()
-    expect(texts(k2, chat.id)).toEqual([['Build T-14', 'lead']])
-    expect(Object.keys(k2.store.meta<Record<string, unknown>>('held') ?? {})).toContain(chat.id)
-    await k2.stop({ budgetMs: 0 })
-  })
-
-  it('saves the brief before setup runs, so a quit during setup keeps it (KERNEL-128)', async () => {
+  it('saves the brief before the workspace is made, so a quit then keeps it (KERNEL-128)', async () => {
     const { k, project } = await restartable({ '.kernel/settings.toml': '[scripts]\nsetup = "sleep 5"\n' })
+    // The local files are copied before the brief goes. Holding the copy holds the workspace in setup.
+    const copy = k.setup.prepare.bind(k.setup)
+    let go!: () => void
+    const gate = new Promise<void>((r) => { go = r })
+    k.setup.prepare = async (...a) => { await gate; return copy(...a) }
     const made = k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table' })
     const ws = await vi.waitFor(() => { const w = k.store.workspaces(project.id).find((x) => x.title === 'Invoice table' && x.status === 'setup'); if (!w || !k.store.meta<Record<string, { brief?: unknown }>>('setups')?.[w.id]?.brief) throw new Error('not yet'); return w })
     expect(k.store.meta<Record<string, { brief: unknown }>>('setups')![ws.id].brief).toEqual([{ type: 'text', text: 'Build T-14' }])
     await k.archiveWorkspace(ws.id)
     await k.archive.cleanedUp(ws.id)
+    go()
     await made
     expect(k.store.meta('setups')).toEqual({})
     await k.stop({ budgetMs: 0 })
   })
 
-  it('turns a workspace Kernel quit during setup into a failed one, with its brief held and a note (KERNEL-128)', async () => {
-    const { k, project, again } = await restartable({})
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table' })
+  it("finishes a workspace Kernel quit while making it: its brief and the Lead's message go out in order, and setup runs alongside (KERNEL-128, KERNEL-1086)", async () => {
+    const { k, project, again } = await restartable({ '.kernel/settings.toml': '[scripts]\nsetup = "touch set-up.txt"\n' })
+    const lead = await k.leadChat(project.id)
+    await setUp(k, lead.id)
+    // The quit lands while the local files are copied, before the brief goes.
+    k.setup.prepare = () => new Promise<boolean>(() => {})
+    void k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
+    const ws = await vi.waitFor(() => { const w = k.store.workspaces(project.id).find((x) => x.title === 'Invoice table'); if (!w || !k.store.meta<Record<string, { brief?: unknown }>>('setups')?.[w.id]?.brief) throw new Error('not yet'); return w })
+    expect(await k.lead['messageWorkspace'](project.id, ws.id, 'Use EmptyState')).toMatchObject({ sent: false })
     const chat = k.store.chats(ws.id)[0]
-    // As if Kernel quit while setup ran: the workspace says setup, and the brief and a message wait in the saved hold.
-    k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, status: 'setup' })
-    k.store.saveMeta('setups', { [ws.id]: { chatId: chat.id, brief: [{ type: 'text', text: 'Build T-14' }], from: 'lead', later: [[{ type: 'text', text: 'Use EmptyState' }]] } })
     await k.stop({ budgetMs: 0 })
     const k2 = await again()
-    expect(k2.store.workspace(ws.id)?.status).toBe('failed')
-    expect(texts(k2, chat.id)).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
-    expect(k2.store.items(chat.id).filter((i) => i.kind === 'note').map((i) => (i as { text: string }).text)).toContain('Setup stopped when Kernel quit. Click Run again.')
+    const done = await setUp(k2, ws.id)
+    expect(done).toMatchObject({ status: 'ready', setupRun: { end: 0 } })
+    expect(existsSync(join(ws.path, 'set-up.txt'))).toBe(true)
     expect(k2.store.meta('setups')).toEqual({})
+    await vi.waitFor(() => expect(sentTexts(k2, chat.id)).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']]))
+    expect(k2.store.items(chat.id).filter((i) => i.kind === 'note')).toEqual([])
     await k2.stop({ budgetMs: 0 })
   })
 
-  it("tells the Lead about a setup failure only once, and about Run again failing or passing (KERNEL-126)", async () => {
+  it('tells the Lead once when setup fails alongside a started teammate, and again when Rerun setup passes (KERNEL-126, KERNEL-1086)', async () => {
     const { k, project } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
     const lead = await k.leadChat(project.id)
-    // Kernel's own chat runs the same setup, which fails the same way (KERNEL-405).
-    await setUp(k, lead.id, 'failed')
-    // Kernel's turn waits on create_workspace, so its result tells Kernel.
-    const running = k.sessions.isRunning
-    k.sessions.isRunning = (id) => id === lead.id
+    // Kernel's own chat runs the same setup, which fails the same way (KERNEL-405), and the Lead hears nothing of its own.
+    await setUp(k, lead.id)
     const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
-    k.sessions.isRunning = running
-    const waiting = () => [...(k.leadUpdates as unknown as { pending: Map<string, { events: { kind: string; told?: boolean; code?: number | null }[] }> }).pending.values()].flatMap((p) => p.events)
-    expect(waiting()).toEqual([expect.objectContaining({ kind: 'setup.failed', told: true, code: 1 })])
-    await k.retrySetup(ws.id)
-    expect(waiting().at(-1)).toMatchObject({ kind: 'setup.failed', code: 1 })
-    expect(waiting().at(-1)?.told).toBeUndefined()
+    expect(ws.status).toBe('ready')
+    await k.setup.settled(ws.id)
+    const waiting = () => [...(k.leadUpdates as unknown as { pending: Map<string, { events: { kind: string; started?: boolean; code?: number | null }[] }> }).pending.values()].flatMap((p) => p.events)
+    expect(waiting()).toEqual([expect.objectContaining({ kind: 'setup.failed', started: true, code: 1 })])
     await writeFile(join(ws.path, 'ok.txt'), 'ok\n')
-    expect((await k.retrySetup(ws.id)).status).toBe('ready')
-    expect(waiting().at(-1)).toMatchObject({ kind: 'setup.passed' })
+    await k.setup.handlers()['scripts.run']({ workspaceId: ws.id, kind: 'setup' })
+    await k.setup.settled(ws.id)
+    expect(k.store.workspace(ws.id)?.setupRun?.end).toBe(0)
+    expect(waiting().at(-1)).toMatchObject({ kind: 'setup.passed', started: true })
     await k.stop({ budgetMs: 0 })
   })
 
-  it("doesn't tell the Lead setup failed when the user archived the workspace during Run again (KERNEL-126)", async () => {
+  it("tells neither the Lead nor the window that setup failed when the user archived the workspace while it ran (KERNEL-126, KERNEL-1086)", async () => {
     const { k, project } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt || (sleep 1 && false)"\n' })
     const lead = await k.leadChat(project.id)
-    // Kernel's own chat runs the same setup, which fails the same way (KERNEL-405).
-    await setUp(k, lead.id, 'failed')
+    await setUp(k, lead.id)
     const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
+    const failed = setupFailures(() => ws.id)
     const waiting = () => [...(k.leadUpdates as unknown as { pending: Map<string, { events: { kind: string; code?: number | null }[] }> }).pending.values()].flatMap((p) => p.events)
     const before = waiting()
-    const rerun = k.retrySetup(ws.id)
     await new Promise((r) => setTimeout(r, 200))
     await k.archiveWorkspace(ws.id)
     await k.archive.cleanedUp(ws.id)
-    await rerun
+    await k.setup.settled(ws.id)
     expect(waiting()).toEqual(before)
+    expect(failed).toEqual([])
     await k.stop({ budgetMs: 0 })
   })
 
-  it('stops setup from the Setup tab: failed with no exit code, the brief still held, and no word to the Lead (KERNEL-430)', async () => {
-    const { k, project } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt || (sleep 2 && false)"\n' })
+  it('stops setup from the Setup tab: no exit code, the agent keeps working, the window hears it was stopped and the Lead hears nothing (KERNEL-430, KERNEL-1086)', async () => {
+    const { k, project } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "sleep 5"\n' })
     const lead = await k.leadChat(project.id)
-    await setUp(k, lead.id, 'failed')
+    await setUp(k, lead.id)
     const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
     const chat = k.store.chats(ws.id)[0]
+    const stopped = setupFailures(() => ws.id)
     const waiting = () => [...(k.leadUpdates as unknown as { pending: Map<string, { events: { kind: string }[] }> }).pending.values()].flatMap((p) => p.events)
     const before = waiting()
-    const rerun = k.setup.retrySetup(ws.id)
-    await new Promise((r) => setTimeout(r, 300))
+    expect(sentTexts(k, chat.id)).toEqual([['Build T-14', 'lead']])
     expect(k.store.workspace(ws.id)?.setupRun?.endedAt).toBeUndefined()
     await k.setup.handlers()['scripts.stop']({ workspaceId: ws.id, kind: 'setup' })
-    const after = await rerun
-    expect(after.status).toBe('failed')
+    await k.setup.settled(ws.id)
+    const after = k.store.workspace(ws.id)!
+    expect(after.status).toBe('ready')
     expect(after.setupRun?.end).toBeNull()
     expect(after.setupRun?.endedAt).toBeGreaterThanOrEqual(after.setupRun!.startedAt)
-    expect(k.sessions.queued(chat.id).map((q) => (q.parts[0] as { text: string }).text)).toEqual(['Build T-14'])
+    expect(stopped).toEqual([{ type: 'setup.failed', workspaceId: ws.id, chatId: chat.id, kind: 'stopped' }])
+    expect(k.sessions.queued(chat.id)).toEqual([])
     expect(waiting()).toEqual(before)
     await k.stop({ budgetMs: 0 })
   })
 
-  it('sends a brief anyway after setup failed, once, with a note above it, and the Lead hears setup passed (KERNEL-430)', async () => {
+  it('sends the brief anyway, once, with a note above it, on a workspace an older Kernel failed with the brief held for setup (KERNEL-430, KERNEL-1086)', async () => {
     const { k, project } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "false"\n' })
     const lead = await k.leadChat(project.id)
-    await setUp(k, lead.id, 'failed')
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
-    const chat = k.store.chats(ws.id)[0]
-    expect(ws.status).toBe('failed')
+    await setUp(k, lead.id)
+    // As an older Kernel left it: setup failed, and the brief waits in the chat for Run again or Send anyway.
+    const { ws, chat } = await k.workspaces.cutWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
+    k.setup.setSetup(ws.id, undefined)
+    k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, status: 'failed', setupRun: { startedAt: 1, endedAt: 2, end: 1 } })
+    k.sessions.hold(chat.id, [{ type: 'text', text: 'Build T-14' }], { from: 'lead' })
     // A second Send anyway while the first is on its way does nothing.
     const [first, second] = await Promise.all([k.setup.skipSetup(ws.id), k.setup.skipSetup(ws.id)])
     expect(first.status).toBe('ready')
     expect(second.status).toBe('failed')
     const notes = k.store.items(chat.id).filter((i) => i.kind === 'note').map((i) => (i as { text: string }).text)
     expect(notes.filter((n) => n === 'Setup failed, sent anyway')).toHaveLength(1)
-    expect(notes.some((n) => n.startsWith('Setup finished'))).toBe(false)
     expect(k.sessions.queued(chat.id)).toEqual([])
-    expect(k.store.items(chat.id).some((i) => i.kind === 'user')).toBe(true)
+    expect(sentTexts(k, chat.id)).toEqual([['Build T-14', 'lead']])
     const waiting = () => [...(k.leadUpdates as unknown as { pending: Map<string, { events: { kind: string }[] }> }).pending.values()].flatMap((p) => p.events)
     expect(waiting().at(-1)).toMatchObject({ kind: 'setup.passed' })
     // A workspace that isn't failed has nothing to skip.
@@ -624,34 +586,14 @@ describe('kernel recovery paths', () => {
     await k.stop({ budgetMs: 0 })
   })
 
-  it('sends the brief now while setup runs: the script stops and the brief goes out as after a pass (KERNEL-951)', async () => {
-    const { k, project } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt || (sleep 2 && false)"\n' })
+  it('writes no note above the brief when setup passes alongside it (KERNEL-430, KERNEL-533)', async () => {
+    const { k, project } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "true"\n' })
     const lead = await k.leadChat(project.id)
-    await setUp(k, lead.id, 'failed')
+    await setUp(k, lead.id)
     const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
     const chat = k.store.chats(ws.id)[0]
-    const rerun = k.setup.retrySetup(ws.id)
-    await new Promise((r) => setTimeout(r, 300))
-    await k.setup.handlers()['scripts.skipSetup']({ workspaceId: ws.id })
-    const after = await rerun
-    expect(after.status).toBe('ready')
-    expect(after.setupRun?.end).toBeNull()
-    expect(k.sessions.queued(chat.id)).toEqual([])
-    expect(k.store.items(chat.id).some((i) => i.kind === 'user')).toBe(true)
-    expect(k.setup.sendingNow.has(ws.id)).toBe(false)
-    await k.stop({ budgetMs: 0 })
-  })
-
-  it('writes no note above the brief when Run again passes (KERNEL-430, KERNEL-533)', async () => {
-    const { k, project } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
-    const lead = await k.leadChat(project.id)
-    await setUp(k, lead.id, 'failed')
-    const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table', leadChatId: lead.id })
-    const chat = k.store.chats(ws.id)[0]
-    await writeFile(join(ws.path, 'ok.txt'), 'ok\n')
-    expect((await k.setup.retrySetup(ws.id)).status).toBe('ready')
+    expect((await setUp(k, ws.id)).setupRun).toMatchObject({ end: 0 })
     expect(k.store.items(chat.id).filter((i) => i.kind === 'note')).toEqual([])
-    expect(k.store.workspace(ws.id)?.setupRun).toMatchObject({ end: 0 })
     await k.stop({ budgetMs: 0 })
   })
 
@@ -702,22 +644,24 @@ describe('kernel recovery paths', () => {
     await k.stop({ budgetMs: 0 })
   })
 
-  it('holds the first prompt while setup fails, and sends it once Run again passes', async () => {
-    const { k, project } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
+  it('sends the first prompt at once while setup fails, says how setup ended in one event, and a message after it goes out too (KERNEL-1086)', async () => {
+    const { k, project } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "echo installing && echo lockfile is out of date && test -f ok.txt"\n' })
     const before = sdk.calls.length
+    let id: string | undefined
+    const failed = setupFailures(() => id)
     const ws = await k.createWorkspace(project.id, { prompt: 'Build T-14', agentId: 'christian', title: 'Invoice table' })
-    expect(ws.status).toBe('failed')
+    id = ws.id
+    expect(ws.status).toBe('ready')
     const chat = k.store.chats(ws.id)[0]
-    expect(k.sessions.queued(chat.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Build T-14' }]])
-    expect(sdk.calls.length).toBe(before)
-
-    // Still failing: stays failed, the prompt keeps waiting.
-    expect((await k.retrySetup(ws.id)).status).toBe('failed')
-    await writeFile(join(ws.path, 'ok.txt'), 'ok\n')
-    expect((await k.retrySetup(ws.id)).status).toBe('ready')
     expect(k.sessions.queued(chat.id)).toEqual([])
     expect(sdk.calls.length).toBe(before + 1)
-    expect(k.store.items(chat.id).find((i) => i.kind === 'user')).toMatchObject({ parts: [{ type: 'text', text: 'Build T-14' }] })
+    expect((await setUp(k, ws.id)).setupRun).toMatchObject({ end: 1 })
+    expect(failed).toEqual([{ type: 'setup.failed', workspaceId: ws.id, chatId: chat.id, kind: 'failed', code: 1, line: 'lockfile is out of date' }])
+    // The turn ends, and the next message goes out at once, though setup failed.
+    sdk.calls[sdk.calls.length - 1].feed(result('r1'))
+    await flush()
+    expect(await k.sessions.send(chat.id, [{ type: 'text', text: 'Carry on' }])).toMatchObject({ queued: false })
+    expect(sentTexts(k, chat.id).map(([t]) => t)).toEqual(['Build T-14', 'Carry on'])
     await k.stop({ budgetMs: 0 })
   })
 

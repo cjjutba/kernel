@@ -101,7 +101,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     // The first message goes once the chat's worktree exists, while setup runs (KERNEL-405, KERNEL-542).
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: false } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     // What waits in a chat's queue, and what it sent, as text.

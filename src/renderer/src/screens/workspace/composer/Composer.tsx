@@ -64,7 +64,7 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
   why?: string
   running: boolean
   prefill?: { text: string; n: number }
-  /** SetupWait is on screen, so it shows the messages waiting for setup and the queue doesn't (KERNEL-1018). */
+  /** WorktreeWait is on screen, so it shows the messages waiting for the worktree and the queue doesn't (KERNEL-1018). */
   setupShown?: boolean
   /** A failure banner, drawn right above the box (KERNEL-28). */
   banner?: ReactNode
@@ -294,7 +294,7 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
     // ⌘⇧ Enter sends the first queued message now, whatever Send messages with says.
     if (e.key === 'Enter' && e.shiftKey && (e.metaKey || e.ctrlKey) && queue.length && canSendNow(queueWhy)) { e.preventDefault(); sendNow(queue[0]); return }
     // Up in an empty box pulls the last queued message back, as clicking its text does.
-    if (e.key === 'ArrowUp' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && d.empty && queue.length && !(queueWhy === 'setup' && setupShown)) { e.preventDefault(); editQueued(queue[queue.length - 1]); return }
+    if (e.key === 'ArrowUp' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && d.empty && queue.length && !(queueWhy === 'worktree' && setupShown)) { e.preventDefault(); editQueued(queue[queue.length - 1]); return }
     if (sendsOn(e, sendWith)) { e.preventDefault(); void send(); return }
     if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); cycleMode(); return }
     if (!['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) run.current = null
@@ -315,7 +315,7 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
   const model = modelLabelOf(chat.model, providerModels)
   const hasDraft = !d.empty
   const compact = !!viewer && !engaged && !hasDraft && d.pending === 0 && !blocked && !plan && !viewer.held && menu === null
-  const placeholder = why ?? (blocked ? 'Paused until this is resolved' : plan ? 'Enter your plan adjustments here' : running || queueWhy === 'setup' || viewer ? 'Add a follow up' : withKernel ? leadPlaceholder(leadMode, name) : `Ask ${name} to make changes, @mention files, run /skills`)
+  const placeholder = why ?? (blocked ? 'Paused until this is resolved' : plan ? 'Enter your plan adjustments here' : running || queueWhy === 'worktree' || viewer ? 'Add a follow up' : withKernel ? leadPlaceholder(leadMode, name) : `Ask ${name} to make changes, @mention files, run /skills`)
 
   // ^⌘1 to 9 pick the Nth current model of the chat's provider and ⌘⇧/ cycles the effort, with the picker open or not (useModelKeys).
   useModelKeys({ provider, model: chat.model, effort: chat.effort, fallback, onModel: pickModel, onEffort: setEffort })

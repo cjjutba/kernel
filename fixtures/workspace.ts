@@ -679,7 +679,7 @@ function setupWait(f: Fixture, status: 'setup' | 'failed', queue: QueuedMessage[
     workspaces: withWorkspace(f, ids.table, { status, setupRun, copied: 2, ...(o.later ? { firstInProject: false } : {}), ...(o.pending ? { baseRef: 'origin/main', worktreePending: o.pending } : {}) }),
     items: { [ids.tableChat]: [] },
     queue: { [ids.tableChat]: queue },
-    push: [...f.push, ...(o.pending ? [] : setupLog(status === 'setup' ? 'running' : o.end === null ? 'stopped' : 'failed')), ...(queue.length ? [{ type: 'chat.queue' as const, chatId: ids.tableChat, queue, why: 'setup' as const }] : [])],
+    push: [...f.push, ...(o.pending ? [] : setupLog(status === 'setup' ? 'running' : o.end === null ? 'stopped' : 'failed')), ...(queue.length ? [{ type: 'chat.queue' as const, chatId: ids.tableChat, queue, why: 'worktree' as const }] : [])],
     ui: { ...open, rightPanel: o.panel ?? true, ...(o.collapsed ? { bottomCollapsed: { lead: true, teammate: true } } : {}), workspace: { right: o.right ?? 'changes', bottom: 'setup', ...(o.composer ? { composer: o.composer } : {}) } }
   }
 }
@@ -2186,15 +2186,15 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { [ids.tableChat]: [] },
     ui: open
   })),
-  // KERNEL-430: a new chat waiting for setup. KERNEL-951: rows say what Kernel did, the setup script's row counts with its last output line, and the message waits dimmed with Send now.
+  // KERNEL-430: a new chat waiting for its workspace. KERNEL-951: rows say what Kernel did, the setup script's row counts with its last output line, and the message waits dimmed.
   SetupRunning: scene((f) => setupWait(f, 'setup', [setupAsk])),
   SetupFollowUp: scene((f) => setupWait(f, 'setup', [setupAsk, setupFollow])),
-  // KERNEL-1018: a restored chat with history, held for setup. The transcript stays, the box is open, and the message waits in the queue above it.
+  // KERNEL-1018: a restored chat with history, held while its worktree is made. The transcript stays, the box is open, and the message waits in the queue above it.
   SetupRestoredChat: scene((f) => {
     const w = setupWait(f, 'setup', [setupAsk])
     return { ...w, items: { [ids.tableChat]: f.items[ids.tableChat] ?? [] } }
   }),
-  // KERNEL-1012: Wait for setup is off, the default. The brief went out at once, so the chat shows its transcript and the agent works while setup runs. No card, no queue row, the box is open.
+  // KERNEL-1012, KERNEL-1086: the brief went out at once, so the chat shows its transcript and the agent works while setup runs. No card, no queue row, the box is open.
   SetupWorkingAlongside: scene((f) => {
     const w = setupWait(f, 'setup', [])
     return { ...w, items: { [ids.tableChat]: [userMsg('sa-u', 'In a setup script tab in the right sidebar panel, there is a redundancy in terms of Run. Can you fix that?'), ...midTurn] }, push: [...(w.push ?? []), { type: 'chat.running', chatId: ids.tableChat, running: true }] }
@@ -2209,8 +2209,6 @@ export const workspaceFixtures: Record<string, Fixture> = {
       push: [...(w.push ?? []), { type: 'chat.running', chatId: ids.tableChat, running: true }]
     }
   }),
-  // KERNEL-1012: Wait for setup before agents start is on. The brief is held, so the card, the queue row and Send now show as before.
-  SetupHeldWaitOn: scene((f) => setupWait(f, 'setup', [setupAsk])),
   // Edit pulled the only queued message back into the box.
   SetupEditQueued: scene((f) => setupWait(f, 'setup', [], { composer: { parts: [...setupAsk.parts, ...setupFollow.parts], draft: '' } })),
   SetupPanelHidden: scene((f) => setupWait(f, 'setup', [setupAsk], { panel: false })),
@@ -2219,14 +2217,12 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // KERNEL-543: the worktree isn't made yet. The message reads as sent, and one line says which base it is made from.
   SetupCreatingWorktree: scene((f) => setupWait(f, 'setup', [setupAsk], { pending: {} })),
   /**
-   * The first message sent from New chat while its worktree is made, with Wait for setup off, one step per frame as main sends it: the worktree finishes and nothing else has
+   * The first message sent from New chat while its worktree is made, one step per frame as main sends it: the worktree finishes and nothing else has
    * happened yet, the setup script starts before the row is posted, then the row, the running state and the empty tray arrive together. The bubble and the working line stay in one place
    * in every frame, with no setup text and no queue strip, though a setup script runs.
    */
   NewChatSendWorktreeMotion: { ...scene((f) => ({ ...setupWait(f, 'setup', [{ ...setupAsk, clientId: setupAsk.id }], { pending: {} }), projectSettings: handoverSettings })), motion: { action: { steps: handoverSteps() }, ms: 0, area: '.ws-main' } },
-  // Wait for setup is on, so main does hold the message through setup: the same message, sent from New chat, keeps its queued look, label, Edit, Cancel and Send now once the worktree is made.
-  SetupSentHeldWaitOn: scene((f) => ({ ...setupWait(f, 'setup', [{ ...setupAsk, clientId: setupAsk.id }]), projectSettings: { [ids.projectA]: { ...handoverSettings[ids.projectA], workspace: { leadWaitForSetup: true } } } })),
-  // Git wouldn't make it: the card says so with git's reason and Try again, and the message is Not sent yet.
+  // Git wouldn't make it: the card says so with git's reason and Try again, and the message is Not sent.
   SetupWorktreeFailed: scene((f) => setupWait(f, 'failed', [setupAsk], { pending: { error: "fatal: '/Users/cj/Kernel/worktrees/kernel/in-setup-script-tab-in' already exists" } })),
   SetupSentAnyway: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { status: 'ready', title: 'Fix duplicate Run in the script panel', setupRun: { startedAt: at(10, 0), endedAt: at(10, 1, 8), end: 1 } }),
@@ -2606,7 +2602,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
       ...s,
       items: { [ids.leadChat]: [] },
       queue: { [ids.leadChat]: q },
-      push: [...(s.push ?? f.push), { type: 'chat.queue' as const, chatId: ids.leadChat, queue: q, why: 'setup' as const }]
+      push: [...(s.push ?? f.push), { type: 'chat.queue' as const, chatId: ids.leadChat, queue: q, why: 'worktree' as const }]
     }
   }),
   ChatRailNarrow: railScene(true),
