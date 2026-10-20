@@ -11,7 +11,7 @@
 .wk-project { position: relative; display: inline-flex; }
 .wk-pick { gap: 7px; height: 28px; padding: 0 8px 0 6px; border-radius: var(--r-xs); font-size: var(--fs-ui); font-weight: var(--fw-regular); }
 .wk-pick > svg:last-child { color: var(--muted); }
-.wk-letter { width: 16px; height: 16px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-2xs); background: var(--surface-3); font-size: var(--fs-tile-lg, 9px); font-weight: var(--fw-semibold); }
+.wk-letter { width: 16px; height: 16px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-2xs); background: var(--surface-3); font-size: var(--fs-tile-sm); font-weight: var(--fw-semibold); }
 .wk-where { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-meta); color: var(--muted); }
 .wk-tracker { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; height: 28px; box-sizing: border-box; padding: 2px; margin-right: 4px; border-radius: var(--r-sm); background: var(--card-bg); flex-shrink: 0; }
 .wk-tracker button { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border: 0; border-radius: var(--r-xs); background: transparent; color: var(--muted); font-size: var(--fs-meta); font-weight: var(--fw-regular); white-space: nowrap; }

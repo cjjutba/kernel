@@ -633,7 +633,7 @@ const prsScene = (f: Fixture, o: { filter: 'open' | 'merged'; none?: 'open' | 'm
     github: { reads },
     // The base workspaces keep their own PRs in the list, except where the page is to be empty.
     workspaces: [
-      ...home.workspaces!.map((w, i) => (w.prState === 'merged' ? { ...w, prNumber: 56 - i } : none && w.prNumber ? { ...w, prState: 'none' as const } : w)),
+      ...home.workspaces!.map((w, i) => (w.prState === 'merged' ? { ...w, prNumber: 56 - i, ...(i % 2 === 0 ? approved(56 - i) : {}) } : none && w.prNumber ? { ...w, prState: 'none' as const } : w)),
       ...(none ? [] : rows.map(([w]) => w)),
       ...more,
       ...plain

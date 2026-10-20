@@ -249,9 +249,9 @@ Every screen draws a state with one of these components from `ui`, never its own
 
 | State | Component | Copy |
 | --- | --- | --- |
-| Loading | `LoadingRow what="issues"` | The `arrow-down` loader and "Loading issues". Plural noun, no trailing dots. |
+| Loading | `LoadingRow what="issues"` | The `arrow-down` loader and "Loading issues". Plural noun, no trailing dots. A list that keeps its shape while it loads draws skeleton rows (a round mark and two bars each) and puts the line under them with `inline` (KERNEL-1098). |
 | Empty | `EmptyList icon title` (an `EmptyState` centered in its area) | An icon, a title and one muted line. Add one `action` only when the person can fix it from here. |
-| Failed | `FailedState title onRetry` | A calm empty state: what failed as the title, the reason under it, and Try again. The failure also raises a toast, which carries the error. Try again uses `useBusy`, spins as "Trying again" and can't be pressed twice. Never red text, never a blank list, never a banner. |
+| Failed | `FailedState icon title onRetry` | A calm empty state: an icon, what failed as the title, the reason under it, and Try again. The failure also raises a toast (`failToast`), which carries the error and a Try again that reads the list again (`useRetryKey`). Try again uses `useBusy`, spins as "Trying again" and can't be pressed twice. Never red text, never a blank list, never a banner. A state that says it all itself (signed out, offline) raises no toast (KERNEL-1098). |
 | Not connected | `NotConnectedState page label` | An empty state whose one button opens the Settings page that fixes it ("Open Integrations"). |
 
 - A list that loads shows `LoadingRow`, then one of the other three. A blank area is never a state.
