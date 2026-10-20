@@ -297,7 +297,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 
 /* shell */
 .app { display: flex; height: 100%; }
-/* The footer spans the window under the sidebar and the main panel, so the shell is a column: the body (sidebar and main) above the footer. */
+/* The shell is a column holding the body, the sidebar and the main panel (the footer now sits at the bottom of the sidebar, KERNEL-1101). */
 .app-col { flex-direction: column; }
 .app-body { flex: 1; min-height: 0; display: flex; }
 /* The sidebar toggle, mounted once by App at x 87, centered on the header row (y 9 to 53, KERNEL-431), over the empty slot the sidebar's strip and each screen header keep for it. */
@@ -306,9 +306,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .hist-in-header { margin-top: 1px; }
 .drag { -webkit-app-region: drag; }
 .nodrag { -webkit-app-region: no-drag; }
-.main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; }
-/* The 32px strip under the sidebar and the main panel, the window's full width: usage on the left, the update pill on the right (KERNEL-588). */
-.footer { height: 32px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; font-size: var(--fs-meta); color: var(--muted); }
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 8px 0; }
 .panel { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--panel-line); border-radius: var(--r-md); overflow: hidden; }
 /* Every screen is a size container named panel, so `@container panel (max-width: ...)` lays it out for the space it has, sidebar or not (D-084). */
 .panel { container: panel / inline-size; }

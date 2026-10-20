@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Chat, ScriptLine, Workspace } from '@shared/types'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { call } from '../../../api'
@@ -6,13 +6,15 @@ import { isLeadWorkspace, leadOf } from '../../../lead'
 import { actions, getState, go, loadWorkspace, useStore } from '../../../store'
 import { archiveChatFromSidebar } from '../archiveChat'
 import { archiveByHand } from '../byHand'
-import { Banner, Button, useBusy } from '../../../ui'
+import { Button, Icon, IconButton, useBusy, type IconName } from '../../../ui'
+import { useSwipeDismiss } from '../../../ui/useSwipeDismiss'
 import { attempt } from '../MessageActions'
 import { commandComposer, focusComposerWhenOpen } from '../composer/bus'
-import { bannerFor, setupCommand, type BannerAction, type BannerView } from './model'
+import { bannerFor, setupCommand, type BannerAction, type BannerId, type BannerView } from './model'
 import { chatProvider } from '@shared/providers'
 import { useCodexInUse } from '../composer/providerModels'
 import { dismissLimitBanner, useLimitDismissed } from './limitDismissed'
+import { retryNow } from './retryNow'
 import './banners.css'
 
 /** What a banner button says while its call runs. Actions that only move focus or open a screen have none. */
@@ -98,6 +100,7 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
         setSettled({ id: view.id, notified: true })
       })
       case 'usage': return go({ name: 'settings', page: 'accounts' })
+      case 'dismiss': return view.dismissKey && dismissLimitBanner(view.dismissKey)
       case 'wait': return setSettled({ id: view.id })
       case 'switch': return chat && view.switchTo && run(id, 'Could not switch the model', async () => {
         await call('chats.configure', { chatId: chat.id, model: view.switchTo })
@@ -157,24 +160,55 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
 
   const sub = mine?.notified ? 'You will get a notification when it resets.' : view.sub
   const shown = mine ? [] : view.actions
+  const dismiss = view.dismissKey ? () => dismissLimitBanner(view.dismissKey!) : undefined
   return (
-    <Banner
-      key={view.dismissKey ?? view.id} kind={view.kind} title={view.title} onDismiss={view.dismissKey ? () => dismissLimitBanner(view.dismissKey!) : undefined}
+    <LimitBanner
+      key={view.dismissKey ?? view.id} view={view} title={view.title} onDismiss={dismiss}
       actions={shown.length ? <span className="wsb-actions">{shown.map((a) => (
         <Button key={a.id} variant={a.primary ? 'primary' : 'secondary'} className="wsb-btn" busy={busy === a.id || (switchingHere && (a.id === 'switchAccount' || a.id === 'switchBack'))} busyLabel={BUSY_LABEL[a.id]} disabled={busy !== null || (switching !== null && (a.id === 'switchAccount' || a.id === 'switchBack'))} onClick={() => act(a.id)}>{a.label}</Button>
       ))}</span> : undefined}
-    >{sub}</Banner>
+    >{sub}</LimitBanner>
+  )
+}
+
+/** The glyph in front of a banner: what it is about, never a status color. */
+const GLYPH: Partial<Record<BannerId, IconName>> = {
+  session: 'gauge', weekly: 'calendarX', model: 'burst', accountNearLimit: 'gauge', nearLimit: 'gauge', weeklyWarn: 'calendarClock', switchWarning: 'warning', context: 'circleGauge', setup: 'warning'
+}
+
+/**
+ * The banner above the composer (Pen 14.4 and 14.7): a `surface` card with a 28px glyph tile, a title, one line under it and the choice as buttons. A limit that stops work and has nowhere to go
+ * wears the red `del-fill` on its glyph, one with a choice offered the amber `needs-fill`, and everything else the quiet ink. It is never a red background. A banner with a `dismissKey` closes with
+ * a drag or swipe to the right, as a toast does.
+ */
+function LimitBanner({ view, title, children, actions, onDismiss }: { view: BannerView; title: string; children?: ReactNode; actions?: ReactNode; onDismiss?: () => void }) {
+  const { ref, leaving, leave, handlers } = useSwipeDismiss<HTMLDivElement>(onDismiss)
+  const hard = view.id === 'session' || view.id === 'weekly'
+  const tone = hard ? (view.switchAccount || view.signIn ? 'needs' : 'del') : undefined
+  return (
+    <div role="alert" className="banner lb" data-kind={view.kind} data-dismissible={onDismiss ? '' : undefined} data-leaving={leaving || undefined} ref={ref} {...handlers}>
+      <span className="lb-glyph" data-tone={tone} aria-hidden="true"><Icon name={GLYPH[view.id] ?? 'warning'} size={14} /></span>
+      <div className="grow"><div className="banner-title">{title}</div>{children && <div className="lb-sub">{children}</div>}</div>
+      {actions}
+      {onDismiss && <IconButton className="banner-close" icon="close" label="Dismiss" size={12} onClick={leave} />}
+    </div>
   )
 }
 
 /**
- * Retry now: send the last message again at once. The waiting retry is interrupted and the copy goes first. The engine
- * sends it with its sender, so a Kernel update sent again is still Kernel's, not the user's (KERNEL-127).
+ * Provider, network and Mac errors are a toast, raised when the condition starts (Pen 14.7), and again when a chat shows it afresh. Its `key` names the condition, so a chat tab that
+ * changes under the same condition doesn't raise it twice, and neither does a render that runs an effect twice. The composer's placeholder says why a message can't go, so the toast can leave.
  */
-async function retryNow(chatId: string) {
-  const items = await call('chats.items', { chatId })
-  const user = [...items].reverse().find((i) => i.kind === 'user')
-  if (user?.kind !== 'user') return
-  await call('chats.retry', { chatId, itemId: user.id, now: true })
-  actions.chats.setQueue(chatId, await call('chats.queue', { chatId }))
+export function useProblemToast(view: BannerView | null | undefined) {
+  const key = view?.toast?.key
+  // A condition that changes while its toast is still up (the account loads, then the accounts) replaces it, so one problem never shows two toasts.
+  const shown = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    const t = view?.toast
+    if (!t) return
+    if (getState().ui.toasts.some((x) => x.title === t.title && x.sub === t.sub)) return
+    if (shown.current) actions.ui.dismissToast(shown.current)
+    const [action, other] = [...t.actions].reverse()
+    shown.current = actions.ui.toast({ title: t.title, sub: t.sub, glyph: 'error', ...(action ? { action } : {}), ...(other ? { other } : {}) })
+  }, [key])
 }

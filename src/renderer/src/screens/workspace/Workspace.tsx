@@ -33,7 +33,7 @@ import { TerminalView } from './terminal/Terminal'
 import { WorktreeWait } from './WorktreeWait'
 import { setupGate, skipsSetup } from './setupGate'
 import { Transcript } from './Transcript'
-import { useBanner, WorkspaceBanner } from './banners/Banners'
+import { useBanner, useProblemToast, WorkspaceBanner } from './banners/Banners'
 import { ChatMoveNotice, useMoveNotice } from './banners/ChatMoveNotice'
 import { FellBackLine } from './banners/FellBackLine'
 import { onRefreshChanges } from './changesBus'
@@ -153,6 +153,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const skips = !!ws && skipsSetup(heldForSetup)
   const empty = useStore((s) => (chat ? !s.items[chat.id]?.length : true))
   const found = useBanner(ws, chat, agent?.name ?? 'The agent', running, skips, !empty, heldForSetup)
+  useProblemToast(found)
   const moveNotice = useMoveNotice(chat)
 
   // Images and pasted texts belong to the screen, not the store, so they start empty for each workspace. A tab of one left in the
@@ -204,8 +205,10 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   // that isn't held shows its transcript and stays open while setup runs (KERNEL-490, KERNEL-1086).
   const gate = setupGate({ status: ws.status, skips, held: heldForSetup, empty })
   const setupWait = gate.wait && chat?.kind !== 'terminal'
-  const banner = setupWait && found?.id === 'setup' ? undefined : found
-  const blocked = gate.shut || !!banner?.blocks
+  const problem = setupWait && found?.id === 'setup' ? undefined : found
+  // Only a limit that needs a choice is a banner. Provider, network and Mac errors are a toast, and the box says why it can't send (Pen 14.7).
+  const banner = problem && !problem.as ? problem : undefined
+  const blocked = gate.shut || !!problem?.blocks
 
   // The tabs as ChatTabs lists them, left to right. Closing the open one goes back to the tab used before it (nextTab.ts).
   const order = [...chats.map((c) => c.id), ...files.map(fileTab), ...diffs.map(diffTab), ...shared.map((id) => `shared:${id}`), ...images.map((i) => i.id), ...texts.map((t) => t.id)]
@@ -310,7 +313,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                     ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={edit} onOpenDiff={openDiff} onForked={select} />
                     : <div className="grow" />}
           </div>
-          {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} setupShown={setupWait} running={running} prefill={prefill} viewer={viewer ? { held: banner ? banner.actions.length > 0 : !!moveNotice } : undefined} banner={<>{isLead && chat.kind === 'chat' && <OpenItems chat={chat} />}{banner ? <WorkspaceBanner view={banner} ws={ws} chat={chat} /> : moveNotice && <ChatMoveNotice chat={chat} notice={moveNotice} />}{chat.kind === 'chat' && <FellBackLine chat={chat} />}</>} />}
+          {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} why={problem?.placeholder} setupShown={setupWait} running={running} prefill={prefill} viewer={viewer ? { held: banner ? banner.actions.length > 0 : !!moveNotice } : undefined} banner={<>{isLead && chat.kind === 'chat' && <OpenItems chat={chat} />}{banner ? <WorkspaceBanner view={banner} ws={ws} chat={chat} /> : moveNotice && <ChatMoveNotice chat={chat} notice={moveNotice} />}{chat.kind === 'chat' && <FellBackLine chat={chat} />}</>} />}
         </section>
       </OpenIssue.Provider>
       </OpenText.Provider>

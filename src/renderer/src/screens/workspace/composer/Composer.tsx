@@ -56,10 +56,12 @@ type MenuName = 'model' | 'context' | 'mode' | PlusPanel
  * permission mode, which the dropdown after the model button shows and picks (KERNEL-456), Backspace takes a chip like a
  * character. While the agent works, a sent message waits in the queue above the box.
  */
-export function Composer({ chat, agent, blocked, running, prefill, banner, viewer, setupShown }: {
+export function Composer({ chat, agent, blocked, why, running, prefill, banner, viewer, setupShown }: {
   chat: Chat
   agent?: AgentDef
   blocked: boolean
+  /** What the box says while something stops or slows a message, in place of its usual placeholder: a signed-out account, no network, a retry, a folder that is gone (Pen 14.7). */
+  why?: string
   running: boolean
   prefill?: { text: string; n: number }
   /** WorktreeWait is on screen, so it shows the messages waiting for the worktree and the queue doesn't (KERNEL-1018). */
@@ -313,7 +315,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, viewe
   const model = modelLabelOf(chat.model, providerModels)
   const hasDraft = !d.empty
   const compact = !!viewer && !engaged && !hasDraft && d.pending === 0 && !blocked && !plan && !viewer.held && menu === null
-  const placeholder = blocked ? 'Paused until this is resolved' : plan ? 'Enter your plan adjustments here' : running || queueWhy === 'worktree' || viewer ? 'Add a follow up' : withKernel ? leadPlaceholder(leadMode, name) : `Ask ${name} to make changes, @mention files, run /skills`
+  const placeholder = why ?? (blocked ? 'Paused until this is resolved' : plan ? 'Enter your plan adjustments here' : running || queueWhy === 'worktree' || viewer ? 'Add a follow up' : withKernel ? leadPlaceholder(leadMode, name) : `Ask ${name} to make changes, @mention files, run /skills`)
 
   // ^⌘1 to 9 pick the Nth current model of the chat's provider and ⌘⇧/ cycles the effort, with the picker open or not (useModelKeys).
   useModelKeys({ provider, model: chat.model, effort: chat.effort, fallback, onModel: pickModel, onEffort: setEffort })

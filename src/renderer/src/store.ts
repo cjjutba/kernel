@@ -815,20 +815,22 @@ async function mcpNeededToast(n: McpNeeded) {
 let switchToastId: string | undefined
 
 /**
- * One notice for each switch Kernel makes by itself, with Undo back to the account it left. The user's own switches say nothing:
- * the account menu already shows where they went (KERNEL-941). A newer switch replaces the last notice, so Undo always reverses
- * the latest one. `accounts` arrives before this event, so the names are current (KERNEL-699).
+ * One notice for each account switch, with Undo back to the account it left (Pen 14.6). Yours says what the provider runs on now. One Kernel makes at a limit says which account hit it, and
+ * where Kernel moved the provider. A newer switch replaces the last notice, so Undo always reverses the latest one. `accounts` arrives before this event, so the names are current (KERNEL-699).
  */
 function accountSwitchedToast(e: Extract<PushEvent, { type: 'accountSwitched' }>) {
-  if (e.reason !== 'limit') return
   const accounts = getState().accounts
-  const name = (id: string) => accounts.find((a) => a.provider === e.provider && a.id === id)?.label ?? 'another account'
+  const find = (id: string) => accounts.find((a) => a.provider === e.provider && a.id === id)
+  const name = (id: string) => find(id)?.label ?? 'another account'
   const provider = PROVIDERS.find((p) => p.id === e.provider)?.label ?? e.provider
+  const plan = find(e.to)?.plan
   // A switch ahead of a limit has no window that was hit (KERNEL-844).
   const why = e.limit === 'five_hour' ? 'hit its 5-hour limit' : e.limit ? 'hit its weekly limit' : 'is close to its limit'
-  const title = `Kernel switched ${provider} to ${name(e.to)}, ${name(e.from)} ${why}`
+  const toast = e.reason === 'limit'
+    ? { title: `${name(e.from)} ${why}`, sub: `Kernel moved ${provider} to ${name(e.to)}.`, glyph: 'error' as const }
+    : { title: `Switched to ${name(e.to)}`, sub: `${provider} now runs on ${name(e.to)}${plan ? `, ${plan}` : ''}.` }
   if (switchToastId) actions.ui.dismissToast(switchToastId)
-  switchToastId = actions.ui.toast({ title, action: { label: 'Undo', switchAccount: { provider: e.provider, accountId: e.from } } })
+  switchToastId = actions.ui.toast({ ...toast, action: { label: 'Undo', switchAccount: { provider: e.provider, accountId: e.from } } })
 }
 
 let burst: PushEvent[] | undefined

@@ -1,47 +1,38 @@
-/* Footer, its usage row and the Usage popover (KERNEL-21, KERNEL-588, KERNEL-674). Tokens only. */
-.ft { padding: 0 10px; container: ft / inline-size; }
-.ft-usage { position: relative; display: flex; align-items: center; gap: 2px; min-width: 0; }
-.ft-chip { display: inline-flex; align-items: center; gap: 8px; height: 24px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: var(--fs-meta); white-space: nowrap; }
-.ft-chip:hover, .ft-chip[aria-expanded='true'] { background: var(--nav-hover); }
-.ft-chip:disabled { color: var(--muted); cursor: default; background: transparent; }
-.ft-chip:focus-visible { outline-offset: 2px; }
-.ft-mark { display: inline-flex; }
-.ft-switching { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
-.ft-name { color: var(--ink-2); font-weight: var(--fw-medium); }
-.ft-out { color: var(--muted); }
-.ft-win { display: inline-flex; align-items: center; gap: 5px; }
-.ft-nums { display: inline-flex; align-items: baseline; gap: 5px; }
-.ft-num { display: inline-flex; align-items: baseline; gap: 5px; }
-.ft-sep { color: var(--faint); }
-.ft-num:first-child .ft-sep { display: none; }
-.ft-helpbox { position: relative; display: inline-flex; margin-left: 4px; }
-.ft-help, .ft-history { flex-shrink: 0; }
-.ft-refresh { margin-left: 4px; flex-shrink: 0; }
-.ft-wl { color: var(--muted); }
-.ft-bar { display: inline-flex; }
-.ft-bar .meter { width: 30px; height: 4px; }
-.ft-pc, .pm-mp { font-variant-numeric: tabular-nums; color: var(--ink-2); }
-.ft-pc[data-tone='near'], .pm-mp[data-tone='near'] { color: var(--needs); }
-.ft-pc[data-tone='full'], .pm-mp[data-tone='full'] { color: var(--del); }
-.ft-div { width: 1px; height: 14px; margin: 0 6px; background: var(--line-2); }
-.ft-pill { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: var(--r-pill); background: transparent; color: var(--ink-2); font-size: var(--fs-meta); }
-.ft-pill:hover { background: var(--surface-3); }
-.ft-pill:focus-visible { outline-offset: 2px; }
-/* The pill fits the 32px footer. */
-.ft .ft-pill { height: 24px; }
-/* The quiet update line: progress or a failure, with Try again as a small pill. */
-.ft-upd { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-meta); color: var(--muted); white-space: nowrap; }
-.ft-retry { color: var(--ink-2); }
-
-/* A narrow window drops the Fable number. Nothing wraps or overlaps. */
-@container ft (max-width: 820px) { .ft-num[data-fable] { display: none; } }
+/* The sidebar footer, its Usage button and the Usage popover (KERNEL-21, KERNEL-588, KERNEL-674, KERNEL-1101). Tokens only. */
+.sbf { height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; margin: auto -8px 0 -10px; padding: 0 10px; font-size: var(--fs-meta); color: var(--muted); }
+.sbf-icons { display: flex; align-items: center; gap: 4px; }
+.sbf-btn { width: 32px; height: 32px; border-radius: var(--r-sm); }
+/* A fill means the button is on or its menu is open, never hover (DESIGN.md, Icon buttons). */
+.sbf-btn[aria-expanded='true'], .sbf-btn[aria-pressed='true'] { background: var(--surface-2); color: var(--ink); }
+/* The Usage icon is the one meter in the sidebar: amber from 75% and red from 90%, the meters' steps. It keeps its tone under the pointer. */
+.sbf-btn[data-tone='near'], .sbf-btn[data-tone='near']:hover { color: var(--needs-fill); }
+.sbf-btn[data-tone='full'], .sbf-btn[data-tone='full']:hover { color: var(--del-fill); }
+.sbf-helpbox, .sbf-usage { position: relative; display: inline-flex; }
+/* The popover and the hover card open upward. Both hang from the footer's top edge, so the popover lines up with the sidebar's left padding, not the button. */
+.sbf-popwrap { position: absolute; top: -8px; left: -62px; width: 0; height: 0; }
+.sbf-tip { position: absolute; z-index: var(--z-tooltip); left: -6px; bottom: calc(100% + 6px); width: max-content; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--line-3); border-radius: var(--r); background: var(--surface-2); color: var(--ink-2); font-size: var(--fs-meta); line-height: var(--lh-snug); pointer-events: none; visibility: hidden; opacity: 0; transition: opacity var(--dur-fast) var(--ease-out), visibility var(--dur-fast) var(--ease-out); }
+.sbf-btn:is(:hover, :focus-visible):not([aria-expanded='true']) ~ .sbf-tip { visibility: visible; opacity: 1; transition-delay: calc(var(--dur-delay) * 5); }
+.sbf-tip-row { display: grid; grid-template-columns: 13px 84px auto; align-items: center; column-gap: 8px; }
+.sbf-tip-mark { display: inline-flex; }
+.sbf-tip-nums, .sbf-tip-num { display: inline-flex; align-items: baseline; gap: 8px; }
+.sbf-tip-l, .sbf-tip-hint { color: var(--muted); }
+.sbf-tip-sep { color: var(--faint); }
+.sbf-tip-pc, .pm-mp { font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.sbf-tip-pc[data-tone='near'], .pm-mp[data-tone='near'] { color: var(--needs); }
+.sbf-tip-pc[data-tone='full'], .pm-mp[data-tone='full'] { color: var(--del); }
+.sbf-tip-hint { padding-top: 2px; }
+/* The update button: a round download button once an update is ready. Hover brightens the glyph and moves no fill. */
+.sbf-update { width: 34px; height: 34px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: var(--r-pill); background: var(--surface-2); color: var(--ink-2); transition: color var(--dur-fast) var(--ease-out); }
+.sbf-update:hover { color: var(--ink); }
+.sbf-upd { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); white-space: nowrap; }
+.sbf-pc { font-variant-numeric: tabular-nums; color: var(--ink-2); }
 
 /* The popover opens above the row from the footer's bottom left, 392px wide. A row is a button that expands in place; the
    body bleeds in under the provider's name, 24px past the mark. Switch rows bleed 8px past the body's padding and pad themselves back, so their hover
    fill is wider than their text. The meters are the shared Meter: grey, amber from 75%, red from 90%. */
-.popover.usage-pop { width: 392px; padding: 0; overflow: hidden auto; max-height: calc(100vh - 56px); }
+.popover.usage-pop { width: 430px; padding: 0; overflow: hidden auto; max-height: calc(100vh - 56px); }
 .popover.usage-pop[data-side='top'] { bottom: calc(100% + var(--menu-gap)); }
-.pm-top { display: flex; align-items: center; justify-content: space-between; height: 48px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--line-2); }
+.pm-top { display: flex; align-items: center; justify-content: space-between; height: 52px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--line-2); }
 .pm-title { font-size: var(--fs-ui); font-weight: var(--fw-medium); color: var(--ink); }
 .pm-sec + .pm-sec, .pm-sec + .plan-foot { border-top: 1px solid var(--line-2); }
 .pm-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 14px; border: 0; background: transparent; color: var(--ink-2); text-align: left; font-size: var(--fs-meta); }
@@ -80,4 +71,6 @@ button.pm-head:focus-visible { outline: 2px solid var(--focus); outline-offset: 
 .plan-num { display: inline-flex; gap: 4px; }
 .plan-sep { color: var(--faint); }
 .plan-foot { padding: 6px; }
+.plan-note { display: flex; align-items: center; gap: 8px; margin: 0; font-size: var(--fs-meta); color: var(--ink-3); }
+.plan-note svg { flex-shrink: 0; color: var(--faint); }
 
