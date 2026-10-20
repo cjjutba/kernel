@@ -35,6 +35,7 @@ export class History extends Feature {
       workspaces: facts.length,
       skipped,
       unpushedBranches: facts.filter((f) => f.branch === 'unpushed').length,
+      unpushed: facts.filter((f) => f.branch === 'unpushed').map((f) => ({ id: f.ws.id, branch: f.ws.branch })),
       transcriptBytes: facts.reduce((n, f) => n + [...f.sessions.values()].reduce((a, b) => a + b, 0), 0)
     }
   }
