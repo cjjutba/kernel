@@ -9,7 +9,7 @@ import { useMenuOpen } from './projectMenu'
 
 type Kind = 'letter' | 'github' | 'image'
 
-const LABEL: Record<Kind, string> = { letter: 'Letter', github: 'GitHub avatar', image: 'Image' }
+const LABEL: Record<Kind, string> = { letter: 'First letter', github: 'GitHub avatar', image: 'Image' }
 
 /** Settings > a project > General > Icon (MorePage projectGeneral, KERNEL-680): the project's letter, its GitHub avatar or a picked image. Choose image opens the file dialog. */
 export function ProjectIconRow({ project }: { project: Project }) {
@@ -41,8 +41,9 @@ export function ProjectIconRow({ project }: { project: Project }) {
     ...(kind === 'image' ? [{ value: 'image', label: LABEL.image }] : [])
   ]
   return (
-    <Row id="icon" label="Icon" desc="Shown in the sidebar and on the project’s chats." lead={<ProjectIcon project={project} className="set-icon-tile" />}>
-      <Select label="Project icon" value={kind} options={options} disabled={busy !== null} align="right" onChange={(v) => pick(v as Kind)} actions={[{ label: 'Choose image…', icon: 'image', onSelect: () => void chooseImage() }]} {...menu} />
+    <Row id="icon" label="Icon" desc="Shown in the sidebar and on the project’s chats.">
+      <ProjectIcon project={project} className="set-icon-tile" />
+      <Select label="Project icon" value={kind} options={options} disabled={busy !== null} align="right" onChange={(v) => pick(v as Kind)} actions={[{ label: 'Choose an image', icon: 'image', onSelect: () => void chooseImage() }]} {...menu} />
     </Row>
   )
 }

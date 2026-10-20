@@ -3,7 +3,7 @@ import type { LinearScope } from '@shared/types'
 import { trackerKind } from '@shared/trackerKind'
 import { call, cleanError } from '../../../api'
 import { actions, getState, go } from '../../../store'
-import { Button, ConfirmDialog, Select, useBusy } from '../../../ui'
+import { Button, ConfirmDialog, Icon, LinkButton, Select, useBusy } from '../../../ui'
 import { afterProjectLeaves } from '../../projects/afterProjectLeaves'
 import { sourceOf } from '../../projects/projectInfo'
 import { ProjectIconRow } from './ProjectIconRow'
@@ -38,7 +38,8 @@ export function Project({ projectId }: { projectId?: string }) {
   const detected = trackerKind({ linearToken: !!linear?.connected, linearTeam: !!team, githubRemote: !!project.repo })
   const tracker = rs?.tracker?.kind ?? detected
   // A saved team that is no longer in the list still shows, so the select never claims None for a team that is set.
-  const teamOptions = [{ value: USE_DEFAULT, label: 'None' }, ...[...new Set([...(team ? [team] : []), ...(teams ?? []).map((t) => t.key)])].map((k) => ({ value: k, label: k }))]
+  const teamName = (key: string) => { const t = teams?.find((x) => x.key === key); return t ? `${t.name} (${t.key})` : key }
+  const teamOptions = [{ value: USE_DEFAULT, label: 'None' }, ...[...new Set([...(team ? [team] : []), ...(teams ?? []).map((t) => t.key)])].map((k) => ({ value: k, label: teamName(k) }))]
   const archive = () => run('archive', async () => {
     try {
       await call('projects.update', { projectId, patch: { archived: true } })
@@ -53,13 +54,15 @@ export function Project({ projectId }: { projectId?: string }) {
       <Section title="Project">
         <ProjectIconRow project={project} />
         <Row id="repository" label="Repository">
-          <span className="set-value">{project.repo ?? sourceOf(project)}</span>
-          {project.repo && <Button onClick={() => open(() => call('system.openExternal', { url: `https://github.com/${project.repo}` }), 'Could not open GitHub')}>Open on GitHub</Button>}
+          {project.repo
+            ? <LinkButton variant="action" aria-label={`Open ${project.repo} on GitHub`} onClick={() => open(() => call('system.openExternal', { url: `https://github.com/${project.repo}` }), 'Could not open GitHub')}><span className="set-value">{project.repo}</span><Icon name="ext" size={12} /></LinkButton>
+            : <span className="set-value">{sourceOf(project)}</span>}
         </Row>
         <Row id="path" label="Local path">
           <span className="set-value">{home(project.path)}</span>
-          <Button onClick={() => open(() => call('app.openIn', { path: project.path }), 'Could not open the folder')}>Open</Button>
+          <Button onClick={() => open(() => call('app.openIn', { path: project.path }), 'Could not open the folder')}>Reveal</Button>
         </Row>
+        {rs && <ProjectReferences projectId={projectId} rs={rs} />}
       </Section>
       {rs && linear && (
         <Section title="Issues">
@@ -71,12 +74,16 @@ export function Project({ projectId }: { projectId?: string }) {
             : <Row id="linear-team" label="Linear team" desc={<>Connect Linear in <SettingsLink to={{ page: 'integrations' }}>Settings, Integrations</SettingsLink>.</>} />)}
         </Section>
       )}
-      {rs && <ProjectReferences projectId={projectId} rs={rs} />}
       <Section title="Danger zone">
-        <Row id="archive-project" label={project.archived ? 'Restore project' : 'Archive project'} desc={project.archived ? 'Archived. Its chats stay in History.' : 'Stops every agent and archives its workspaces. You can restore it.'}>
-          {project.archived
-            ? <Button busy={busy === 'restore'} busyLabel="Restoring" onClick={() => void restore()}>Restore project</Button>
-            : <Button onClick={() => setConfirming(true)}>Archive project</Button>}
+        {project.archived
+          ? <Row id="archive-project" label="Archived" desc="Hidden from the sidebar. Its chats stay in History.">
+              <Button busy={busy === 'restore'} busyLabel="Restoring" onClick={() => void restore()}>Restore project</Button>
+            </Row>
+          : <Row id="archive-project" label="Archive project" desc="It leaves the sidebar. Workspaces stay in History.">
+              <Button aria-label="Archive project" onClick={() => setConfirming(true)}>Archive</Button>
+            </Row>}
+        <Row id="remove-project" label="Remove project" desc="Kernel forgets it. The folder stays on disk.">
+          <Button onClick={() => actions.ui.openModal({ name: 'confirm', kind: 'removeProject', projectId })}>Remove project</Button>
         </Row>
       </Section>
       {confirming && (
