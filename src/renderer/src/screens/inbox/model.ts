@@ -71,3 +71,10 @@ export function age(ts: number, now = Date.now()): string {
 }
 
 export const agentOf = (n: Notification, agents: Record<string, AgentDef[]>) => (n.projectId ? agents[n.projectId]?.find((a) => a.id === n.agentId) : undefined)
+
+/** Whether an item matches the words typed in the Inbox's filter: its title, its line under it or the agent's name, in any case. */
+export function matchesFilter(i: InboxItem, query: string, agentName?: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return [i.n.title, i.n.heading, i.n.sub, agentName].some((t) => t?.toLowerCase().includes(q))
+}

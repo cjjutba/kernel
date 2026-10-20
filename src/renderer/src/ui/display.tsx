@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type CSSProperties, type HTMLAttributes, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, type CSSProperties, type HTMLAttributes, type ReactElement, type ReactNode } from 'react'
 import type { BannerKind } from '@shared/types'
 import { usagePercent } from '@shared/usage'
 import { Icon, type IconName } from '../icons'
@@ -121,13 +121,14 @@ export function Skeleton({ width = '100%', height = 12 }: { width?: number | str
   return <span className="skeleton" aria-hidden="true" style={{ width, height }} />
 }
 
-export function EmptyState({ icon, title, children, action }: { icon?: IconName; title: string; children?: ReactNode; action?: ReactNode }) {
+/** `icon` is an `IconName`, or an element for a glyph the icon set doesn't have, such as a service's mark. */
+export function EmptyState({ icon, title, children, action }: { icon?: IconName | ReactElement; title: string; children?: ReactNode; action?: ReactNode }) {
   return (
     <div className="empty">
-      {icon && <span className="empty-icon"><Icon name={icon} size={20} /></span>}
+      {icon && <span className="empty-icon">{typeof icon === 'string' ? <Icon name={icon} size={20} /> : icon}</span>}
       <div className="empty-title">{title}</div>
       {children && <div className="muted">{children}</div>}
-      {action}
+      {action && <div className="empty-action">{action}</div>}
     </div>
   )
 }

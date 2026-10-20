@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { go } from '../../store'
 import { Button, Icon, IconButton, Menu, isTyping } from '../../ui'
+import { ServiceMark } from '../../icons'
 import { ProjectIcon } from '../../components/ProjectIcon'
 import { SidebarToggleSlot } from '../../components/PanelToggles'
 import type { IssueTracker, ProjectHead, TrackerSwitch } from '../issues/parts'
 import { WORK_TABS, useWorkTab, type WorkTab } from './tab'
+import { useGithubAuth } from './useGithubLogin'
 import { ALL_PROJECTS, projectLabel } from './scope'
 import './work.css'
 
 const TRACKERS: { id: IssueTracker; label: string }[] = [{ id: 'linear', label: 'Linear' }, { id: 'github', label: 'GitHub' }]
+const markOf = (t: IssueTracker) => (t === 'linear' ? <Icon name="issues" size={12} /> : <ServiceMark name="github" size={12} />)
 
 /**
  * Linear | GitHub (KERNEL-938): which tracker the Issues list reads. A side the project can't use stays in place, greyed and still
@@ -16,7 +19,9 @@ const TRACKERS: { id: IssueTracker; label: string }[] = [{ id: 'linear', label: 
  */
 function TrackerToggle({ active, available, onChange }: TrackerSwitch) {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
-  const reason = (t: IssueTracker) => (t === 'linear' ? (available.linear ? undefined : 'Connect Linear in Settings, Integrations') : available.github ? undefined : 'No GitHub remote')
+  const signedOut = useGithubAuth()?.state === 'signed-out'
+  // gh signed out dims GitHub too, but not while it is the list on screen, which says so itself.
+  const reason = (t: IssueTracker) => (t === 'linear' ? (available.linear ? undefined : 'Connect Linear in Settings, Integrations') : !available.github ? 'This project has no GitHub remote.' : signedOut && active !== 'github' ? 'Sign in to the GitHub CLI to use GitHub Issues.' : undefined)
   const onKey = (e: KeyboardEvent, i: number) => {
     const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
     if (!step) return
@@ -33,7 +38,7 @@ function TrackerToggle({ active, available, onChange }: TrackerSwitch) {
         return (
           <button key={t.id} ref={(el) => { refs.current[i] = el }} type="button" role="radio" aria-checked={t.id === active} aria-disabled={why ? true : undefined}
             aria-label={why ? `${t.label}, unavailable: ${why}` : t.label} data-tip={why} tabIndex={t.id === active ? 0 : -1}
-            onClick={() => { if (!why && t.id !== active) onChange(t.id) }} onKeyDown={(e) => onKey(e, i)}>{t.label}</button>
+            onClick={() => { if (!why && t.id !== active) onChange(t.id) }} onKeyDown={(e) => onKey(e, i)}>{markOf(t.id)}{t.label}</button>
         )
       })}
     </div>
@@ -97,7 +102,6 @@ export function WorkHeader({ tab, head, allProjects, counts, where, onRefresh, r
   return (
     <header className="header wk-head">
       <SidebarToggleSlot />
-      <Icon name="issues" />
       <h1>Work</h1>
       <div className="wk-tabs" role="tablist" aria-label="Work">
         {WORK_TABS.map((t, i) => (

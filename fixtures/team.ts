@@ -511,6 +511,12 @@ const issuesScene = (f: Fixture, opts: { issueId?: string; working?: boolean; li
   }
 }
 
+/** The Issues page with no workspace started from any issue. */
+const issuesNoWork = (f: Fixture): Partial<Fixture> => {
+  const i = issuesScene(f, { issueId: 'KERNEL-35' })
+  return { ...i, workspaces: i.workspaces!.map((w) => ({ ...w, source: undefined })) }
+}
+
 /** IssuesGitHub.png: Client B's open issues. Nine, three of them Sam's, so the pills read Mine 3 and All 9. Times are relative. */
 const githubIssues = (): GithubIssueDetail[] => {
   const gh = (n: number, title: string, labels: string[], assignees: string[], age: number, extra: Partial<GithubIssueDetail> = {}): GithubIssueDetail => ({
@@ -761,7 +767,7 @@ export const teamFixtures: Record<string, Fixture> = {
     const home = homeScene(f)
     const input = { title: 'Export invoices as PDF', team: 'Kernel' }
     const { title } = describeTool('mcp__claude_ai_Linear__save_issue', input)
-    const ap: Approval = { id: 'ap-linear', kind: 'tool', source: 'sdk', projectId: ids.projectA, workspaceId: ids.schema, agentId: 'sean', toolName: 'mcp__claude_ai_Linear__save_issue', input, title, status: 'pending', createdAt: ago(MIN) }
+    const ap: Approval = { id: 'ap-linear', kind: 'tool', source: 'sdk', projectId: ids.projectA, workspaceId: ids.schema, agentId: 'sean', toolName: 'mcp__claude_ai_Linear__save_issue', input, title, reason: "Linear's save_issue has no rule yet.", status: 'pending', createdAt: ago(MIN) }
     const said = `${title.charAt(0).toLowerCase()}${title.slice(1)}`
     const n = note({ id: 'n-linear', kind: 'approval', agentId: 'sean', approvalId: ap.id, title: `Wants to ${said}`, sub: 'Permission · Client A', heading: `Sean wants to ${said}`, needsYou: true, createdAt: ap.createdAt })
     return { ...home, approvals: [ap, ...home.approvals!], notifications: [n, ...home.notifications!], ui: { route: { name: 'inbox' } } }
@@ -782,6 +788,16 @@ export const teamFixtures: Record<string, Fixture> = {
     }],
     ui: { route: { name: 'inbox' } }
   })),
+  // KERNEL-1098: before any project there is nothing to wait on and the Inbox says how to start. The filter is typed with the shot, and the approval is for a command the project can always allow.
+  InboxNoProject: scene((f) => ({ ...homeScene(f), projects: [], approvals: [], notifications: [], overlaps: [], ui: { route: { name: 'inbox' } } })),
+  InboxFilter: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })),
+  InboxAlwaysAllow: scene((f) => {
+    const home = homeScene(f)
+    const input = { command: 'pnpm db:migrate' }
+    const ap: Approval = { id: 'ap-migrate', kind: 'tool', source: 'sdk', projectId: ids.projectA, workspaceId: ids.schema, chatId: ids.schemaChat, agentId: 'sean', toolName: 'Bash', input, title: 'Run pnpm db:migrate', detail: 'T-12 adds the invoices table, and its migration has to run before the tests.', status: 'pending', createdAt: ago(MIN) }
+    const n = note({ id: 'n-migrate', kind: 'approval', agentId: 'sean', approvalId: ap.id, title: 'Wants to run pnpm db:migrate', sub: 'Permission · Client A', heading: 'Sean wants to run a command', needsYou: true, createdAt: ap.createdAt })
+    return { ...home, approvals: [ap, ...home.approvals!], notifications: [n, ...home.notifications!], ui: { route: { name: 'inbox' } } }
+  }),
   Projects: scene((f) => ({ ...projectsScene(f), ui: { route: { name: 'projects' } } })),
   ProjectsRowFocused: scene((f) => ({ ...projectsScene(f), ui: { route: { name: 'projects' } } })),
   // Audit: no project added yet, and the Projects page on its own.
@@ -881,7 +897,8 @@ export const teamFixtures: Record<string, Fixture> = {
   ProjectSetupTeam: scene((f) => projectSetupTeam(f)),
   // KERNEL-590: the repo's `[team] reviewer = "none"` turned review off, so the picker says No reviewer and no line claims a review.
   ProjectSetupTeamNoReviewer: scene((f) => projectSetupTeam(f, { reviewer: 'none' })),
-  Issues: scene((f) => issuesScene(f)),
+  // KERNEL-1098: the Issues page with live work on its rows, as the Pen draws it.
+  Issues: scene((f) => workIssuesScene(f)),
   IssuesRowFocused: scene((f) => issuesScene(f)),
   // KERNEL-874: the Work page's header over each tab.
   WorkIssues: scene((f) => workIssuesScene(f)),
@@ -898,6 +915,8 @@ export const teamFixtures: Record<string, Fixture> = {
   WorkPullRequestsEmpty: scene((f) => prsScene(f, { filter: 'open', none: 'open' })),
   WorkPullRequestsNotConnected: scene((f) => prsScene(f, { filter: 'open', none: 'open', failed: 'signed-out' })),
   PullRequestsMerged: scene((f) => prsScene(f, { filter: 'merged' })),
+  // KERNEL-1098: the merged filter with the agent chip and the text filter in use. The shot types the filter.
+  PullRequestsFilters: scene((f) => prsScene(f, { filter: 'merged' })),
   // No PNG (KERNEL-868): the last status read failed on a rate limit, with the read from before it kept. The cap note shows past 50 merged.
   PullRequestsReadFailed: scene((f) => prsScene(f, { filter: 'open', failed: true })),
   PullRequestsMergedCapped: scene((f) => prsScene(f, { filter: 'merged', manyMerged: 130 })),
@@ -918,32 +937,42 @@ export const teamFixtures: Record<string, Fixture> = {
   IssuesMany: scene((f) => issuesScene(f, { issueId: 'KERNEL-200', issues: manyIssues() })),
   IssuesGitHubLoading: scene((f) => ({ ...issuesTrackerScene(f, { projectId: ids.projectB }), hold: ['github.issueList'] })),
   IssuesGitHubEmpty: scene((f) => ({ ...issuesTrackerScene(f, { projectId: ids.projectB }), githubIssues: { [ids.projectB]: [] } })),
-  IssuesGitHubOffline: scene((f) => ({ ...issuesTrackerScene(f, { projectId: ids.projectB }), push: [{ type: 'online', online: false }] })),
+  IssuesGitHubOffline: scene((f) => ({ ...issuesTrackerScene(f, { projectId: ids.projectB }), fails: { 'github.issueList': 'GitHubError[offline]: Could not reach GitHub.' }, push: [{ type: 'online', online: false }] })),
   IssuesGitHubDetailLoading: scene((f) => ({ ...issuesTrackerScene(f, { issueId: '#31', projectId: ids.projectB }), hold: ['github.issue'] })),
   IssuesRejected: scene((f) => ({ ...issuesScene(f), fails: { 'linear.issues': 'Linear rejected the token. Reconnect it in Settings > Integrations.' } })),
-  IssuesDetailFailed: scene((f) => ({ ...issuesScene(f), fails: { 'linear.issue': 'Linear could not reach the issue.' } })),
+  IssuesDetailFailed: scene((f) => ({ ...issuesScene(f), fails: { 'linear.issue': 'Linear returned an error (500).' } })),
   IssuesGitHubSignedOut: scene((f) => ({ ...issuesTrackerScene(f, { projectId: ids.projectB }), fails: { 'github.issueList': "GitHubError[signed-out]: The GitHub CLI isn't signed in. Run gh auth login in a terminal." } })),
   IssuesGitHubRepoGone: scene((f) => ({ ...issuesTrackerScene(f, { projectId: ids.projectB }), fails: { 'github.issueList': 'GitHubError[not-found]: Could not read GitHub issues: GraphQL: Could not resolve to a Repository with the name cjjutba/client-b.' } })),
   IssuesGitHubRateLimited: scene((f) => ({ ...issuesTrackerScene(f, { projectId: ids.projectB }), fails: { 'github.issueList': 'GitHubError[rate-limited]: Could not read GitHub issues: API rate limit exceeded.' } })),
-  IssuesGitHubFailed: scene((f) => ({ ...issuesTrackerScene(f, { projectId: ids.projectB }), fails: { 'github.issueList': 'GitHubError[other]: Could not read GitHub issues: unexpected response.' } })),
-  IssuesGitHubDetailFailed: scene((f) => ({ ...issuesTrackerScene(f, { issueId: '#31', projectId: ids.projectB }), fails: { 'github.issue': 'GitHubError[other]: Could not read GitHub issues: unexpected response.' } })),
+  IssuesGitHubFailed: scene((f) => ({ ...issuesTrackerScene(f, { projectId: ids.projectB }), fails: { 'github.issueList': 'GitHubError[other]: gh exited with code 1.' } })),
+  IssuesGitHubDetailFailed: scene((f) => ({ ...issuesTrackerScene(f, { issueId: '#31', projectId: ids.projectB }), fails: { 'github.issue': 'GitHubError[other]: GitHub returned 502.' } })),
   IssuesWorking: scene((f) => issuesScene(f, { issueId: 'KERNEL-24', working: true })),
   // KERNEL-1011: the open issue is Maya's, so Mine leaves it out of the list. It is started with no assignee of ours and no workspace, so the facts say No one is on this.
   IssuesSelectedHidden: scene((f) => issuesScene(f, { issueId: 'KERNEL-50' })),
   // KERNEL-1011: an issue with no Kernel work, so the Work card says so. Also drawn at 1280, where the properties sit above the description.
-  IssuesNoWork: scene((f) => issuesScene(f, { issueId: 'KERNEL-35' })),
-  IssuesNoWork1280: scene((f) => issuesScene(f, { issueId: 'KERNEL-35' })),
-  IssuesNoProject: scene((f) => issuesScene(f, { linkedProject: false })),
+  // Nothing in the project works on an issue, so the list says how to start (KERNEL-1098).
+  IssuesNoWork: scene((f) => issuesNoWork(f)),
+  IssuesNoWork1280: scene((f) => issuesNoWork(f)),
+  // KERNEL-1098: no project at all, so there is nothing to pick issues from. A Linear team that no project links to is IssuesTeamUnlinked.
+  IssuesNoProject: scene((f) => ({ ...issuesScene(f), projects: f.projects.map((r) => ({ ...r, archived: true })), ui: { route: { name: 'issues' } } })),
+  IssuesTeamUnlinked: scene((f) => issuesScene(f, { linkedProject: false })),
   // Nothing assigned to Sam, so the default Mine filter finds nothing.
   IssuesEmpty: scene((f) => issuesScene(f, { issues: linearIssues().map((i) => ({ ...i, assignee: maya })) })),
+  // KERNEL-1098: the filters in use. A search narrows the list and Clear filters comes up. A search that finds nothing offers it, and Show all issues.
+  IssuesFilters: scene((f) => workIssuesScene(f)),
+  IssuesFilteredEmpty: scene((f) => workIssuesScene(f)),
+  // A GitHub issue nobody has touched: no assignee, milestone, labels or comments.
+  IssueDetailEmptyFields: scene((f) => ({ ...issuesTrackerScene(f, { issueId: '#50', projectId: ids.projectB }), githubIssues: { [ids.projectB]: [{ number: 50, id: '#50', title: 'Soak report lists every lost session', url: 'https://github.com/cjjutba/client-b/issues/50', labels: [], assignees: [], author: 'maya-chen', updatedAt: new Date(Date.now() - DAY).toISOString(), mine: false, body: '', comments: [] }, ...githubIssues()] } })),
   IssuesConnect: scene((f) => ({ ...issuesScene(f), integrations: linearIntegrations.map((i) => (i.id === 'linear' ? { ...i, connected: false, detail: 'Create workspaces from issues' } : i)) })),
   // Offline: the screen says Linear can't be reached whatever the last answer was.
-  IssuesError: scene((f) => ({ ...issuesScene(f), push: [{ type: 'online', online: false }] })),
+  // KERNEL-1098: the issues don't load. The page stays calm, with Try again, and a toast carries the error.
+  IssuesError: scene((f) => ({ ...issuesScene(f), fails: { 'linear.issues': "Linear didn't answer within 10 seconds." } })),
   // KERNEL-938: the Linear | GitHub switch in the Work header. A Linear project on Linear, the same project on GitHub, GitHub disabled with no remote, gh signed out, and a #31 link opening GitHub.
   IssuesTrackerLinear: scene((f) => bothTrackers(f, {})),
   IssuesTrackerGitHub: scene((f) => bothTrackers(f, { tracker: 'github' })),
   IssuesTrackerNoRemote: scene((f) => bothTrackers(f, {}, false)),
-  IssuesTrackerSignedOut: scene((f) => ({ ...bothTrackers(f, { tracker: 'github' }), fails: { 'github.issueList': "GitHubError[signed-out]: The GitHub CLI isn't signed in. Run gh auth login in a terminal." } })),
+  // gh signed out dims GitHub while Linear is on screen, and its tooltip says why. The shot hovers it.
+  IssuesTrackerSignedOut: scene((f) => ({ ...bothTrackers(f, {}), preflight: f.preflight.map((c) => (c.id === 'gh' ? { ...c, ok: false, detail: 'Signed out' } : c)) })),
   IssuesTrackerHashLink: scene((f) => bothTrackers(f, { issueId: '#31' })),
   // KERNEL-438: a project on GitHub Issues lists its own issues, with the project in the header. Linear's list is the account's and has no project.
   IssuesGitHub: scene((f) => issuesTrackerScene(f, { issueId: '#31', projectId: ids.projectB })),
