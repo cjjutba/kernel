@@ -159,7 +159,7 @@
 /* kbd, avatar */
 .kbd { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface); font: var(--fs-badge) var(--mono); color: var(--muted); }
 .avatar { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface); color: var(--ink); font-weight: var(--fw-semibold); }
-.agent-avatar { display: inline-block; flex-shrink: 0; border-radius: var(--r-pill); box-shadow: inset 0 0 0 1px var(--line-2); background: linear-gradient(135deg, var(--pal-a), var(--pal-b)); }
+.agent-avatar { display: inline-block; flex-shrink: 0; border-radius: var(--r-pill); outline: 1px solid var(--line-2); outline-offset: -1px; background: linear-gradient(135deg, var(--pal-a), var(--pal-b)); }
 .agent-avatar[data-palette='ivy'] { --pal-a: var(--agent-ivy-a); --pal-b: var(--agent-ivy-b); }
 .agent-avatar[data-palette='rio'] { --pal-a: var(--agent-rio-a); --pal-b: var(--agent-rio-b); }
 .agent-avatar[data-palette='sky'] { --pal-a: var(--agent-sky-a); --pal-b: var(--agent-sky-b); }
