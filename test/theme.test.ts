@@ -44,7 +44,7 @@ const SURFACES = ['canvas', 'panel', 'surface', 'surface-2', 'surface-3', 'hover
 const BORDERED = SURFACES.filter((s) => s !== 'hover')
 const TIERS = ['ink', 'ink-2', 'ink-3', 'muted']
 const LADDER = [...TIERS, 'faint']
-const STATUS = ['add', 'del', 'mod', 'merged', 'needs']
+const STATUS = ['add', 'del', 'merged', 'needs']
 const TERM = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'].map((n) => `term-${n}`)
 // Pairs allowed under AA. Empty since KERNEL-611 moved dark del up to pass on hover.
 const BELOW_AA = new Set<string>()

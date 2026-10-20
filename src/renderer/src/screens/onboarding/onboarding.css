@@ -85,7 +85,7 @@
 .ob-flow { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; }
 .ob-track { display: flex; flex-direction: column; align-items: center; gap: 12px; padding-top: 18px; }
 .ob-segs { display: flex; gap: 6px; }
-.ob-seg { width: 46px; height: 2px; border-radius: var(--r-pill); background: var(--line-2); }
+.ob-seg { width: 46px; height: 2px; border-radius: var(--r-pill); background: var(--line-3); }
 .ob-seg[data-on="true"] { background: var(--ink); }
 .ob-where { font-size: var(--fs-meta); color: var(--muted); }
 .ob-main { flex: 1 0 auto; width: 100%; display: flex; justify-content: center; padding: min(150px, 11vh) 0 24px; box-sizing: border-box; }

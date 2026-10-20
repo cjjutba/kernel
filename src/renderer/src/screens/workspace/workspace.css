@@ -59,14 +59,14 @@ button.ws-issue:hover { background: var(--surface-3); }
 /* One-row header (a Lead chat): the project, then the tabs in one `$surface` pill. The open tab is `$surface-3` with its close button, and + closes the pill. The header's hairline is the only one. */
 .header[data-one-row] { padding-left: 12px; gap: 4px; }
 .header[data-one-row] .crumb { margin-left: 2px; }
-.ws-tabs[data-inline] { align-self: center; flex: 0 1 auto; height: 32px; min-width: 0; padding: 2px; gap: 2px; align-items: center; border: 0; border-radius: 9px; background: var(--surface); }
+.ws-tabs[data-inline] { align-self: center; flex: 0 1 auto; height: 32px; min-width: 0; padding: 2px; gap: 2px; align-items: center; border: 0; border-radius: var(--r-sm); background: var(--surface); }
 .ws-tabs[data-inline] > [role='tablist'] { height: 100%; flex: 0 1 auto; min-width: 0; align-items: center !important; gap: 2px; }
 /* The project avatar and name, + and the right side keep their size. The tabs are what gives way, and a title truncates. */
 .header[data-one-row] .crumb-avatar, .ws-tabs[data-inline] .tab-new { flex-shrink: 0; }
-.ws-tabs[data-inline] .tab-group { height: 28px; padding-right: 4px; border-bottom: 0; border-radius: 7px; }
+.ws-tabs[data-inline] .tab-group { height: 28px; padding-right: 4px; border-bottom: 0; border-radius: var(--r-xs); }
 .ws-tabs[data-inline] .tab-group[data-on] { background: var(--surface-3); }
 .ws-tabs[data-inline] .tab-new { align-self: center; margin: 0; }
-.ws-tabs[data-inline] .tab-new .icon-btn, .ws-tabs[data-inline] .tab-new > button { width: 28px; height: 28px; border-radius: 7px; }
+.ws-tabs[data-inline] .tab-new .icon-btn, .ws-tabs[data-inline] .tab-new > button { width: 28px; height: 28px; border-radius: var(--r-xs); }
 .ws-tabs[data-inline] .ws-tab { padding: 0 8px 0 9px; gap: 7px; }
 
 /* transcript */
@@ -620,8 +620,8 @@ button.su-link:hover .su-link-text { text-decoration: underline; text-underline-
 .su-more { position: relative; display: inline-flex; align-items: center; gap: 8px; }
 .su-details { border: 0; background: transparent; padding: 0; font: inherit; color: var(--ink-2); cursor: pointer; text-decoration: underline; text-decoration-color: var(--line-3); text-underline-offset: 3px; }
 .su-details:hover { color: var(--ink); }
-.su-track { height: 2px; border-radius: 1px; background: var(--line-3); overflow: hidden; }
-.su-fill { display: block; height: 100%; background: var(--ink); transition: width var(--dur, 200ms) ease; }
+.su-track { height: 2px; border-radius: var(--r-2xs); background: var(--line-3); overflow: hidden; }
+.su-fill { display: block; height: 100%; background: var(--ink); transition: width var(--dur-slow) ease; }
 .su-pop { width: 300px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; border-color: var(--line-3); }
 .su-pop-head { display: flex; align-items: baseline; justify-content: space-between; }
 .su-pop-title { color: var(--ink); font-weight: var(--fw-medium); }

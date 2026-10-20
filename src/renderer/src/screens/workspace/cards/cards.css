@@ -4,12 +4,12 @@
 .tc-aside { margin-left: auto; color: var(--muted); font-size: var(--fs-meta); }
 .tc-body { display: flex; flex-direction: column; gap: 10px; padding: 8px 16px 6px; }
 .tc-foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 10px 12px 12px 16px; }
-.tc-foot .btn { height: 30px; padding: 0 12px; border-radius: 7px; font-size: var(--fs-code); }
+.tc-foot .btn { height: 28px; padding: 0 12px; border-radius: var(--r-xs); font-size: var(--fs-code); }
 .tc-foot .btn:not(.primary) { border-color: var(--line-3); color: var(--ink-2); background: transparent; }
 .tc-foot .btn.ghost { border-color: transparent; color: var(--ink-3); }
 .pcard-foot .tc-foot { padding: 0; }
 .tc-foot .grow-input { height: 30px; }
-.tc-hint { margin-right: auto; color: var(--faint); font-size: var(--fs-meta); }
+.tc-hint { margin-right: auto; color: var(--muted); font-size: var(--fs-meta); }
 .tcard h3 { margin: 0; font-size: var(--fs-row); font-weight: var(--fw-semibold); color: var(--ink); display: flex; align-items: center; gap: 8px; }
 .tcard h3 .err { color: var(--del); display: inline-flex; }
 .tcard .sub { color: var(--ink-2); font-size: var(--fs-chat); line-height: var(--lh); overflow-wrap: anywhere; }
@@ -63,7 +63,7 @@
 .qother textarea::placeholder { color: var(--muted); }
 .qtext { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
 .qlabel { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
-.qtag { display: inline-flex; align-items: center; height: 18px; box-sizing: border-box; padding: 0 6px; border: 0; border-radius: 5px; background: var(--surface-3); color: var(--ink-3); font-size: var(--fs-badge); font-weight: var(--fw-medium); line-height: var(--lh-none); }
+.qtag { display: inline-flex; align-items: center; height: 18px; box-sizing: border-box; padding: 0 6px; border: 0; border-radius: var(--r-2xs); background: var(--surface-3); color: var(--ink-3); font-size: var(--fs-badge); font-weight: var(--fw-medium); line-height: var(--lh-none); }
 .qdesc { color: var(--muted); font-size: var(--fs-code); line-height: var(--lh); }
 .qans { list-style: none; margin: 0; display: flex; flex-direction: column; gap: 10px; }
 .qans li { display: flex; gap: 12px; }
