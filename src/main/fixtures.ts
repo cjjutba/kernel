@@ -147,6 +147,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'workspaces.list': async ({ projectId }) => f.workspaces.filter((w) => !projectId || w.projectId === projectId),
     'workspaces.create': async () => { throw new Error('Fixture mode does not create workspaces.') },
     'workspaces.fork': async () => { throw new Error('Fixture mode does not create workspaces.') },
+    'workspaces.retryWorktree': async () => { throw new Error('Fixture mode does not make worktrees.') },
     'workspaces.archive': async () => ok,
     'workspaces.restore': async ({ workspaceId }) => ({ ...workspace(workspaceId), status: 'ready' }),
     'workspaces.deletePreview': async ({ workspaceIds }) => f.deletePreview ?? { workspaces: workspaceIds.length, skipped: [], unpushedBranches: 0, transcriptBytes: 640 * 1024 * 1024 },

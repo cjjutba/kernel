@@ -194,7 +194,7 @@ describe('Kernel env', () => {
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const logged: unknown[] = []
     const spies = (['log', 'info', 'warn', 'error'] as const).map((m) => vi.spyOn(console, m).mockImplementation((...a) => { logged.push(...a) }))
     const k = new Kernel({ dataDir, home, cipher: fakeCipher })
@@ -221,6 +221,8 @@ describe('Kernel env', () => {
     // The setup script writes what it saw. The project's variable wins over both files, and the missing file is skipped.
     const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'christian', title: 'Env' })
     expect(ws.status).toBe('ready')
+    // Setup runs alongside the brief (KERNEL-1086).
+    await k.setup.settled(ws.id)
     expect((await readFile(join(ws.path, 'seen.txt'), 'utf8')).trim()).toBe(`project-secret-42|app-value-77|one|project|${ws.id}|${ws.port}|${process.env.FORCE_COLOR ?? ''}`)
 
     // Sessions get the same set as scripts, less the API key and the script-only variables.
@@ -330,7 +332,7 @@ describe('Kernel env', () => {
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home, cipher: fakeCipher })
     await k.start()
     k.sessions.send = async () => ({ queued: false })
@@ -453,7 +455,7 @@ describe('Per-workspace names and .env.kernel (KERNEL-449)', () => {
     const repo = await tempRepo({ 'README.md': '# env\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.', ...files })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home, cipher: fakeCipher })
     await k.start()
     k.sessions.send = async () => ({ queued: false })

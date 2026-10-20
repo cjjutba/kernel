@@ -26,8 +26,10 @@ export class Env extends Feature {
     const settings = project ? loadRepoSettingsSync(project.path) : undefined
     // Each Lead chat has its own worktree with files.copy done, so it reads its own copies like a teammate (KERNEL-405).
     const files = project && settings ? this.envFiles(project, ws, settings).map(keep) : []
-    // Setup's variables count once it passed.
-    const setup = project && ws.status === 'ready' ? keep(readSetupEnv(setupEnvPath(this.o.dataDir, ws.id)).vars) : {}
+    // Setup's variables count once it passed. It runs alongside a ready workspace's agents (KERNEL-1086), so a run that is still
+    // going, or that failed, hands on nothing: its file may hold only part of what it meant to write.
+    const passed = ws.status === 'ready' && (!ws.setupRun || ws.setupRun.end === 0)
+    const setup = project && passed ? keep(readSetupEnv(setupEnvPath(this.o.dataDir, ws.id)).vars) : {}
     // The build that started it, which the hook command sends, so the other build's hook server leaves it alone (KERNEL-675).
     const kernel: Record<string, string> = { ...kernelVars(ws, project), [BUILD_ENV]: this.o.build ?? 'app', ...(o.script ? { PORT: String(ws.port) } : {}) }
     // Each worktree is its own Compose project, so two workspaces' containers and volumes never meet. A current-branch

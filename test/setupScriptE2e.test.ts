@@ -14,7 +14,7 @@ async function boot(files: Record<string, string> = {}) {
   const repo = await tempRepo({ 'README.md': '# app\n', '.claude/agents/kernel.md': KERNEL, '.claude/agents/christian.md': CHRISTIAN, ...files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const k = new Kernel({ dataDir, home })
   onTestFinished(() => k.stop())
   await k.start()
@@ -53,6 +53,7 @@ describe('setup script feature end to end', () => {
     expect(local).not.toContain('CONDUCTOR')
     const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'x', agentId: 'christian', title: 'x' })
     expect(ws.status).toBe('ready')
+    await k.setup.settled(ws.id)
     expect(await readFile(join(ws.path, 'setup.txt'), 'utf8')).toBe(`p=${ws.port}\n`)
   })
 
@@ -66,6 +67,7 @@ describe('setup script feature end to end', () => {
     expect(s[0].patch.scripts?.run).toBe('echo run $KERNEL_WORKSPACE_NAME')
     await h['settings.setProject']({ projectId: project.id, patch: s[0].patch })
     const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'x', agentId: 'christian', title: 'x' })
+    await k.setup.settled(ws.id)
     expect(await readFile(join(ws.path, 'b.txt'), 'utf8')).toBe('b\n')
   })
 

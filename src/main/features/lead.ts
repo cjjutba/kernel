@@ -128,8 +128,7 @@ export class Lead extends Feature {
    * A new Lead chat in its own workspace (KERNEL-405): the chat, its first tab, and a workspace with its branch and folder
    * picked. It returns then, before the network and git, and `buildChat` fetches, makes the worktree from the latest
    * `<remote>/<default>` or from `baseRef`, and runs setup (KERNEL-542). The first message waits in the tab's queue until the
-   * worktree exists. Then it goes while setup runs, or, with "Wait for setup" on and a setup script that runs on create, waits
-   * until files.copy and setup pass (KERNEL-490). What can fail without the network still throws before anything is saved: no
+   * worktree exists. Then it goes, and setup runs alongside it (KERNEL-490, KERNEL-1086). What can fail without the network still throws before anything is saved: no
    * Lead, a base that isn't here and isn't on the remote, a branch name git won't take. A project with no commit keeps the Lead on the
    * checkout with no setup, as before KERNEL-355. A `mode` picked in New chat is the chat's own before its first turn (KERNEL-776), and so is a `leadMode` (KERNEL-805).
    */
@@ -268,7 +267,7 @@ export class Lead extends Feature {
     for (const c of this.chatTabs(ws.id)) if (c.kind !== 'terminal') this.sessions.hold(c.id, c.id === chat.id ? parts : undefined, c.id === chat.id ? { clientId: o.clientId } : {})
     this.updateWs(ws.id, { worktreePending: { fromShared: true } })
     this.makeCopy(ws.id)
-    return { queued: true as const, why: (this.chatTabs(ws.id).some((c) => c.kind !== 'terminal' && this.sessions.isRunning(c.id)) ? 'running' : 'setup') as QueueReason }
+    return { queued: true as const, why: (this.chatTabs(ws.id).some((c) => c.kind !== 'terminal' && this.sessions.isRunning(c.id)) ? 'running' : 'worktree') as QueueReason }
   }
 
   private makeCopy(id: string) {
@@ -354,7 +353,8 @@ export class Lead extends Feature {
       this.k.chats.restartTerminals(id)
       const chat = this.chatTabs(id).find((c) => c.kind !== 'terminal')
       if (!chat) return
-      if (!this.k.setup.holdsForSetup(repo)) this.k.setup.releaseTabs(id, chat.id)
+      // The held message goes once the copy exists. Setup runs alongside it (KERNEL-1086).
+      this.k.setup.releaseTabs(id, chat.id)
       await this.k.workspaces.setUpWorkspace(this.mustWs(id), project, repo, chat, { checkpoint: false })
       if (!this.stopped) this.leadUpdates.flush(project.id)
     } catch (e) {
@@ -367,7 +367,10 @@ export class Lead extends Feature {
         return
       }
       kept = true
-      if (now && now.status !== 'archived') this.updateWs(id, { status: 'failed', worktreePending: { ...now.worktreePending, fromShared: true, error: why } })
+      if (now && now.status !== 'archived') {
+        this.updateWs(id, { status: 'failed', worktreePending: { ...now.worktreePending, fromShared: true, error: why } })
+        this.k.workspaces.sayWorktreeFailed(id, why)
+      }
     } finally {
       // Left early (archived, or someone else made the copy): nothing waits for it, so the tabs go.
       if (!kept && !this.stopped) for (const c of this.chatTabs(id)) if (c.kind !== 'terminal') this.sessions.release(c.id)
@@ -451,9 +454,9 @@ export class Lead extends Feature {
   }
 
   /**
-   * What a new Lead chat does after `lead.start` answers (KERNEL-542): the worktree first (`Workspaces.makeWorktree`),
-   * then its tabs, held until now, go, unless "Wait for setup" holds them through setup (KERNEL-490), then setup. A worktree git
-   * won't make leaves the workspace failed with the tabs still held, and Run again comes back here.
+   * What a new Lead chat does after `lead.start` answers (KERNEL-542): the worktree first (`Workspaces.makeWorktree`), then its
+   * tabs, held until now, go, and setup runs alongside them (KERNEL-1086). A worktree git won't make leaves the workspace failed
+   * with the tabs still held, not sent, and Try again (`Workspaces.retryWorktree`) comes back here.
    */
   async buildChat(id: string): Promise<Workspace> {
     const ws = await this.k.workspaces.makeWorktree(id)
@@ -464,12 +467,9 @@ export class Lead extends Feature {
     const repo = await loadRepoSettings(project.path)
     const chat = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
     if (!chat || gone()) return this.mustWs(id)
-    const wait = this.k.setup.holdsForSetup(repo)
-    if (!wait) {
-      this.k.setup.releaseTabs(ws.id, chat.id)
-      // A Team update that started this chat goes now, not after setup.
-      this.leadUpdates.flush(ws.projectId)
-    }
+    this.k.setup.releaseTabs(ws.id, chat.id)
+    // A Team update that started this chat goes now, not after setup.
+    this.leadUpdates.flush(ws.projectId)
     const done = await this.k.workspaces.setUpWorkspace(ws, project, repo, chat)
     if (this.stopped) return done
     this.leadUpdates.flush(ws.projectId)
@@ -763,7 +763,7 @@ export class Lead extends Feature {
       this.store.deleteChats(made.map((c) => c.id))
       for (const c of own) this.saveChat({ ...c, workspaceId: ws.id })
       await cp(join(old.path, PLANS_DIR), join(ws.path, PLANS_DIR), { recursive: true, force: false }).catch((e) => { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e })
-      // What waited in a tab when Kernel last quit waits for setup now, in order, then goes.
+      // What waited in a tab when Kernel last quit waits for the new worktree's files now, in order, then goes.
       const queues = this.store.meta<Record<string, QueuedMessage[]>>('queues') ?? {}
       for (const c of this.chatTabs(ws.id)) {
         if (c.kind === 'terminal') continue
@@ -1059,15 +1059,12 @@ export class Lead extends Feature {
         if (goAhead) this.updateWs(ws.id, { goAhead })
         // The Lead named no wait, but the tracker says the issue is blocked by one a teammate is building (KERNEL-263).
         const blocked = !o.waitFor && linked?.blockedBy?.length ? await this.k.waits.waitOnBlockers(ws, linked.blockedBy).catch(() => undefined) : undefined
-        if (ws.status !== 'failed') {
-          // The brief may still wait in the teammate's chat, for a slot, a pause or the connection (KERNEL-272).
-          const out = blocked ?? ws
-          const brief = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
-          const queued = brief && this.sessions.queueReason(brief.id)
-          return queued ? { ...out, queued } : out
-        }
-        const code = this.k.setup.setupFailures.get(ws.id)
-        return { ...ws, setupFailed: code === null ? 'it was stopped' : code === 'timeout' ? "it didn't finish in time" : code === undefined ? 'it did not pass' : `exit code ${code}` }
+        // The brief may still wait in the teammate's chat, for a slot, a pause or the connection (KERNEL-272). Never for setup,
+        // which runs alongside it (KERNEL-1086).
+        const out = blocked ?? ws
+        const brief = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
+        const queued = brief && this.sessions.queueReason(brief.id)
+        return queued ? { ...out, queued } : out
       },
       handoffBase: (baseRef) => this.k.workspaces.handoffBase(projectId, baseRef),
       // A branch on the remote, an open PR or another assignee says someone else may be on the issue (KERNEL-479).
@@ -1158,8 +1155,8 @@ export class Lead extends Feature {
   /**
    * The Lead's `message_agent` (KERNEL-118). It sends only into an open workspace of this project that has its folder and
    * isn't the Lead's own, opening a chat there when none is open, and says what really happened: sent, waiting for the
-   * teammate's turn, for setup, for a paused project, for the connection or for a free slot. A message sent while setup
-   * runs goes with the brief. In a review workspace that runs more than one kind of review, `review` names the kind whose
+   * teammate's turn, for its workspace to be made, for a paused project, for the connection or for a free slot. A message sent
+   * before the brief went out goes with it. Setup holds nothing (KERNEL-1086). In a review workspace that runs more than one kind of review, `review` names the kind whose
    * chat gets it, put back on the strip when the user closed it, and `agentId` is the agent that runs that chat. Kernel never
    * opens a chat with no kind there (feat-review-messages-reach-named).
    */
@@ -1196,16 +1193,16 @@ export class Lead extends Feature {
     const who = runner ? { agentId: runner.id } : {}
     const held = this.k.setup.setups.get(ws.id)
     // Setup holds the brief of the review workspace's first chat only. A kind's own chat holds its message itself.
-    if (held && !tab) { held.later.push(parts); this.k.setup.saveSetups(); return { ok: true, sent: false, note: `${name}'s workspace is still setting up, so the message goes out with the brief.` } }
+    if (held && !tab) { held.later.push(parts); this.k.setup.saveSetups(); return { ok: true, sent: false, note: `${name}'s workspace is still being made, so the message goes out with the brief.` } }
     let chat = tab ?? this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
     const opened = !chat
     if (!chat) chat = this.saveChat(this.newChat(ws.id, NEW_CHAT, { ...this.k.team.pickIn(ws, agent), plan: false }))
-    if (held) { this.sessions.hold(chat.id, parts, { from: 'lead' }); return { ok: true, sent: false, note: `${name}'s workspace is still setting up, so the message goes out once setup passes.`, ...who } }
+    if (held) { this.sessions.hold(chat.id, parts, { from: 'lead' }); return { ok: true, sent: false, note: `${name}'s workspace is still being made, so the message goes out once it is.`, ...who } }
     const { queued, why } = await this.sessions.send(chat.id, parts, { from: 'lead' })
     if (!queued) return { ok: true, sent: true, note: opened ? `Opened a new chat in ${name}'s workspace and sent it.` : kind && kinds.length > 1 ? `Sent to the ${kind} review.` : 'Sent.', ...who }
     const note = why === 'running' ? `${name} is mid-turn, so the message goes out when that turn ends.`
       : why === 'merge' ? `${name} waits for ${this.k.waits.waitLabelOf(this.mustWs(ws.id))} to merge, so this goes out with the brief. To start ${name} now, call wait_for_merge with an empty list.`
-      : why === 'setup' ? (this.k.setup.settingUp.has(ws.id) ? `${name}'s workspace is setting up again, so the message goes out with the brief.` : `Setup failed in ${name}'s workspace, so the message waits until the user clicks Run again.`)
+      : why === 'worktree' ? (this.mustWs(ws.id).status === 'failed' && !this.k.setup.settingUp.has(ws.id) ? `${name}'s workspace couldn't be made, so the message waits until the user tries again there.` : `${name}'s workspace is still being made, so the message goes out once it is.`)
       // The same words as create_workspace's brief (KERNEL-272).
       : queuedNote(why, { name }) ?? 'The message waits in the queue.'
     return { ok: true, sent: false, note: opened ? `Opened a new chat in ${name}'s workspace. ${note}` : note, ...who }

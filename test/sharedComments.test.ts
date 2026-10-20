@@ -163,15 +163,15 @@ describe('a comment on a shared file (KERNEL-310)', () => {
     expect(k.store.sharedComments(f.id)[0].itemId).toBe(item.id)
   })
 
-  it('waits for setup', async () => {
+  it('waits while the chat is held', async () => {
     const s = await setup()
     const f = await s.share(s.sean, '.kernel/shared/pricing.html', PAGE(1))
     const k = s.k()
     const chat = s.firstChat(s.sean)
     k.sessions.send = Sessions.prototype.send.bind(k.sessions)
-    // What Run again does: the chat waits until setup passes.
+    // As while its workspace is made: the chat is held, and the brief goes first.
     k.sessions.hold(chat.id, [{ type: 'text', text: 'Build the pricing page' }])
-    expect(await s.comment(f, 1)).toMatchObject({ chatId: chat.id, queued: true, why: 'setup' })
+    expect(await s.comment(f, 1)).toMatchObject({ chatId: chat.id, queued: true, why: 'worktree' })
     expect(k.sessions.queued(chat.id).map((q) => (q.parts[0] as { text: string }).text.split('\n')[0])).toEqual(['Build the pricing page', 'Comment on "Pricing page draft" v1 (.kernel/shared/pricing.html).'])
   })
 

@@ -81,7 +81,7 @@ export function CopyFailedRow({ ws }: { ws: Workspace }) {
  * line, then how long it took. A failed setup offers Run again and Send anyway on its row. The log is one click away, never
  * opened for you. Only a project's first chat shows the block (`firstInProject`, KERNEL-1053). Every later chat, and a chat on the current
  * branch or the Lead's shared worktree, shows nothing unless something fails. A first chat on the shared main folder has no worktree rows,
- * just a banner that says so, then the project's problems and the setup script line. `underQueue` is set by SetupWait, which draws
+ * just a banner that says so, then the project's problems and the setup script line. `underQueue` is set by WorktreeWait, which draws
  * the copy failure itself, below the held message.
  */
 export function ChatSetupRows({ ws, underQueue }: { ws: Workspace; underQueue?: boolean }) {
@@ -109,7 +109,7 @@ export function ChatSetupRows({ ws, underQueue }: { ws: Workspace; underQueue?: 
   // Failed with the chat held, Run again and Send anyway. Failed or stopped with nothing held, the chat works on, so only Rerun setup (KERNEL-1012).
   const held = ws.status === 'failed'
   const rerun = !held && !!end && (end.failed || run?.end === null)
-  const again = () => track('again', () => attempt(pending ? 'Could not create the worktree' : 'Could not run setup', () => call('scripts.run', { workspaceId: ws.id, kind: 'setup' })))
+  const again = () => track('again', () => attempt(pending ? 'Could not create the worktree' : 'Could not run setup', () => (pending ? call('workspaces.retryWorktree', { workspaceId: ws.id }) : call('scripts.run', { workspaceId: ws.id, kind: 'setup' }))))
   const skip = () => track('skip', () => attempt('Could not send', () => call('scripts.skipSetup', { workspaceId: ws.id })))
   const stop = () => track('stop', () => attempt('Could not stop setup', () => call('scripts.stop', { workspaceId: ws.id, kind: 'setup' })))
   const logLink = <button type="button" className="su-out" aria-label="Open the setup log" onClick={showLog}><Icon name="ext" size={12} /></button>

@@ -66,7 +66,7 @@ export interface BannerInput {
   skipsSetup?: boolean
   /** The chat has history, so setup doesn't lock its box (KERNEL-1018). */
   hasHistory?: boolean
-  /** Messages in the chat wait for setup in main. Only then does the banner say messages queue (KERNEL-1018). */
+  /** Messages in the chat wait in main until its workspace is made. Only then does the banner say messages queue (KERNEL-1018). */
   heldForSetup?: boolean
   /** The limit banners the user closed, by `limitBannerKey`. Only the near-limit, 80% and switch-account banners look here (KERNEL-595). */
   dismissed?: ReadonlySet<string>
@@ -189,7 +189,7 @@ export function bannerFor(i: BannerInput): BannerView | null {
     const code = i.setupCode
     return {
       id: 'setup', kind: 'setup', title: 'Setup script failed',
-      sub: `${code === null || code === undefined ? `${cmd ?? 'The setup script'} did not finish` : `${what} with code ${code}`}.${i.hasHistory ? (i.heldForSetup ? ' Messages you send queue until setup passes.' : '') : ` ${name} waits until setup passes.`}`,
+      sub: `${code === null || code === undefined ? `${cmd ?? 'The setup script'} did not finish` : `${what} with code ${code}`}.${i.hasHistory ? (i.heldForSetup ? ' Messages you send go out when you run it again.' : '') : ` ${name} starts when you run it again.`}`,
       actions: [{ id: 'editScript', label: 'Edit script' }, { id: 'runAgain', label: 'Run again', primary: true }], blocks: !i.hasHistory
     }
   }

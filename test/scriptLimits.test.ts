@@ -66,7 +66,7 @@ describe('setup and archive scripts', () => {
     const repo = await tempRepo({ 'README.md': '# demo\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend.\n---\nKai.', '.kernel/settings.toml': scripts })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     kernels.push(k)
@@ -82,15 +82,14 @@ describe('setup and archive scripts', () => {
     expect(timeoutText({ scripts: { timeoutMinutes: 1 } })).toBe('1 minute')
   })
 
-  it('fails a setup that never exits, says why, and leaves none of its processes', async () => {
+  it('stops a setup that never exits, says why, and leaves none of its processes, while the agent works (KERNEL-1086)', async () => {
     const { k, project } = await kernelWith('[scripts]\nsetup = "sleep 600 & echo pid-$!; wait"\n', 0.01)
-    const started = Date.now()
     const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Build', agentId: 'christian', title: 'Build' })
-    expect(Date.now() - started).toBeLessThan(10_000)
-    expect(ws.status).toBe('failed')
+    expect(ws.status).toBe('ready')
+    await k.setup.settled(ws.id)
     const lines = linesOf(ws.id)
     expect(lines.at(-1)).toBe("Setup didn't finish in 0.01 minutes")
-    expect(k.setup.setupFailures.get(ws.id)).toBe('timeout')
+    expect(k.store.workspace(ws.id)?.setupRun?.end).toBe('timeout')
     const pid = Number(lines.find((l) => l.startsWith('pid-'))?.slice(4))
     expect(pid).toBeGreaterThan(0)
     await until(() => !alive(pid), 5_000)

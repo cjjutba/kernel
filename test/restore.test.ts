@@ -46,7 +46,7 @@ describe('restore', () => {
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     k.sessions.send = async () => ({ queued: false })
@@ -111,7 +111,7 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const where = { dataDir, home }
     const k = new Kernel(where)
     await k.start()
@@ -362,13 +362,15 @@ describe('restoring a workspace sets it up again (KERNEL-77, KERNEL-1016)', () =
     await writeFile(join(repo, '.env.local'), 'V=1\n')
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home })
     k.signedInReader = async () => true
     await k.start()
     onTestFinished(() => k.stop({ budgetMs: 0 }))
     const project = await k.addProject(repo)
     const ws = await k.createWorkspace(project.id, { prompt: 'Build the table', agentId: 'christian', title: 'Invoice table', mode })
+    // Setup runs alongside the brief (KERNEL-1086), so its first run is waited for here.
+    await setUp(k, ws.id)
     const chat = k.store.chats(ws.id)[0]
     const runs = async () => (await readFile(log, 'utf8')).trim().split('\n').length
     const starts = async () => (await k.handlers()['checkpoints.list']({ workspaceId: ws.id })).filter((c) => c.start).length
@@ -400,27 +402,29 @@ describe('restoring a workspace sets it up again (KERNEL-77, KERNEL-1016)', () =
     const back = await k.restoreWorkspace(ws.id)
     expect(back.status).toBe('setup')
     expect(k.sessions.isHeld(chat.id)).toBe(false)
-    expect(k.sessions.waitsFor(chat.id)).not.toBe('setup')
+    expect(k.sessions.waitsFor(chat.id)).not.toBe('worktree')
     const before = sdk.calls.length
-    expect(await k.sessions.send(chat.id, text('Carry on'))).not.toEqual({ queued: true, why: 'setup' })
+    expect(await k.sessions.send(chat.id, text('Carry on'))).not.toEqual({ queued: true, why: 'worktree' })
     await vi.waitFor(() => expect(sdk.calls.length).toBe(before + 1))
     await setUp(k, ws.id)
   }, 30000)
 
-  it('holds nothing through a failed setup, and Run again still works', async () => {
+  it('holds nothing through a failed setup, and Rerun setup still works', async () => {
     const { k, repo, ws, chat, runs } = await restorable()
     await k.archiveWorkspace(ws.id, false)
     await k.archive.cleanedUp(ws.id)
     await writeFile(join(repo, 'fail.txt'), 'no\n')
     await k.restoreWorkspace(ws.id)
-    await setUp(k, ws.id, 'failed')
+    expect((await setUp(k, ws.id)).setupRun?.end).toBe(1)
     expect(k.sessions.isHeld(chat.id)).toBe(false)
-    expect(k.sessions.waitsFor(chat.id)).not.toBe('setup')
+    expect(k.sessions.waitsFor(chat.id)).not.toBe('worktree')
     const before = sdk.calls.length
-    expect(await k.sessions.send(chat.id, text('Carry on'))).not.toEqual({ queued: true, why: 'setup' })
+    expect(await k.sessions.send(chat.id, text('Carry on'))).not.toEqual({ queued: true, why: 'worktree' })
     await vi.waitFor(() => expect(sdk.calls.length).toBe(before + 1))
     await rm(join(ws.path, 'fail.txt'))
-    expect((await k.retrySetup(ws.id)).status).toBe('ready')
+    await k.setup.handlers()['scripts.run']({ workspaceId: ws.id, kind: 'setup' })
+    await k.setup.settled(ws.id)
+    expect(k.store.workspace(ws.id)?.setupRun?.end).toBe(0)
     expect(await runs()).toBe(3)
   }, 30000)
 

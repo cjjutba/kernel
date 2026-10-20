@@ -34,7 +34,7 @@ async function kernelOn(files: Record<string, string>, app: object = {}) {
   const repo = await tempRepo({ ...christian, ...files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: true }, ...app }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...app }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   kernels.push(k)
@@ -475,7 +475,9 @@ describe('scripts run in a terminal (KERNEL-655)', () => {
   it("puts Kernel's own setup lines in the terminal output, after the script's", async () => {
     const { k, project } = await kernelOn(scripts('[scripts]\nsetup = "echo installing; exit 1"\n'), { scripts: { setupOnCreate: true } })
     const ws = await k.createWorkspace(project.id, { prompt: 'a', agentId: 'christian', title: 'One' })
-    expect(ws.status).toBe('failed')
+    // The brief went out, and setup failed alongside it (KERNEL-1086).
+    expect(ws.status).toBe('ready')
+    await k.setup.settled(ws.id)
     expect(dataOf(ws.id)).toMatch(/installing\r\n(.|\n|\r)*Setup failed with exit code 1\r\n$/)
     expect(linesOf(ws.id).at(-1)).toBe('Setup failed with exit code 1')
   })

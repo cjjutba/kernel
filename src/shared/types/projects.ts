@@ -134,8 +134,11 @@ export interface ProjectSetupStep {
   id: 'clone' | 'github' | 'host' | 'worktrees' | 'install' | 'copy' | 'hooks' | 'push' | 'agents'
   title: string
   detail: string
-  /** `warn` finished with something to look at, which never blocks the project (KERNEL-437). */
-  state: 'wait' | 'run' | 'ok' | 'warn' | 'fail'
+  /**
+   * `warn` finished with something to look at, which never blocks the project (KERNEL-437). `skip` failed, with its `error`,
+   * and the steps after it ran anyway, since they don't need it. `fail` failed and stopped setup there (KERNEL-1086).
+   */
+  state: 'wait' | 'run' | 'ok' | 'warn' | 'skip' | 'fail'
   /** Duration or "running". */
   meta?: string
   error?: string
