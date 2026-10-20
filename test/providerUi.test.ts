@@ -22,7 +22,7 @@ const claudeLimit: RateLimit = { type: 'five_hour', status: 'rejected', utilizat
 
 describe('the limit banner with two providers (KERNEL-406)', () => {
   it('reads as before while only Claude is in use', () => {
-    expect(bannerFor(input({ usage: [claudeLimit] }))).toMatchObject({ id: 'session', title: "You've hit your 5-hour limit", actions: [{ id: 'queue' }, { id: 'notify', primary: true }] })
+    expect(bannerFor(input({ usage: [claudeLimit] }))).toMatchObject({ id: 'session', title: "You've hit your 5-hour limit", actions: [{ id: 'notify', primary: true }] })
   })
 
   it('names the provider, says the other keeps working, and offers an account with project', () => {
@@ -38,7 +38,7 @@ describe('the limit banner with two providers (KERNEL-406)', () => {
   it("leaves a Codex chat alone during a Claude limit, and shows Codex's own", () => {
     expect(bannerFor(input({ chat: codexChat, usage: [claudeLimit], accounts, codexInUse: true }))).toBeNull()
     const codex = bannerFor(input({ chat: codexChat, usage: [{ ...claudeLimit, provider: 'codex' }], accounts, codexInUse: true }))
-    expect(codex).toMatchObject({ title: "You've hit your Codex 5-hour limit", actions: [{ id: 'queue' }] })
+    expect(codex).toMatchObject({ title: "You've hit your Codex 5-hour limit", actions: [] })
     expect(codex?.sub).toContain('Agents on Claude Code keep working.')
   })
 
@@ -111,20 +111,20 @@ describe('the account the banners offer (KERNEL-569)', () => {
 
     it('says how full the active account is and that another has headroom, with a one-click switch', () => {
       expect(offer()).toMatchObject({
-        id: 'accountNearLimit', kind: 'limit', title: 'Work is at 90% of its 5-hour limit', sub: 'Personal has usage left.', blocks: false,
-        actions: [{ id: 'switchAccount', label: 'Switch to Personal', primary: true }], switchAccount: { provider: 'claude', accountId: 'personal', label: 'Personal' }
+        id: 'accountNearLimit', kind: 'limit', title: 'Work is at 90% of its 5-hour window', sub: 'Personal has room. New work can move there now.', blocks: false,
+        actions: [{ id: 'dismiss', label: 'Not now' }, { id: 'switchAccount', label: 'Move new work', primary: true }], switchAccount: { provider: 'claude', accountId: 'personal', label: 'Personal' }
       })
     })
 
     it('starts at 90% of the 5-hour window and 95% of the weekly one', () => {
       expect(offered({ usage: [five(undefined, 0.89)] })).toBe(false)
       expect(offered({ usage: [week(undefined, 0.94)] })).toBe(false)
-      expect(offer({ usage: [week(undefined, 0.95)] })).toMatchObject({ id: 'accountNearLimit', title: 'Work is at 95% of its weekly limit' })
-      expect(offer({ usage: [five(undefined, 0.97), { ...week(undefined, 0.96), resetsAt: later + 86_400 }] })?.title).toBe('Work is at 96% of its weekly limit')
+      expect(offer({ usage: [week(undefined, 0.95)] })).toMatchObject({ id: 'accountNearLimit', title: 'Work is at 95% of its weekly window' })
+      expect(offer({ usage: [five(undefined, 0.97), { ...week(undefined, 0.96), resetsAt: later + 86_400 }] })?.title).toBe('Work is at 96% of its weekly window')
     })
 
     it('reads a warning with no number as close, and a window past its reset as nothing', () => {
-      expect(offer({ usage: [{ type: 'five_hour', status: 'allowed_warning', resetsAt: later }] })?.title).toBe('Work is close to its 5-hour limit')
+      expect(offer({ usage: [{ type: 'five_hour', status: 'allowed_warning', resetsAt: later }] })?.title).toBe('Work is close to its 5-hour window')
       expect(offered({ usage: [five(undefined, 0.99, { resetsAt: now / 1000 - 1 })] })).toBe(false)
     })
 
@@ -156,7 +156,7 @@ describe('the account the banners offer (KERNEL-569)', () => {
       const codex = [sub('cli', 'cj@example.com', { provider: 'codex', cli: true, active: true }), sub('personal', 'Personal', { provider: 'codex' })]
       const both = [...accounts, ...codex]
       expect(bannerFor(input({ chat: codexChat, accounts: both, usage: [five(undefined, 0.96)], codexInUse: true }))).toBeNull()
-      expect(bannerFor(input({ chat: codexChat, accounts: both, usage: [{ ...five(undefined, 0.96), provider: 'codex' }], codexInUse: true }))).toMatchObject({ title: 'cj@example.com is at 96% of its Codex 5-hour limit', sub: 'Personal has usage left.', switchAccount: { provider: 'codex', accountId: 'personal' } })
+      expect(bannerFor(input({ chat: codexChat, accounts: both, usage: [{ ...five(undefined, 0.96), provider: 'codex' }], codexInUse: true }))).toMatchObject({ title: 'cj@example.com is at 96% of its Codex 5-hour window', sub: 'Personal has room. New work can move there now.', switchAccount: { provider: 'codex', accountId: 'personal' } })
       expect(offered({ accounts: accounts.map((a) => ({ ...a, active: a.id === 'personal' })), usage: [five(undefined, 0.95)] })).toBe(false)
     })
 

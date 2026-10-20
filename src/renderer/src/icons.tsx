@@ -15,6 +15,9 @@ import {
   ArrowUpRight01Icon,
   Asterisk02Icon,
   Attachment01Icon,
+  CalendarClockIcon,
+  CalendarXIcon,
+  ChartNoAxesColumnIcon,
   BookOpen01Icon,
   CancelCircleIcon,
   Chat01Icon,
@@ -23,12 +26,14 @@ import {
   CodeIcon,
   ComputerIcon,
   ContrastIcon,
+  DashboardSpeed01Icon,
   Copy01Icon,
   Delete02Icon,
   Download02Icon,
   File01Icon,
   FlaskConicalIcon,
   Folder01Icon,
+  GaugeIcon,
   GitForkIcon,
   GridViewIcon,
   HelpCircleIcon,
@@ -129,7 +134,13 @@ const H = {
   clip: Attachment01Icon,
   book: BookOpen01Icon,
   listTree: ListTreeIcon,
-  download: Download02Icon
+  download: Download02Icon,
+  /** The footer's Usage button: bars that take the tone of the tightest window (KERNEL-1101). */
+  usage: ChartNoAxesColumnIcon,
+  gauge: GaugeIcon,
+  circleGauge: DashboardSpeed01Icon,
+  calendarClock: CalendarClockIcon,
+  calendarX: CalendarXIcon
 }
 
 /**

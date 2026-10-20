@@ -1,32 +1,30 @@
 import { call } from '../../api'
 import { actions, useStore } from '../../store'
 import { Icon } from '../../icons'
-import { Spinner, useBusy } from '../../ui'
+import { LinkButton, Spinner, useBusy } from '../../ui'
 import { downloadPercent, updateDownloading, updateFailed, updateReason } from './updateModel'
 
-/** The footer's update slot: the pill once an update has downloaded, a quiet progress line while it downloads, and a quiet line with Try again when a check or download failed (KERNEL-864). */
-export function UpdatePill() {
+/** The sidebar footer's update slot: a round download button once an update has downloaded (Pen 14.1), a quiet progress line while it downloads, and a quiet line with Try again when a check or download failed (KERNEL-864). */
+export function UpdateSlot() {
   const update = useStore((s) => s.system.update)
   const online = useStore((s) => s.system.online)
   const [busy, run] = useBusy<'retry'>()
   if (update?.status === 'ready') {
     return (
-      <button type="button" className="ft-pill" onClick={() => actions.ui.openModal({ name: 'whatsNew' })}>
-        <Icon name="download" size={12} />Update ready
+      <button type="button" className="sbf-update" aria-label="Update ready" onClick={() => actions.ui.openModal({ name: 'whatsNew' })}>
+        <Icon name="download" />
       </button>
     )
   }
   if (update && updateDownloading(update)) {
-    return <span className="ft-upd" role="status"><Spinner label={null} pattern="arrow-down" />Downloading update <span className="ft-pc">{downloadPercent(update)}%</span></span>
+    return <span className="sbf-upd" role="status"><Spinner label={null} pattern="arrow-down" />Downloading <span className="sbf-pc">{downloadPercent(update)}%</span></span>
   }
   if (!updateFailed(update)) return null
   const retry = () => void run('retry', () => call('update.check', undefined).then(actions.system.setUpdate).catch(() => undefined))
   return (
-    <span className="ft-upd" role="status">
-      {updateReason(update?.error, online)}
-      <button type="button" className="ft-pill ft-retry" disabled={busy !== null} aria-busy={busy !== null || undefined} onClick={retry}>
-        {busy ? <><Spinner label={null} pattern="ripple" />Trying again</> : 'Try again'}
-      </button>
+    <span className="sbf-upd" role="status" data-tip={updateReason(update?.error, online)}>
+      Update failed
+      <LinkButton variant="inline" size="meta" busy={busy !== null} busyLabel="Trying again" onClick={retry}>Try again</LinkButton>
     </span>
   )
 }
