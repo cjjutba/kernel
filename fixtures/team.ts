@@ -789,7 +789,7 @@ export const teamFixtures: Record<string, Fixture> = {
     ui: { route: { name: 'inbox' } }
   })),
   // KERNEL-1098: before any project there is nothing to wait on and the Inbox says how to start. The filter is typed with the shot, and the approval is for a command the project can always allow.
-  InboxNoProject: scene((f) => ({ ...homeScene(f), projects: [], approvals: [], notifications: [], overlaps: [], ui: { route: { name: 'inbox' } } })),
+  InboxNoProject: scene((f) => ({ ...f, ...empty, notifications: [], overlaps: [], ui: { route: { name: 'inbox' } } })),
   InboxFilter: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })),
   InboxAlwaysAllow: scene((f) => {
     const home = homeScene(f)
@@ -954,7 +954,7 @@ export const teamFixtures: Record<string, Fixture> = {
   IssuesNoWork: scene((f) => issuesNoWork(f)),
   IssuesNoWork1280: scene((f) => issuesNoWork(f)),
   // KERNEL-1098: no project at all, so there is nothing to pick issues from. A Linear team that no project links to is IssuesTeamUnlinked.
-  IssuesNoProject: scene((f) => ({ ...issuesScene(f), projects: f.projects.map((r) => ({ ...r, archived: true })), ui: { route: { name: 'issues' } } })),
+  IssuesNoProject: scene((f) => ({ ...f, ...empty, integrations: linearIntegrations, ui: { route: { name: 'issues' } } })),
   IssuesTeamUnlinked: scene((f) => issuesScene(f, { linkedProject: false })),
   // Nothing assigned to Sam, so the default Mine filter finds nothing.
   IssuesEmpty: scene((f) => issuesScene(f, { issues: linearIssues().map((i) => ({ ...i, assignee: maya })) })),
