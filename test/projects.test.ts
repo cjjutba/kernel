@@ -148,14 +148,20 @@ describe('Kernel projects', () => {
     await k.stop()
   })
 
-  it('creates a project from a folder, runs setup, then removes it without touching the folder', async () => {
+  it('creates a project from a folder, runs setup past a step that fails, then removes it without touching the folder (KERNEL-1086)', async () => {
     const { k } = await kernel()
     const repo = await tempRepo({ 'README.md': '# x\n' })
+    const failed: PushEvent[] = []
+    const on = (e: PushEvent) => { if (e.type === 'project.setupFailed') failed.push(e) }
+    bus.on('push', on)
     const done = (async () => { const project = await k.createProject({ source: 'folder', name: 'Own app', desc: 'Nights', from: repo, team: ['christian'], autostart: false }); return { project, steps: await setupDone(project.id) } })()
     const { project, steps } = await done
+    bus.off('push', on)
     expect(project).toMatchObject({ name: 'Own app', kind: 'folder', path: repo })
-    expect(steps.map((s) => [s.id, s.state])).toEqual([['clone', 'ok'], ['host', 'ok'], ['worktrees', 'ok'], ['copy', 'ok'], ['hooks', 'fail'], ['agents', 'ok']])
+    // Hooks aren't installed, so that step is skipped with its error, and the agents after it are seated anyway.
+    expect(steps.map((s) => [s.id, s.state])).toEqual([['clone', 'ok'], ['host', 'ok'], ['worktrees', 'ok'], ['copy', 'ok'], ['hooks', 'skip'], ['agents', 'ok']])
     expect(steps.find((s) => s.id === 'hooks')?.error).toContain('Check hooks')
+    expect(failed).toEqual([{ type: 'project.setupFailed', projectId: project.id, step: 'hooks', title: 'Install hooks', error: steps.find((s) => s.id === 'hooks')!.error, skipped: true }])
     expect((await k.agents(project.id)).map((a) => a.id)).toEqual(['kernel-lead', 'christian'])
     expect(steps.find((s) => s.id === 'agents')).toMatchObject({ detail: 'Christian from .claude/agents, Kernel leads' })
     expect(steps.find((s) => s.id === 'agents')?.brought).toBeUndefined()
@@ -177,7 +183,7 @@ describe('Kernel projects', () => {
   it('tries a failed setup again from the failed step, one try at a time, and refuses once the project is set up (KERNEL-876)', async () => {
     const { k } = await kernel()
     const project = await k.createProject({ source: 'folder', name: 'Retry app', from: await tempRepo(), team: ['christian'], autostart: false })
-    expect((await setupDone(project.id)).find((s) => s.id === 'hooks')?.state).toBe('fail')
+    expect((await setupDone(project.id)).find((s) => s.id === 'hooks')?.state).toBe('skip')
     await k.handlers()['hooks.install']({ port: (await k.hooks.hooksStatus()).port })
 
     const published: ProjectSetupStep[][] = []
@@ -209,12 +215,12 @@ describe('Kernel projects', () => {
     const status = vi.spyOn(k.hooks, 'hooksStatus').mockRejectedValueOnce(new Error('Claude settings could not be read.'))
     const done = setupDone(project.id)
     k.projects.retrySetup(project.id)
-    expect((await done).find((s) => s.id === 'hooks')).toMatchObject({ state: 'fail', error: 'Claude settings could not be read.' })
+    expect((await done).find((s) => s.id === 'hooks')).toMatchObject({ state: 'skip', error: 'Claude settings could not be read.' })
     status.mockRestore()
     // Nothing finished, so Try again is still there.
     const again = setupDone(project.id)
     k.projects.retrySetup(project.id)
-    expect((await again).find((s) => s.id === 'hooks')).toMatchObject({ state: 'fail', error: expect.stringContaining('Check hooks') })
+    expect((await again).find((s) => s.id === 'hooks')).toMatchObject({ state: 'skip', error: expect.stringContaining('Check hooks') })
     await k.stop({ budgetMs: 0 })
   })
 
@@ -242,9 +248,16 @@ describe('Kernel projects', () => {
     const { k, home } = await kernel()
     const src = await tempRepo({ 'README.md': '# x\n' })
     const clones = await withFlakyClone(src, async () => {
+      const failed: PushEvent[] = []
+      const on = (e: PushEvent) => { if (e.type === 'project.setupFailed') failed.push(e) }
+      bus.on('push', on)
       const project = await k.createProject({ source: 'repo', name: 'Clone app', from: 'me/clone-app', cloneTo: join(home, 'Projects', 'clone-app'), team: ['christian'], autostart: false })
       const first = await setupDone(project.id)
+      bus.off('push', on)
+      // Every step after it needs the checkout, so setup stops at the clone.
       expect(first.find((s) => s.id === 'clone')).toMatchObject({ state: 'fail', error: expect.stringContaining('early EOF') })
+      expect(first.filter((s) => s.id !== 'clone').every((s) => s.state === 'wait')).toBe(true)
+      expect(failed).toEqual([expect.objectContaining({ projectId: project.id, step: 'clone', skipped: false })])
       expect(existsSync(join(project.path, 'half.txt'))).toBe(true)
 
       const done = setupDone(project.id)
@@ -278,7 +291,7 @@ describe('Kernel projects', () => {
   it('tries a setup that failed before a restart again after it (KERNEL-883)', async () => {
     const first = await kernel()
     const project = await first.k.createProject({ source: 'folder', name: 'Restart app', from: await tempRepo(), team: ['christian'], autostart: false })
-    expect((await setupDone(project.id)).find((s) => s.id === 'hooks')?.state).toBe('fail')
+    expect((await setupDone(project.id)).find((s) => s.id === 'hooks')?.state).toBe('skip')
     await first.k.stop({ budgetMs: 0 })
 
     const { k } = await kernel({}, first)
@@ -289,7 +302,7 @@ describe('Kernel projects', () => {
     bus.on('push', on)
     await k.handlers()['projects.list'](undefined)
     bus.off('push', on)
-    expect(published.at(-1)?.find((s) => s.id === 'hooks')).toMatchObject({ state: 'fail', error: expect.stringContaining('Check hooks') })
+    expect(published.at(-1)?.find((s) => s.id === 'hooks')).toMatchObject({ state: 'skip', error: expect.stringContaining('Check hooks') })
 
     const done = setupDone(project.id)
     await k.handlers()['projects.retrySetup']({ projectId: project.id })

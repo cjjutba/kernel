@@ -584,10 +584,10 @@ async function narrowSidebar(page: Page) {
   await page.waitForTimeout(300)
 }
 
-// UsageFooterNarrow is the window at 900px wide, where the footer drops the Fable number (KERNEL-697, KERNEL-949).
-async function narrowWindow(page: Page, app: ElectronApplication) {
-  await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.w, size.h), { w: 900, h: HEIGHT })
-  await page.waitForTimeout(400)
+// UsageFooter is the Usage button with the pointer on it, long enough for the hover card to open (Pen 14.1, KERNEL-1101).
+async function hoverUsage(page: Page) {
+  await page.getByRole('button', { name: /^Usage\./ }).hover()
+  await page.waitForTimeout(900)
 }
 
 // NewChatSwitchNarrow pins the chat column to 460px, which the window's minimum width never reaches on its own, to show the Hand off | Build here switch as two icons.
@@ -709,7 +709,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   ComposerFileTip: hoverFileChip,
   NewChatSwitchTip: hoverLeadSwitch,
   ConfirmOverrule: openOverrule,
-  UsageFooterNarrow: narrowWindow,
+  UsageFooter: hoverUsage,
   AuditSidebarWide: async (page) => { const h = page.getByRole('separator', { name: 'Resize sidebar' }); await h.focus(); await page.keyboard.press('End'); await h.blur(); await page.waitForTimeout(300) },
   GroupedRowStatus: (page) => hoverRow(page, 'Client portal login'),
   PanelCompare: openCompare,

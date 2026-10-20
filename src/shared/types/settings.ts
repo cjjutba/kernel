@@ -53,8 +53,6 @@ export interface AppSettings {
     mode: WorkspaceMode; baseRef: string; remote: string; branchPattern: string; deleteBranchOnArchive: boolean; archiveOnMerge: boolean; baselineCurrentBranch: boolean; oneCurrentBranchPerProject: boolean
     /** The branch a new Lead chat starts on. `{lead}` is the Lead's name and `{slug}` the chat's title (KERNEL-405). */
     leadBranchPattern: string
-    /** A Lead chat holds its first message until files.copy and setup pass (KERNEL-405). */
-    leadWaitForSetup: boolean
     /** Archiving a Lead chat archives the workspaces it handed off too (KERNEL-405). */
     archiveChatWorkspaces: boolean
   }

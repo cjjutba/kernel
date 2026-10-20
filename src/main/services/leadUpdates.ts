@@ -297,7 +297,7 @@ function sentence(e: TeamEvent, name: string, status = ''): string {
       // Kernel itself quit or closed (KERNEL-215). Nothing went wrong in the session, and it may still wait for a hold to lift.
       if (relaunched(e)) return `${e.reason} while ${name} was partway through a turn. ${name} carries on by itself once nothing holds it, such as a paused project or the agent limit.`
       return `${name}'s session ended unexpectedly${e.reason ? ` (${e.reason})` : ''}, partway through a turn. ${e.resumed ? `A message waiting for ${name} started a new session, so ${name} is working again.` : 'The worktree and chat are saved; the user can restart it from the workspace.'}`
-    case 'setup.failed': return `Setup failed${e.code === null ? ' (it was stopped)' : e.code === 'timeout' ? " (it didn't finish in time)" : e.code !== undefined ? ` with exit code ${e.code}` : ''}${e.started ? `. ${name} already started and keeps working without it. The user can fix setup and click Run again in that workspace.` : `, so ${name} hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace.`}`
+    case 'setup.failed': return `Setup failed${e.code === null ? ' (it was stopped)' : e.code === 'timeout' ? " (it didn't finish in time)" : e.code !== undefined ? ` with exit code ${e.code}` : ''}${e.started ? `. ${name} already started and keeps working without it. The user can fix setup and click Run again in that workspace.` : e.wait ? `. ${name}'s brief waits for ${e.wait.label} to merge, not for setup, and goes out then. The user can fix setup and click Run again in that workspace.` : `, so ${name} hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace.`}`
     case 'setup.passed': return e.wait ? `Setup passed on Run again. ${name} still waits for ${e.wait.label} to merge, and Kernel sends the brief then.` : e.started ? `Setup passed on Run again. ${name} was working already, and Kernel told it.` : `Setup passed on Run again, and ${name}'s brief was released.`
     case 'wait.started': return `Waits for ${e.wait?.label ?? 'another PR'} to merge.${e.wait?.why ? ` ${name} says: ${e.wait.why}` : ''} Kernel ${e.wait?.held === false ? `tells ${name} to bring its branch up to date with it` : `sends ${name} the brief`} when it does.`
     case 'wait.released': return `${upper(e.wait?.label ?? 'the PR it waited for')} merged, so Kernel ${e.wait?.held === false ? `told ${name} to bring its branch up to date with it and carry on` : `sent ${name} the brief`}.`
@@ -743,7 +743,7 @@ export class LeadUpdates {
    */
   setup(ws: Workspace, ok: boolean, o: { told?: boolean; started?: boolean; code?: number | null | 'timeout'; wait?: WaitNews } = {}) {
     if (this.d.isLead(ws)) return
-    this.add(ws, ok ? { kind: 'setup.passed', ...(o.wait ? { wait: o.wait } : {}), ...(o.started ? { started: true } : {}) } : { kind: 'setup.failed', ...(o.code !== undefined ? { code: o.code } : {}), ...(o.told ? { told: true } : {}), ...(o.started ? { started: true } : {}) })
+    this.add(ws, ok ? { kind: 'setup.passed', ...(o.wait ? { wait: o.wait } : {}), ...(o.started ? { started: true } : {}) } : { kind: 'setup.failed', ...(o.code !== undefined ? { code: o.code } : {}), ...(o.told ? { told: true } : {}), ...(o.started ? { started: true } : {}), ...(o.wait ? { wait: o.wait } : {}) })
   }
 
   /**
@@ -1326,7 +1326,7 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
     switch (e.kind) {
       case 'error': if (e.by !== 'user') wake(`${name} stopped with an error. Ask ${name} what happened with message_agent ${at}, or tell the user.`); break
       case 'crash': if (!e.resumed) wake(`${name}'s session ended. Tell the user they can restart it from the workspace.`); break
-      case 'setup.failed': if (!e.told) wake(e.started ? `Setup failed in ${name}'s workspace. ${name} already started and keeps working without it. Tell the user it can be fixed and run again there.` : `Setup failed in ${name}'s workspace. Tell the user to fix it and click Run again there.`); break
+      case 'setup.failed': if (!e.told) wake(e.started ? `Setup failed in ${name}'s workspace. ${name} already started and keeps working without it. Tell the user it can be fixed and run again there.` : e.wait ? `Setup failed in ${name}'s workspace. ${name}'s brief still waits for its merge, not for setup. Tell the user it can be fixed and run again there.` : `Setup failed in ${name}'s workspace. Tell the user to fix it and click Run again there.`); break
       case 'review': {
         const r = e.review
         if (!r) { wake(`Read ${name}'s review and pass on what it found.`, true); break }

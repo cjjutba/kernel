@@ -206,6 +206,20 @@ export function replayScripts(workspaceId: string) {
 }
 
 /**
+ * The last line the workspace's setup or archive script printed in its latest run, from what the window was told: blank lines and
+ * the `$ command` line that starts each run left out. Undefined when that run printed nothing (KERNEL-1086).
+ */
+export function lastScriptLine(workspaceId: string, kind: 'setup' | 'archive'): string | undefined {
+  const lines = (kept.get(workspaceId)?.lines ?? []).filter((l) => l.kind === kind)
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].line.trim()
+    if (line.startsWith('$ ')) return undefined
+    if (line) return line
+  }
+  return undefined
+}
+
+/**
  * Each script's lines from the last 50 ms, pushed as one `script.output`, so `pnpm install` doesn't send the window a
  * message per line (KERNEL-216). Keyed by `key`.
  */

@@ -40,7 +40,7 @@ const SETUP = [
   'echo ANTHROPIC_BASE_URL=http://proxy.invalid >> "$KERNEL_ENV"'
 ].join(' && ')
 
-async function projectWith(setup: string, wait = true) {
+async function projectWith(setup: string) {
   const repo = await tempRepo({
     'README.md': '# client\n',
     '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
@@ -49,7 +49,7 @@ async function projectWith(setup: string, wait = true) {
   })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: wait } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const k = new Kernel({ dataDir, home })
   k.signedInReader = async () => true
   await k.start()
@@ -60,7 +60,7 @@ async function projectWith(setup: string, wait = true) {
 
 describe('$KERNEL_ENV (KERNEL-405)', () => {
   it("hands setup's variables to Kernel's session, a run script and a terminal, and Kernel's own names keep Kernel's values", async () => {
-    const { k, project, dataDir } = await projectWith(`sleep 1 && ${SETUP}`, false)
+    const { k, project, dataDir } = await projectWith(`sleep 1 && ${SETUP}`)
     const lines: string[] = []
     const on = (e: PushEvent) => { if (e.type === 'script.output' && e.kind === 'setup') lines.push(...e.lines.map((l) => l.line)) }
     bus.on('push', on)
@@ -97,14 +97,18 @@ describe('$KERNEL_ENV (KERNEL-405)', () => {
     expect(sessionEnv(k.env.envFor(ws), {}).ANTHROPIC_BASE_URL).not.toBe('http://proxy.invalid')
   })
 
-  it("passes nothing on until setup passed, or from a failed setup, and Run again writes the file over", async () => {
+  it("passes nothing on from a failed setup, and Rerun setup writes the file over", async () => {
     const { k, project, repo } = await projectWith('echo A=1 >> "$KERNEL_ENV" && test -f ok.txt')
     k.sessions.send = async () => ({ queued: false })
     const ws = await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian', title: 'Build' })
-    expect(ws.status).toBe('failed')
-    expect(k.env.envFor(ws)).not.toHaveProperty('A')
+    // The brief went out, and setup failed alongside it (KERNEL-1086).
+    expect(ws.status).toBe('ready')
+    expect((await setUp(k, ws.id)).setupRun?.end).toBe(1)
+    expect(k.env.envFor(k.store.workspace(ws.id)!)).not.toHaveProperty('A')
     await writeFile(join(repo, '.kernel', 'settings.toml'), `[scripts]\nsetup = 'echo C=3 >> "$KERNEL_ENV"'\n`)
-    expect((await k.retrySetup(ws.id)).status).toBe('ready')
+    await k.setup.handlers()['scripts.run']({ workspaceId: ws.id, kind: 'setup' })
+    await k.setup.settled(ws.id)
+    expect(k.store.workspace(ws.id)?.setupRun?.end).toBe(0)
     const env = k.env.envFor(k.store.workspace(ws.id)!)
     expect(env).toMatchObject({ C: '3' })
     expect(env).not.toHaveProperty('A')
@@ -135,6 +139,7 @@ describe('One database per workspace (KERNEL-449)', () => {
     k.sessions.send = async () => ({ queued: false })
     const ws = await k.workspaces.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian', title: 'Build' })
     expect(ws.status).toBe('ready')
+    await setUp(k, ws.id)
     const slug = workspaceSlug(ws)
     expect(await readFile(join(ws.path, 'names.txt'), 'utf8')).toBe(`${slug}|${slug}\n`)
     // The file keeps what setup wrote. Agents get it with the workspace's own name filled in.

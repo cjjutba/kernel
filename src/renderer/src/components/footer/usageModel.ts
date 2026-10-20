@@ -52,12 +52,6 @@ export function footerGroups(accounts: AccountProfile[], usage: RateLimit[], now
   })
 }
 
-/** The window with the most use, for the Compact view: "Weekly 19%" when that is the closer one. Undefined with no number for either. */
-export function tightest(w: { five?: number; week?: number }): { title: '5-hour' | 'Weekly'; value: number } | undefined {
-  if (w.five === undefined && w.week === undefined) return undefined
-  return (w.week ?? -1) > (w.five ?? -1) ? { title: 'Weekly', value: w.week! } : { title: '5-hour', value: w.five! }
-}
-
 /** The popover section's Compact window: the tightest of its 5-hour and weekly windows. */
 export const tightestWindow = (windows: PlanWindow[]): { title: string; value: number } | undefined => {
   const mine = windows.filter((w) => (w.id === 'five_hour' || w.id === 'seven_day') && w.reported)
@@ -68,10 +62,18 @@ export const tightestWindow = (windows: PlanWindow[]): { title: string; value: n
 /** Amber from 75%, red from 90%: the meters' steps, so the number and its bar change together. */
 export const tone = (v: number | undefined): 'near' | 'full' | undefined => (v === undefined ? undefined : v >= 0.9 ? 'full' : v >= 0.75 ? 'near' : undefined)
 
-/** The chip's accessible name: the provider and account, then the numbers and what pressing it does. */
-export function chipLabel(g: FooterGroup, c: FooterChip, compact: boolean): string {
-  if (c.switching) return `${g.name}, switching to ${c.name}. Opens usage`
+/** The strongest tone across both providers' windows: the footer icon is amber near a limit and red at one. */
+export function footerTone(groups: FooterGroup[]): 'near' | 'full' | undefined {
+  const top = Math.max(-1, ...groups.flatMap((g) => (g.chip && !g.chip.billed && !g.chip.switching ? [g.chip.five ?? -1, g.chip.week ?? -1, g.chip.fable ?? -1] : [])))
+  return top < 0 ? undefined : tone(top)
+}
+
+/** One provider's part of the footer button's accessible name: the account and its numbers. */
+export function groupLabel(g: FooterGroup): string {
+  const c = g.chip
+  if (g.signedOut || !c) return `${g.name}, not signed in`
+  if (c.switching) return `${g.name}, switching to ${c.name}`
   const say = (title: string, v: number | undefined) => (v === undefined ? `${title} not reported yet` : `${title} ${pct(v)}`)
-  const numbers = c.billed ? 'billed per token' : compact ? (() => { const t = tightest(c); return t ? say(t.title.toLowerCase(), t.value) : 'no usage reported yet' })() : [say('5-hour', c.five), say('weekly', c.week), ...(c.fable === undefined ? [] : [say('Fable 5.1 weekly', c.fable)])].join(', ')
-  return `${g.name}, ${c.name}, active: ${numbers}. Opens usage`
+  const numbers = c.billed ? 'billed per token' : [say('5-hour', c.five), say('weekly', c.week), ...(c.fable === undefined ? [] : [say('Fable 5.1 weekly', c.fable)])].join(', ')
+  return `${g.name}, ${c.name}: ${numbers}`
 }

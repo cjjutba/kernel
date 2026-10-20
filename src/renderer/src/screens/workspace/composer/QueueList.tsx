@@ -22,15 +22,15 @@ const WAITING: Partial<Record<QueueReason, string>> = {
   offline: 'Queued. Sends when you are back online.',
   capacity: 'Queued. Sends when an agent slot frees up. Change the limit in Settings, Models and effort.',
   moving: 'Queued. Sends once the chats moving to the new account have re-read their history, two at a time.',
-  setup: 'Queued. Sends when setup finishes.',
+  worktree: 'Queued. Sends when the worktree is ready.',
   paused: 'Queued. Sends when you resume the project.',
   merge: 'Queued. Sends when the work it waits for merges.',
   move: 'Queued. Sends when you choose how this chat moves to another account.',
   limit: 'Close to your usage limit. Sends when it resets or usage drops.'
 }
 
-/** Send now can't help while the Mac is offline or setup hasn't passed. It does start a brief held for a merge (KERNEL-259). */
-export const canSendNow = (why?: QueueReason) => why !== 'offline' && why !== 'setup'
+/** Send now can't help while the Mac is offline or the worktree isn't made yet. It does start a brief held for a merge (KERNEL-259). */
+export const canSendNow = (why?: QueueReason) => why !== 'offline' && why !== 'worktree'
 
 /**
  * Messages typed while the agent works, or held for another reason (`why`), docked to the top of the composer. They go out in
@@ -49,11 +49,11 @@ export function QueueList({ queue, why, held, running, sending, onEdit, onNow, o
   onEdit: (q: QueuedMessage) => void
   onNow: (q: QueuedMessage) => void
   onRemove: (q: QueuedMessage) => void
-  /** SetupWait is on screen and already shows the messages waiting for setup. */
+  /** WorktreeWait is on screen and already shows the messages waiting for the worktree. */
   setupShown?: boolean
 }) {
-  // SetupWait shows the messages waiting for setup, with their own Edit and Cancel (KERNEL-430). Without it they show here (KERNEL-1018).
-  if (!queue.length || (why === 'setup' && setupShown)) return null
+  // WorktreeWait shows the messages waiting for the worktree, with their own Edit and Cancel (KERNEL-430). Without it they show here (KERNEL-1018).
+  if (!queue.length || (why === 'worktree' && setupShown)) return null
   const waiting = why ? WAITING[why] : undefined
   const named = why === 'merge' ? held : undefined
   const stops = !!running && !why

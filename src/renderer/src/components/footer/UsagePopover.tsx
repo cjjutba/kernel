@@ -17,6 +17,13 @@ const accountLine = (s: PlanSection, compact: boolean) => {
   return !compact && s.plan && s.plan.toLowerCase() !== label.toLowerCase() ? `${label} · ${s.plan}` : label
 }
 
+/** A window at its limit holds new work: it waits, or moves to another subscription account with room. Said once under the windows, never a banner (KERNEL-1101). */
+function heldNote(s: PlanSection): string | undefined {
+  if (!s.windows.some((w) => w.reported && w.value >= 1)) return undefined
+  const to = s.others.find((o) => o.nums.length > 0 && o.nums.every((n) => n.value < 0.9))
+  return to ? `New work waits, or moves to ${to.label}.` : 'New work waits until it resets.'
+}
+
 /**
  * The Usage popover (UsagePopover.png, KERNEL-619, KERNEL-674). It opens upward from the footer's bottom left with a row for Claude Code and one for Codex.
  * Detailed shows each provider's two windows even folded, and Compact shows one number. A row expands in place to its account, every window and the
@@ -62,18 +69,19 @@ function Row({ s, compact, open, counts, busy, onSignIn }: { s: PlanSection; com
       <section className="pm-sec" aria-label={s.name}>
         <div className="pm-head">
           <span className="pm-mark"><ProviderMark provider={s.provider} size={14} /></span>
-          <span className="pm-who"><span className="pm-line"><span className="pm-name">{s.name}</span><span className="pm-acct">Not signed in</span></span></span>
-          <Button size="xs" aria-label={`Sign in to ${s.name}`} busy={busy === `signin:${s.provider}`} busyPattern="ripple" busyLabel="Signing in" disabled={busy !== null} onClick={() => onSignIn(s.provider, !s.signedOut || s.signedOut.cli)}>Sign in</Button>
+          <span className="pm-who"><span className="pm-line"><span className="pm-name">{s.name}</span><span className="pm-acct">Signed out</span></span></span>
+          <Button size="md" aria-label={`Sign in to ${s.name}`} busy={busy === `signin:${s.provider}`} busyPattern="ripple" busyLabel="Signing in" disabled={busy !== null} onClick={() => onSignIn(s.provider, !s.signedOut || s.signedOut.cli)}>Sign in</Button>
         </div>
       </section>
     )
   }
   const top = s.billed ? undefined : tightestWindow(s.windows)
+  const held = s.billed ? undefined : heldNote(s)
   const minis = s.windows.filter((w) => (w.id === 'five_hour' || w.id === 'seven_day') && w.reported)
   return (
     <section className="pm-sec" aria-label={s.name}>
       <button type="button" className="pm-head" aria-expanded={open} aria-controls={body} aria-label={`${s.name}, ${account.label}${top ? `, ${top.title.toLowerCase()} ${pct(top.value)}` : s.billed ? ', billed per token' : ''}`} onClick={() => actions.ui.toggleUsageProvider(s.provider)}>
-        <span className="pm-mark"><ProviderMark provider={s.provider} size={14} /></span>
+        <span className="pm-mark">{s.billed ? <Icon name="key" size={14} /> : <ProviderMark provider={s.provider} size={14} />}</span>
         <span className="pm-who"><span className="pm-line"><span className="pm-name">{s.name}</span><span className="pm-acct">{accountLine(s, compact)}</span></span></span>
         {compact && top && <span className="pm-cw"><span className="pm-cl">{top.title}</span><span className="pm-mp" data-tone={tone(top.value)}>{pct(top.value)}</span></span>}
         <span className="pm-chev" data-open={open || undefined} aria-hidden="true"><Icon name="chevron" size={12} /></span>
@@ -107,6 +115,7 @@ function Row({ s, compact, open, counts, busy, onSignIn }: { s: PlanSection; com
                 ))}
               </div>
             )}
+          {held && <p className="plan-note"><Icon name="info" size={13} />{held}</p>}
           {s.others.length > 0 && (
             <ul className="plan-switch" aria-label={`Other ${s.name} accounts`}>
               <li className="plan-switch-title" aria-hidden="true">Other accounts</li>
