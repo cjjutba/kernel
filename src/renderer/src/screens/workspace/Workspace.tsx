@@ -267,7 +267,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
         {!panels && (ownPr ? <PrHeader ws={ws} capsule /> : <LeadPrSummary projectId={ws.projectId} capsule quiet={held} />)}
         {!panels && <PanelToggleSlot />}
         </>}>
-          {alone ? <NewChatTab focusIn={workspaceId} /> : <ChatTabs inline note={label} workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} noChat={noChat} onNewChat={showNew} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={newChatShown ? undefined : tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />}
+          {alone ? <NewChatTab focusIn={workspaceId} /> : <ChatTabs inline note={label} branch={ws.lead && ws.mode === 'worktree' && ws.branch !== 'HEAD' ? ws.branch : undefined} workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} noChat={noChat} onNewChat={showNew} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={newChatShown ? undefined : tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />}
         </OneRowHeader>
       ) : <header className="header">
         <SidebarToggleSlot />

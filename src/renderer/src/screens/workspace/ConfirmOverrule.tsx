@@ -22,7 +22,7 @@ export function ConfirmOverrule({ ws, facts, onClose }: { ws: Pick<Workspace, 'i
     <ConfirmDialog
       title={`Overrule ${owner} ${facts.count} ${facts.count === 1 ? 'blocker' : 'blockers'} on ${pr}?`}
       body="The PR reads ready and merges as any other. A new commit brings the blockers back, and Undo takes this back."
-      confirmLabel="Overrule" busy={!!busy} busyPattern="pulse" busyLabel="Overruling"
+      confirmLabel="Overrule" busy={!!busy} busyPattern="ripple" busyLabel="Overruling"
       onConfirm={() => void overrule()} onCancel={onClose}
     >
       {facts.items.length > 0 && (

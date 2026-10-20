@@ -266,36 +266,43 @@ const navMemory = (f: Fixture): Partial<Fixture> => {
   }
 }
 
-/** An open chat of the Lead's workspace, for the sidebar fixtures. */
-const leadChatRow = (id: string, title: string, minute: number) => ({ id, workspaceId: ids.lead, title, kind: 'chat' as const, model: 'claude-opus-5-5' as const, effort: 'high' as const, plan: false, createdAt: at(9, minute) })
-
 /**
- * SidebarLeadChats (no PNG, KERNEL-165): Client A with four open Lead chats. One waits on a plan, one is running and started three
- * workspaces, one has a title too long for the sidebar, and one workspace has no owning chat. Projects fill in the rest of the sidebar.
+ * SidebarLeadChats (no PNG, KERNEL-165): Client A with four open Lead chats, each its own thread with the workspace that holds it. One waits on a plan, one is running and
+ * started three workspaces, one has a title too long for the sidebar, and one workspace has no owning chat. Projects fill in the rest of the sidebar.
  */
 const sidebarLeadChats = (f: Fixture): Partial<Fixture> => {
-  const chat = leadChatRow
-  const ownedBy = (leadChatId: string) => ({ leadChatId })
-  const review: Workspace = { ...f.workspaces.find((w) => w.id === ids.schema)!, id: 'ws-review-pr-146', name: 'review-pr-146', branch: 'feat/t-14-invoice-table-review', agentId: 'artkin', port: 4315, prNumber: undefined }
+  const CHATS = [
+    { key: 'ui', title: 'App UI review' }, { key: 'inbox', title: 'Inbox clutter and old messages in the list' },
+    { key: 'tools', title: 'Tool call display mode' }, { key: 'new', title: 'New chat' }
+  ]
+  const threads: Thread[] = CHATS.map((c, i) => ({ id: `t-lead-${c.key}`, projectId: ids.projectA, title: c.title, createdAt: at(9, 5 + i), lastSentAt: at(9, 30 - i) }))
+  const leads: Workspace[] = CHATS.map((c, i) => ({
+    id: `ws-lead-${c.key}`, projectId: ids.projectA, name: `lead-${c.key}`, branch: `kernel/lead-${c.key}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/lead-${c.key}`, mode: 'worktree',
+    agentId: 'kernel-lead', lead: true, threadId: `t-lead-${c.key}`, port: 4330 + i, status: 'ready', prState: 'none', createdAt: at(9, 5 + i)
+  }))
+  const chats: Chat[] = CHATS.map((c, i) => ({
+    id: `chat-lead-${c.key}`, workspaceId: `ws-lead-${c.key}`, title: c.title, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, threadId: `t-lead-${c.key}`, createdAt: at(9, 5 + i)
+  }))
+  const owned = { threadId: 't-lead-inbox' }
+  const review: Workspace = { ...f.workspaces.find((w) => w.id === ids.schema)!, id: 'ws-review-pr-146', name: 'review-pr-146', branch: 'feat/t-14-invoice-table-review', agentId: 'artkin', port: 4315, prNumber: undefined, threadId: undefined }
   const projects = projectsScene(f)
   return {
     ...projects,
-    chats: [
-      ...f.chats.filter((c) => c.workspaceId !== ids.lead),
-      chat('chat-lead-ui', 'App UI review', 5), chat('chat-lead-inbox', 'Inbox clutter and old messages in the list', 6),
-      chat('chat-lead-tools', 'Tool call display mode', 7), chat('chat-lead-new', 'New chat', 8)
-    ],
+    threads,
+    chats: [...f.chats.filter((c) => c.workspaceId !== ids.lead), ...chats],
     workspaces: [
-      ...withWorkspace(f, ids.table, { ...ownedBy('chat-lead-inbox'), stat: { files: 4, added: 412, removed: 38 } })
-        .map((w) => (w.id === ids.schema || w.id === ids.invites ? { ...w, ...ownedBy('chat-lead-inbox') } : w)),
+      ...leads,
+      ...withWorkspace(f, ids.table, { ...owned, stat: { files: 4, added: 412, removed: 38 } })
+        .filter((w) => w.id !== ids.lead)
+        .map((w) => (w.id === ids.schema || w.id === ids.invites ? { ...w, ...owned } : w)),
       review
     ],
     approvals: [
       ...(projects.approvals ?? []),
-      { id: 'ap-lead-plan', kind: 'plan', source: 'sdk', projectId: ids.projectA, agentId: 'kernel-lead', workspaceId: ids.lead, chatId: 'chat-lead-ui', title: 'Plan for the sidebar review', detail: '1. Christian lists the chats\n2. Teng checks the shots', status: 'pending', createdAt: at(10, 44) }
+      { id: 'ap-lead-plan', kind: 'plan', source: 'sdk', projectId: ids.projectA, agentId: 'kernel-lead', workspaceId: 'ws-lead-ui', chatId: 'chat-lead-ui', title: 'Plan for the sidebar review', detail: '1. Christian lists the chats\n2. Teng checks the shots', status: 'pending', createdAt: at(10, 44) }
     ],
     push: [{ type: 'chat.running', chatId: 'chat-lead-inbox', running: true }],
-    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.lead]: { tab: 'chat-lead-tools', files: [], diffs: [] } } }
+    ui: { route: { name: 'workspace', workspaceId: 'ws-lead-ui' }, workspace: { right: 'changes', bottom: 'run' }, tabs: { 'ws-lead-ui': { tab: 'chat-lead-ui', files: [], diffs: [] } } }
   }
 }
 
@@ -721,6 +728,7 @@ export const teamFixtures: Record<string, Fixture> = {
   HistoryConfirmDeleteOne: scene((f) => ({ ...historyScene(f), deletePreview: { workspaces: 1, skipped: [], unpushedBranches: 1, transcriptBytes: 3_460_300 }, ui: { route: { name: 'history' }, modal: { name: 'confirm', kind: 'deleteHistory', workspaceIds: ['ws-h3'] } } })),
   NewAgent: scene((f) => ({ ...beforeWren(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' }, modal: { name: 'newAgent', projectId: ids.projectA, step: 'describe', prefill: { name: 'Wren', model: 'sonnet' } } } })),
   // No PNG: New agent from Settings, Agents with no project added. NewAgent.png without a project, so Kernel and the project's team are not named.
+  NewAgentPicker: scene((f) => ({ ...beforeWren(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' }, modal: { name: 'newAgent', projectId: ids.projectA, step: 'describe', prefill: { name: 'Wren', model: 'sonnet' } } } })),
   NewAgentNoProject: scene((f) => ({ ...f, ...empty, ui: { route: { name: 'settings', page: 'agents' }, modal: { name: 'newAgent', step: 'describe', prefill: { name: 'Wren', model: 'sonnet' } } } })),
   NewAgentDraft: scene((f) => ({ ...beforeWren(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' }, modal: { name: 'newAgent', projectId: ids.projectA, step: 'draft', prefill: { ...wrenPrefill, draft: wrenDraft } } } })),
   NewAgentDone: scene((f) => ({ ...beforeWren(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' }, modal: { name: 'newAgent', projectId: ids.projectA, step: 'done', prefill: { ...wrenPrefill, draft: wrenDraft } } } })),
@@ -740,6 +748,12 @@ export const teamFixtures: Record<string, Fixture> = {
   // The update pill stays in the footer while the sidebar is hidden (KERNEL-588).
   UpdateReadyNoSidebar: scene((f) => ({ ...homeScene(f), update: { status: 'ready', current: '0.1.0', version: '0.2.0' }, ui: { ...home, sidebar: false } })),
   Inbox: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })),
+  // The plan card with a write-up and a saved file, on the chat card shell (KERNEL-1110).
+  InboxPlanDoc: scene((f) => {
+    const home = homeScene(f)
+    const detail = '# Export invoices as PDF\n\nInvoices get a PDF renderer and a Download PDF action in each row. Two tasks run in parallel, and Artkin reviews each PR as it lands.\n\n- T-15a renders the invoice with embedded fonts\n- T-15b adds Download PDF to the row actions'
+    return { ...home, approvals: home.approvals!.map((a) => (a.id === 'ap-plan15' ? { ...a, detail, planFile: '.claude/plans/t-15-invoice-pdf.md' } : a)), ui: { route: { name: 'inbox' } } }
+  }),
   InboxRowFocused: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })),
   InboxApprovalFold: { ...scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })), motion: { action: { click: 'Approve' }, ms: 700, area: '.ib-body-wrap' } },
   // KERNEL-785: an MCP call's approval is titled as the chat's row says it, the newest row, so the detail pane opens on it.
@@ -778,6 +792,9 @@ export const teamFixtures: Record<string, Fixture> = {
   ConnectRepo: scene((f) => ({ ...projectsScene(f), repos, ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
   // Audit: the repo list never answers, and the signed-in account has no repos.
   ConnectRepoLoading: scene((f) => ({ ...projectsScene(f), hold: ['github.repos'], ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
+  // 2.11: a search with no match (the shot types the query), and the clone running with its button busy (the shot picks a repo and presses Clone repo).
+  ConnectRepoNoMatch: scene((f) => ({ ...projectsScene(f), repos, ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
+  ConnectRepoCloning: scene((f) => ({ ...projectsScene(f), repos, hold: ['projects.create'], ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
   ConnectRepoEmpty: scene((f) => ({ ...projectsScene(f), repos: [], ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
   // KERNEL-863: the repo list fails to load, and gh is signed out.
   ConnectRepoFailed: scene((f) => ({ ...projectsScene(f), fails: { 'github.repos': 'GitHubError[offline]: Could not reach GitHub.' }, ui: { route: { name: 'inbox' }, modal: { name: 'connectRepo' } } })),
@@ -796,6 +813,13 @@ export const teamFixtures: Record<string, Fixture> = {
   OpenFolderNoRemote: scene((f) => ({ ...projectsScene(f), folders: [recentFolders[1], recentFolders[0], ...recentFolders.slice(2)], ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } } })),
   OpenFolderNotGit: scene((f) => ({ ...projectsScene(f), folders: [recentFolders[3], ...recentFolders.slice(0, 3)], ui: { route: { name: 'inbox' }, modal: { name: 'openFolder' } } })),
   ProjectSetup: scene((f) => ({
+    ...projectsScene(f),
+    projects: [...f.projects, clientC],
+    push: [{ type: 'project.setup', projectId: clientC.id, steps: setupSteps }],
+    ui: { route: { name: 'leadNew', projectId: clientC.id } }
+  })),
+  // 2.7: the same run with Details open, every step listed.
+  ProjectSetupDetails: scene((f) => ({
     ...projectsScene(f),
     projects: [...f.projects, clientC],
     push: [{ type: 'project.setup', projectId: clientC.id, steps: setupSteps }],
@@ -827,7 +851,7 @@ export const teamFixtures: Record<string, Fixture> = {
     push: [{ type: 'project.setup', projectId: clientC.id, steps: failedSteps }],
     afterRetry: retryEvents('ok'),
     ui: { route: { name: 'leadNew', projectId: clientC.id } }
-  })), motion: { action: { click: 'Try again' }, ms: 3000, area: '.ob-col' } },
+  })), motion: { action: { click: 'Try again' }, ms: 3000, area: '.composer-wrap' } },
   // KERNEL-877: the motion presses Try again, and setup runs the failed step and the rest and finishes. The retry in the next one fails again, with a new reason.
   ProjectSetupRetryFailed: {
     ...scene((f) => ({
@@ -837,7 +861,7 @@ export const teamFixtures: Record<string, Fixture> = {
       afterRetry: retryEvents('fail'),
       ui: { route: { name: 'leadNew', projectId: clientC.id } }
     })),
-    motion: { action: { click: 'Try again' }, ms: 1800, area: '.ob-col' }
+    motion: { action: { click: 'Try again' }, ms: 1800, area: '.composer-wrap' }
   },
   ProjectSetupGitHub: scene((f) => ({
     ...projectsScene(f),

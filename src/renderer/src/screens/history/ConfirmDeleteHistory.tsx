@@ -67,9 +67,9 @@ export function ConfirmDeleteHistory({ workspaceIds }: { workspaceIds: string[] 
 
   return (
     <ConfirmDialog
-      title={workspaceIds.length === 1 ? `Delete ${first?.name ?? 'workspace'}?` : `Delete ${plural(count, 'workspace')}?`} danger busy={!!busy} busyPattern="scatter" busyLabel="Deleting"
+      title={workspaceIds.length === 1 ? `Delete ${first?.name ?? 'workspace'}?` : `Delete ${plural(count, 'workspace')}?`} danger busy={!!busy} busyPattern="ripple" busyLabel="Deleting"
       confirmLabel={one ? 'Delete workspace' : 'Delete workspaces'} disabled={!preview || preview.workspaces === 0}
-      extra={previewError ? <Button variant="ghost" size="lg" busy={reading === 'preview'} busyLabel="Trying again" busyPattern="rotate" onClick={() => void retry()}>Try again</Button> : undefined}
+      extra={previewError ? <Button variant="ghost" size="lg" busy={reading === 'preview'} busyLabel="Trying again" busyPattern="ripple" onClick={() => void retry()}>Try again</Button> : undefined}
       onConfirm={() => void remove()} onCancel={actions.ui.closeModal} body={body}
     >
       {preview && preview.unpushedBranches > 0 && (

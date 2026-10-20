@@ -32,7 +32,7 @@ export function SplitButton({ size = 'md', icon, children, mainProps, onClick, d
   return (
     <span className={['split', className].filter(Boolean).join(' ')} data-size={size} {...rest}>
       <button type="button" className="split-main" data-icon-only={label === undefined || label === null || undefined} disabled={disabled || busy} aria-busy={busy || undefined} onClick={onClick} {...mainProps}>
-        {busy ? <Spinner label={null} pattern="ripple-out" /> : icon && <Icon name={icon} size={14} />}
+        {busy ? <Spinner label={null} pattern="ripple" /> : icon && <Icon name={icon} size={14} />}
         {label}
       </button>
       <span ref={anchorRef} className="split-anchor">

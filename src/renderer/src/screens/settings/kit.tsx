@@ -137,7 +137,7 @@ export function SaveNote({ state, shared }: { state: SaveState; shared?: boolean
   const text = state.kind === 'saving' ? 'Saving' : state.kind === 'clamped' ? state.text : shared || rowShared ? SHARED_SAVED : kept ? 'Saved. Running chats keep the old value.' : 'Saved'
   return (
     <span className="set-save" data-state={state.kind} role="status" aria-hidden={state.kind === 'fading' || undefined}>
-      {state.kind === 'saving' ? <Spinner label={null} pattern="wave-back" /> : state.kind !== 'clamped' && <Icon name="check" size={12} />}
+      {state.kind === 'saving' ? <Spinner label={null} pattern="ripple" /> : state.kind !== 'clamped' && <Icon name="check" size={12} />}
       {text}
     </span>
   )

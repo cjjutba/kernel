@@ -59,11 +59,11 @@ describe('boot and a blocking check that fails late (KERNEL-942)', () => {
     expect(getState().ui.modal).toEqual({ name: 'checkHooks' })
   })
 
-  it('says nothing in a toast on New chat, where the line above the box shows the check', async () => {
+  it('says so in a toast on New chat too, since every setup problem is a toast (KERNEL-1088)', async () => {
     const finishChecks = await bootWith([portTaken])
     actions.ui.go({ name: 'leadNew', projectId: 'r1' })
     finishChecks()
     await settle()
-    expect(getState().ui.toasts).toHaveLength(0)
+    expect(getState().ui.toasts.map((t) => t.title)).toEqual(['Port 7420 is taken'])
   })
 })

@@ -36,7 +36,7 @@ export function WorktreeWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
             </div>
             {going(q) ? <div className="msg-acts-space" aria-hidden /> : (
             <div className="queued-meta">
-              {i === queue.length - 1 && <span>{failed ? 'Not sent yet' : 'Sends when the workspace is ready'}</span>}
+              {i === queue.length - 1 && <span>{failed ? 'Not sent' : 'Sends when the workspace is ready'}</span>}
               <span className="queued-edit">
                 <LinkButton variant="quiet" size="meta" onClick={() => editQueuedInComposer(q)}>Edit</LinkButton>
                 <LinkButton variant="quiet" size="meta" onClick={() => unqueue(q)}>Cancel</LinkButton>

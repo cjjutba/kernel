@@ -311,7 +311,7 @@ export function prToast(before: PrState | undefined, ws: Workspace, o: { method?
   const base = stripRemote(ws.baseRef, o.remote ?? 'origin')
   if (before === 'creating' && ws.prState === 'none') return { title: 'Could not create the PR', sub: `${o.agent ?? 'The agent'} finished without opening one.` }
   if (before === 'creating') return { title: `${n} created`, sub: ws.prState === 'draft' ? 'Opened as a draft' : ws.prTitle || undefined, ...view }
-  if (ws.prState === 'merged') return { title: `${n} merged`, sub: before === 'merging' && o.method ? `${LANDED[o.method]} ${base}` : 'Merged on GitHub', ...view }
+  if (ws.prState === 'merged') return { glyph: 'merged', title: `${n} merged`, sub: before === 'merging' && o.method ? `${LANDED[o.method]} ${base}` : 'Merged on GitHub', ...view }
   return undefined
 }
 

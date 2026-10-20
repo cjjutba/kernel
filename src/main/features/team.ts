@@ -109,7 +109,11 @@ export class Team extends Feature {
       if (!(await copyAgentFiles(from.path, project.path))) throw new Error(`${from.name} has no agents to copy.`)
     } else {
       if (!this.o.starterDir) throw new Error('No starter team found. Add agent files to .claude/agents.')
-      await seatStarterTeam(this.o.starterDir, project.path, template.kind === 'pair' ? ['christian'] : [...STARTER_IDS])
+      // Onboarding's Your team leaves some starters out, and picks who reviews (KERNEL-1088).
+      const { out, reviewer } = this.settings.onboarding
+      const ids = template.kind === 'pair' ? ['christian'] : STARTER_IDS.filter((id) => !out.includes(id))
+      await seatStarterTeam(this.o.starterDir, project.path, ids)
+      if (template.kind === 'starter' && reviewer !== 'artkin' && (reviewer === 'none' || reviewer === 'kernel-reviewer' || (ids as string[]).includes(reviewer))) await this.setTeam(projectId, { reviewer }, 'setup')
     }
     const list = await this.agents(projectId)
     bus.push({ type: 'agents', projectId, agents: this.listed(projectId, list) })

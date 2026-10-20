@@ -11,7 +11,7 @@ import { FileIcon } from '../../../components/FileIcon'
 import { useModeAvailability } from '../../../permissionModes'
 import { actions, getState, loadWorkspace, setLeadMode, useStore } from '../../../store'
 import { useProjectSettings } from '../../settings/useSettings'
-import { arrowRow, Button, Icon, useBusy } from '../../../ui'
+import { AgentAvatar, arrowRow, Button, Icon, useBusy } from '../../../ui'
 import { attempt } from '../MessageActions'
 import { PlanStrip, usePlanStrip } from '../cards/plan'
 import { placeAnswerNow } from '../cards/optimisticAnswer'
@@ -337,6 +337,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, viewe
   // A banner's "Queue message" sends what is typed (main holds it while the limit lasts), "Switch model" opens the picker.
   // Subscribed on every render, so the listener always sees the current draft.
   useEffect(() => onComposerCommand((c) => {
+    if (c === 'project') return
     if (c === 'model') { setMenu('model'); return }
     if (!d.empty) void send()
     else d.focus()
@@ -367,7 +368,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, viewe
         {loadFailureLine(failed) && (
           <div className="note" role="status">
             <span className="note-text grow">{loadFailureLine(failed)}</span>
-            <Button variant="ghost" busy={retrying === 'retry'} busyLabel="Trying again" busyPattern="rotate" onClick={() => void runRetry('retry', retry)}>Retry</Button>
+            <Button variant="ghost" busy={retrying === 'retry'} busyLabel="Trying again" busyPattern="ripple" onClick={() => void runRetry('retry', retry)}>Retry</Button>
           </div>
         )}
         {!compact && (
@@ -387,6 +388,9 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, viewe
       popup={<>
         {acOpen && rows.length > 0 && (
           <div role="listbox" aria-label={mention ? mentionGroups.map((g) => g.label).join(' and ') : slashGroups.map((g) => g.label).join(' and ')} className="cmp-ac">
+            {mention && agent?.lead && !team.some((a) => !a.lead) && (
+              <><p>Teammates</p><p className="cmp-ac-none">No teammates yet in this project. Hire one from Project, Agents.</p></>
+            )}
             {mention
               ? mentionGroups.map((g) => (
                 <Fragment key={g.label}>
@@ -395,7 +399,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, viewe
                     const i = mentionRows.indexOf(r)
                     return r.kind === 'agent' ? (
                       <button key={`agent:${r.agent.id}`} type="button" role="option" aria-selected={i === at} aria-label={`${r.agent.name}, ${r.agent.role}`} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
-                        <Icon name="user" size={14} /><span className="mono">{r.agent.name}</span><span className="sub ellipsis">{r.agent.role}</span>
+                        <AgentAvatar name={r.agent.name} size={16} /><span className="cmp-ac-name">{r.agent.name}</span><span className="sub ellipsis">{r.agent.role}</span>
                       </button>
                     ) : (
                       <button key={r.entry.path} type="button" role="option" aria-selected={i === at} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>

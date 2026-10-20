@@ -4,17 +4,17 @@ import { githubErrorKind } from '@shared/githubError'
 import { call, cleanError } from '../../api'
 import { actions } from '../../store'
 import { openNewChat } from '../../lead'
-import { Banner, Button, EmptyList, Icon, LoadingRow, Modal, useBusy } from '../../ui'
+import { Button, EmptyList, Icon, LoadingRow, Modal, useBusy } from '../../ui'
 import { defaultTeam } from './draft'
 import { useAvatar } from './avatar'
 import './projects.css'
 
-const failure: Record<GitHubErrorKind, { kind: 'auth' | 'offline' | 'limit' | 'setup'; title: string }> = {
-  'signed-out': { kind: 'auth', title: 'GitHub is not signed in' },
-  'not-found': { kind: 'setup', title: 'GitHub could not find your repositories' },
-  'rate-limited': { kind: 'limit', title: 'GitHub is rate limiting Kernel' },
-  offline: { kind: 'offline', title: 'Could not reach GitHub' },
-  other: { kind: 'setup', title: 'Could not load your repositories' }
+const failure: Record<GitHubErrorKind, { title: string; hint?: string }> = {
+  'signed-out': { title: 'GitHub is not signed in', hint: 'Run gh auth login in a terminal, then try again.' },
+  'not-found': { title: 'GitHub could not find your repositories' },
+  'rate-limited': { title: 'GitHub is rate limiting Kernel' },
+  offline: { title: 'Could not reach GitHub', hint: 'Check your connection, then try again.' },
+  other: { title: 'Could not load your repositories' }
 }
 
 /** `owner/name` from a GitHub URL, ssh or https, or from `owner/name` typed as is. Nothing for anything else. */
@@ -45,14 +45,21 @@ export function ConnectRepo() {
   const [picked, setPicked] = useState('')
   const [parent, setParent] = useState('~/Projects')
   const [error, setError] = useState<{ kind: GitHubErrorKind; message: string } | null>(null)
-  const [cloneError, setCloneError] = useState<string | null>(null)
   const seq = useRef(0)
 
   const loadRepos = (q: string) => {
     const mine = ++seq.current
     return call('github.repos', { query: q || undefined })
       .then((r) => { if (mine === seq.current) { setRepos(r); setError(null) } })
-      .catch((e: unknown) => { if (mine === seq.current) { setRepos([]); setError({ kind: githubErrorKind(e) ?? 'other', message: cleanError(e) }) } })
+      .catch((e: unknown) => {
+        if (mine !== seq.current) return
+        const kind = githubErrorKind(e) ?? 'other'
+        const message = cleanError(e)
+        setRepos([])
+        setError({ kind, message })
+        // Every error is a toast too, and the list says what to do next (KERNEL-1089).
+        actions.ui.toast({ title: failure[kind].title, sub: failure[kind].hint ?? message, glyph: 'error' })
+      })
   }
   const loadAuth = () => call('github.auth', undefined).then(setAuth, () => setAuth({ state: 'offline' }))
   useEffect(() => {
@@ -71,21 +78,22 @@ export function ConnectRepo() {
   const target = repoOfUrl(url) ?? (picked || undefined)
   const name = target?.split('/')[1] ?? ''
   const folder = `${parent.replace(/\/+$/, '')}/${name}`
-  const pick = (fullName: string) => { setPicked(fullName); setUrl(`https://github.com/${fullName}`); setCloneError(null) }
+  const pick = (fullName: string) => { setPicked(fullName); setUrl(`https://github.com/${fullName}`) }
   const browse = async () => {
     const chosen = await call('system.pickFolder', undefined)
     if (chosen) setParent(chosen.replace(/^\/Users\/[^/]+/, '~'))
   }
   const clone = () => run('clone', async () => {
     if (!target) return
-    setCloneError(null)
     try {
       const project = await call('projects.create', { source: 'repo', name, from: target, cloneTo: folder, team: defaultTeam(), autostart: false })
       actions.projects.upsert(project)
       openNewChat(project.id)
-    } catch (e) { setCloneError(cleanError(e)) }
+    } catch (e) { actions.ui.toast({ title: 'Could not clone the repo', sub: cleanError(e), glyph: 'error' }) }
   })
   const fail = error ? failure[error.kind] : null
+  const cloning = busy === 'clone'
+  const tryAgain = <Button size="md" busy={busy === 'retry'} busyLabel="Trying again" busyPattern="ripple" onClick={() => void retry()}>Try again</Button>
 
   return (
     <Modal
@@ -103,13 +111,15 @@ export function ConnectRepo() {
           <div className="cl-acct">
             <Avatar owner={login} size={20} />
             <span>{login}</span>
+            <span className="cl-acct-note">signed in with gh</span>
           </div>
         )}
         <label className="cl-field">
           <span className="cl-label">Repository URL</span>
           <input className="cl-input mono" autoComplete="off" spellCheck={false} placeholder="https://github.com/owner/repo" value={url} onChange={(e) => { setUrl(e.target.value); setPicked('') }} />
         </label>
-        <div className="cl-field">
+        {cloning && <p className="cl-sub" role="status">Kernel clones it and adds it as a project.</p>}
+        {!cloning && <div className="cl-field">
           <span className="cl-label" id="cl-repos">Your repositories</span>
           <div className="cr-search">
             <Icon name="search" size={14} />
@@ -132,16 +142,14 @@ export function ConnectRepo() {
               )
             })}
             {!repos && <LoadingRow what="repositories" />}
-            {repos && !repos.length && fail && error && (
-              <Banner kind={fail.kind} title={fail.title} actions={<Button size="md" busy={busy === 'retry'} busyLabel="Trying again" busyPattern="rotate" onClick={() => void retry()}>Try again</Button>}>
-                {error.kind === 'signed-out' ? 'Run gh auth login in a terminal, then try again.' : error.message}
-              </Banner>
+            {repos && !repos.length && error && (
+              <EmptyList icon={error.kind === 'offline' ? 'wifioff' : 'warning'} title={fail!.title} action={tryAgain}>{fail!.hint ?? error.message}</EmptyList>
             )}
             {repos && !repos.length && !error && (query.trim()
-              ? <p className="muted cr-empty" role="status">No repositories match.</p>
-              : <EmptyList icon="branch" title="This account has no repositories">Paste a repository URL above instead.</EmptyList>)}
+              ? <EmptyList icon="search" title="No repositories match">Paste a repository URL above instead.</EmptyList>
+              : <EmptyList icon="branch" title="This account has no repositories" action={tryAgain}>Paste a repository URL above instead.</EmptyList>)}
           </div>
-        </div>
+        </div>}
         <div className="cl-field">
           <label className="cl-label" htmlFor="cl-loc">Location</label>
           <div className="row">
@@ -150,7 +158,6 @@ export function ConnectRepo() {
           </div>
           <span className="cl-hint">{name ? <>Clones into <span className="mono">{folder}</span></> : 'Pick a repo or paste its URL'}</span>
         </div>
-        {cloneError && <p className="cl-error" role="alert">{cloneError}</p>}
       </div>
     </Modal>
   )

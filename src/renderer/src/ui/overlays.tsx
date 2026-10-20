@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject, type WheelEvent } from 'react'
-import { isWebUrl } from '@shared/previewUrl'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject, type WheelEvent } from 'react'
 import { call } from '../api'
 import { Icon, type IconName } from '../icons'
 import { Button } from './controls'
@@ -81,13 +80,24 @@ function MenuList({ items, onClose, onBack, label, heading, initiallyOpen }: { i
               )}
             </button>
             {sub && open === m.id && (
-              <div className="submenu"><MenuList items={m.children!} onClose={onClose} onBack={() => { setOpen(null); openers.current[m.id]?.focus() }} label={m.label} /></div>
+              <Submenu><MenuList items={m.children!} onClose={onClose} onBack={() => { setOpen(null); openers.current[m.id]?.focus() }} label={m.label} /></Submenu>
             )}
           </div>
         )
       })}
     </div>
   )
+}
+
+/** A flyout: opens to the right, level with its row, and opens upward (its bottom level with the row's) when there is no room below. */
+function Submenu({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [up, setUp] = useState(false)
+  useLayoutEffect(() => {
+    const r = ref.current?.getBoundingClientRect()
+    if (r && r.bottom > window.innerHeight - 8) setUp(true)
+  }, [])
+  return <div ref={ref} className="submenu" data-up={up || undefined}>{children}</div>
 }
 
 /**
@@ -190,11 +200,10 @@ export function ConfirmDialog({ title, body, children, extra, confirmLabel, canc
   const id = useId()
   return (
     <Modal
-      title={title} onClose={onDismiss ?? onCancel} width={460} top={220} bare role="alertdialog" labelledBy={`${id}t`} describedBy={`${id}b`}
+      title={title} onClose={onDismiss ?? onCancel} width={480} top={220} role="alertdialog" describedBy={`${id}b`}
       footer={<>{extra}<span className="grow" /><Button variant="ghost" size="lg" {...(onDismiss ? { disabled, onClick: onCancel } : { 'data-dismiss': true })}>{cancelLabel}</Button><Button variant={danger ? 'danger' : 'primary'} size="lg" data-autofocus={focusConfirm || undefined} busy={busy} busyLabel={busyLabel} busyPattern={busyPattern} disabled={disabled} onClick={onConfirm}>{confirmLabel}</Button></>}
     >
       <div className="confirm-body">
-        <h2 id={`${id}t`}>{title}</h2>
         <p id={`${id}b`}>{body}</p>
         {children}
       </div>
@@ -215,7 +224,12 @@ const LOCK_PX = 6
 /** A trackpad swipe has ended once its wheel events, momentum included, stop for this long. */
 const WHEEL_END_MS = 120
 
-export interface ToastProps { title: string; sub?: string; action?: { label: string; href?: string; onClick?: () => void; /** A bordered button, for an action that opens something in the app, not a link. */ boxed?: boolean; /** The shortcut that presses it, shown in its tooltip. */ kbd?: string }; /** Leave now, the way a timeout does. */ closing?: boolean; onDismiss?: () => void }
+/** A toast's button. `primary` fills it, for the action that fixes what went wrong. `kbd` is the shortcut that presses it, shown in its tooltip. */
+export interface ToastButton { label: string; onClick?: () => void; primary?: boolean; kbd?: string }
+export type ToastGlyph = 'done' | 'error' | 'merged'
+const glyphIcon: Record<ToastGlyph, IconName> = { done: 'check', error: 'alertCircle', merged: 'merged' }
+
+export interface ToastProps { title: string; sub?: string; glyph?: ToastGlyph; /** Up to two, drawn left to right with the last at the edge. */ actions?: ToastButton[]; /** Leave now, the way a timeout does. */ closing?: boolean; onDismiss?: () => void }
 
 /** A sub that is a path breaks at its slashes, not in the middle of a name. */
 function breakAtSlashes(text: string): ReactNode[] {
@@ -229,12 +243,12 @@ type Leave = 'sink' | 'right' | 'down'
 type Swipe = { from?: { x: number; y: number }; rx: number; ry: number; axis?: 'x' | 'y'; x: number; v: number; at: number; end?: ReturnType<typeof setTimeout> }
 
 /**
- * One toast (WorkspaceToast.png, title over sub, toast-motion-and-swipe). It rises from the bottom, and after 5s sinks and
+ * One toast (Pen 18.1 and 18.3, toast-motion-and-swipe): a glyph, the title over its sub, a close button, and up to two actions. It rises from the bottom, and after 5s sinks and
  * fades, then calls `onDismiss` once its gap has closed. It stays while hovered or focused. Dragging it right or down, a
  * two-finger swipe right or down on a trackpad, or pressing its action dismisses it sooner. A swipe leaves in its own direction.
  * A toast without `onDismiss` stays put.
  */
-export function Toast({ title, sub, action, closing, onDismiss }: ToastProps) {
+export function Toast({ title, sub, glyph = 'done', actions, closing, onDismiss }: ToastProps) {
   const [held, setHeld] = useState(false)
   const [leaving, setLeaving] = useState<Leave | null>(null)
   const box = useRef<HTMLDivElement>(null)
@@ -310,8 +324,8 @@ export function Toast({ title, sub, action, closing, onDismiss }: ToastProps) {
     clearTimeout(s.end)
     s.end = setTimeout(() => settle(performance.now()), WHEEL_END_MS)
   }
-  const act = () => {
-    action?.onClick?.()
+  const act = (a: ToastButton) => {
+    a.onClick?.()
     if (timed) setLeaving('sink')
   }
   return (
@@ -320,11 +334,19 @@ export function Toast({ title, sub, action, closing, onDismiss }: ToastProps) {
         ref={box} className="toast" onMouseEnter={() => setHeld(true)} onMouseLeave={() => setHeld(false)} onFocus={() => setHeld(true)} onBlur={() => setHeld(false)}
         onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onWheel={wheel}
       >
-        <span className="grow toast-text"><span className="toast-title">{title}</span>{sub && <span className="toast-sub">{breakAtSlashes(sub)}</span>}</span>
-        {action && (action.href
-          // A plain click would navigate the app window away (KERNEL-294), so a web link opens in the browser.
-          ? <a className="toast-action" href={action.href} data-tip={action.kbd ? action.label : undefined} data-tip-kbd={action.kbd} onClick={(e) => { e.preventDefault(); if (isWebUrl(action.href!)) void call('system.openExternal', { url: action.href! }); act() }}>{action.label}</a>
-          : <button type="button" className="toast-action" data-boxed={action.boxed || undefined} data-tip={action.kbd ? action.label : undefined} data-tip-kbd={action.kbd} onClick={act}>{action.label}</button>)}
+        <div className="toast-top">
+          <span className="toast-glyph" data-glyph={glyph} aria-hidden="true"><Icon name={glyphIcon[glyph]} size={14} /></span>
+          <span className="grow toast-text"><span className="toast-title">{title}</span>{sub && <span className="toast-sub">{breakAtSlashes(sub)}</span>}</span>
+          {timed && <button type="button" className="toast-close" aria-label="Close" onClick={() => setLeaving('sink')}><Icon name="close" size={12} /></button>}
+        </div>
+        {!!actions?.length && (
+          <div className="toast-actions">
+            {actions.map((a) => (
+              <button key={a.label} type="button" className="toast-action" data-primary={a.primary || undefined} data-tip={a.kbd ? a.label : undefined} data-tip-kbd={a.kbd}
+                onClick={() => act(a)}>{a.label}</button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

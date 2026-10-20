@@ -16,9 +16,6 @@
   --line: #232323;
   --line-2: #2a2a2a;
   --line-3: #333333;
-  --line-4: #424242;
-  /* An input's border reaches 3:1 on every surface an input sits on (WCAG 1.4.11). `--line-2` stays the hairline for dividers and cards. */
-  --input-line: #727272;
   /* The text ladder (KERNEL-575). ink is emphasis, ink-2 default text, ink-3 secondary, muted labels and meta, faint icons, disabled and
      decoration, never body text. Each tier is at least 1.35x the contrast of the next, and all but faint reach 4.5:1 on every surface. */
   --ink: #f7f7f7;
@@ -32,6 +29,7 @@
   --mod: #e2c08d;
   --merged: #b9a3f5;
   --merged-solid: #7c5ce0;
+  --merge: #1f8a55;
   --needs: #f2c55c;
   /* Amber and red as a fill: meter bars and warning icons. In dark they equal the text tokens. Light needs brighter ones, since
      text-safe amber reads brown on a bar (feat-providers-redesign). */
@@ -92,7 +90,7 @@
   --kind-doc: #6ea8fe;
   --kind-sheet: #4cb782;
   --kind-slides: #f0954a;
-  --kind-archive: #d9b44a;
+  --kind-archive: #939393;
   --kind-media: #ee7fb4;
   --kind-branch: #5ec8d8;
 }
@@ -107,8 +105,6 @@
   --line: #ececec;
   --line-2: #e2e2e2;
   --line-3: #d8d8d8;
-  --line-4: #c6c6c6;
-  --input-line: #858585;
   --ink: #1b1b1b;
   --ink-2: #333333;
   --ink-3: #535353;
@@ -119,6 +115,7 @@
   --mod: #895503;
   --merged: #6b4bd0;
   --merged-solid: #7c5ce0;
+  --merge: #1f8a55;
   --needs: #7a4f00;
   --needs-fill: #d97706;
   --del-fill: #dc3e42;
@@ -177,19 +174,18 @@
   --kind-doc: #1f5fbf;
   --kind-sheet: #166a45;
   --kind-slides: #a84a00;
-  --kind-archive: #8a5a00;
+  --kind-archive: #676767;
   --kind-media: #a8246b;
   --kind-branch: #0b6f80;
 }
 /* macOS Increase contrast (KERNEL-575). Each text tier takes the value of the tier above it and ink goes to full black or white. Dividers
-   reach 2:1 and every other line 3:1, with line-4 and the input border at 4.5:1 or more. The focus ring is near solid. */
+   reach 2:1 and every other line 3:1, and the lines draw as one set. The focus ring is near solid. */
 @media (prefers-contrast: more) {
   :root, [data-theme='dark'] {
     --line: #4f4f4f;
     --line-2: #737373;
     --line-3: #737373;
-    --line-4: #949494;
-    --input-line: #949494;
+    --track: #949494;
     --panel-line: #4f4f4f;
     --card-line: #737373;
     --chip-line: #737373;
@@ -205,8 +201,7 @@
     --line: #b4b4b4;
     --line-2: #828282;
     --line-3: #828282;
-    --line-4: #626262;
-    --input-line: #626262;
+    --track: #626262;
     --panel-line: #b4b4b4;
     --card-line: #828282;
     --chip-line: #828282;
@@ -220,7 +215,14 @@
   }
 }
 :root {
-  --r-2xs: 4px; --r-xs: 6px; --r-sm: 8px; --r: 10px; --r-md: 12px; --r-lg: 16px; --r-xl: 18px; --r-pill: 999px;
+  --r-2xs: 4px; --r-xs: 6px; --r-sm: 8px; --r: 10px; --r-md: 12px; --r-lg: 16px; --r-xl: 18px; --r-modal: 14px; --r-pill: 999px; --menu-gap: 8px;
+  /* Agent avatar palettes: two stops each, the same in both themes. Ivy and Rio are drawn in the Pen; the rest are picked by name. */
+  --agent-ivy-a: #6ee7b7; --agent-ivy-b: #0ea5e9;
+  --agent-rio-a: #fdba74; --agent-rio-b: #f43f5e;
+  --agent-sky-a: #7dd3fc; --agent-sky-b: #6366f1;
+  --agent-rose-a: #f9a8d4; --agent-rose-b: #a855f7;
+  --agent-sand-a: #fde68a; --agent-sand-b: #f97316;
+  --agent-iris-a: #c4b5fd; --agent-iris-b: #38bdf8;
   --font: 'Geist Variable', 'Geist', -apple-system, 'SF Pro Text', system-ui, sans-serif;
   --mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace;
   /* Type sizes (KERNEL-681), named by role and set to the values in use. A size that isn't here is a new token, never a literal in a screen;
@@ -276,7 +278,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .selectable { user-select: text; }
 
-/* Scrollbars (KERNEL-597, KERNEL-602). Every scroll area, vertical or horizontal, draws the same thin thumb: 6px, rounded, no track, --line-4, on the area's
+/* Scrollbars (KERNEL-597, KERNEL-602). Every scroll area, vertical or horizontal, draws the same thin thumb: 6px, rounded, no track, --track, on the area's
    edge. It is invisible until the area scrolls (scrollIdle.ts sets data-scrolling while it scrolls or its scrollbar is held, and for 800ms after), and fades in over
    150ms and out over 200ms. Moving the pointer over the area, or resting it there, does not show it, so :hover plays no part. The sidebar's .sb-scroll and
    every scroll area in the main content take this one block and behave alike.
@@ -290,7 +292,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
 ::-webkit-scrollbar-thumb { border-radius: var(--r-pill); background: var(--scroll-thumb); }
 :where(*) { --scroll-thumb: transparent; transition: --scroll-thumb var(--dur-slow) ease-out; }
-:where([data-scrolling]) { --scroll-thumb: var(--line-4); transition-duration: var(--dur-scroll-in); }
+:where([data-scrolling]) { --scroll-thumb: var(--track); transition-duration: var(--dur-scroll-in); }
 @media (prefers-reduced-motion: reduce) { :where(*) { transition-duration: 0s; } }
 
 /* shell */
@@ -345,16 +347,16 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 28px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--line-3); background: transparent; color: var(--ink-2); font-size: var(--fs-code); font-weight: var(--fw-medium); white-space: nowrap; transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
 .btn.primary { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
 .btn.ghost { border-color: transparent; color: var(--ink-2); }
-.btn.danger { background: var(--danger); border-color: var(--danger); color: var(--on-solid); }
+.btn.danger { background: var(--del); border-color: var(--del); color: var(--on-solid); }
 .btn.merged { background: var(--merged-solid); border-color: var(--merged-solid); color: var(--on-solid); }
 /* Hover and press (KERNEL-879). :where() keeps these at the specificity of the variant they sit on, so a screen's own .btn rule still wins. */
-.btn:where(:not(.primary, .danger, .merged, :disabled):hover) { background: var(--surface-3); border-color: var(--line-4); }
+.btn:where(:not(.primary, .danger, .merged, :disabled):hover) { background: var(--surface-3); border-color: var(--line-3); }
 .btn:where(:not(.primary, .danger, .merged, :disabled):active) { background: var(--hover); }
 .btn.ghost:where(:not(:disabled):hover) { color: var(--ink); }
 .btn.primary:where(:not(:disabled):hover) { background: color-mix(in srgb, var(--ink) 88%, var(--on-ink)); }
 .btn.primary:where(:not(:disabled):active) { background: color-mix(in srgb, var(--ink) 76%, var(--on-ink)); }
-.btn.danger:where(:not(:disabled):hover) { background: color-mix(in srgb, var(--danger) 88%, var(--on-solid)); border-color: color-mix(in srgb, var(--danger) 88%, var(--on-solid)); }
-.btn.danger:where(:not(:disabled):active) { background: color-mix(in srgb, var(--danger) 76%, var(--on-solid)); border-color: color-mix(in srgb, var(--danger) 76%, var(--on-solid)); }
+.btn.danger:where(:not(:disabled):hover) { background: color-mix(in srgb, var(--del) 88%, var(--on-solid)); border-color: color-mix(in srgb, var(--del) 88%, var(--on-solid)); }
+.btn.danger:where(:not(:disabled):active) { background: color-mix(in srgb, var(--del) 76%, var(--on-solid)); border-color: color-mix(in srgb, var(--del) 76%, var(--on-solid)); }
 .btn.merged:where(:not(:disabled):hover) { background: color-mix(in srgb, var(--merged-solid) 88%, var(--on-solid)); border-color: color-mix(in srgb, var(--merged-solid) 88%, var(--on-solid)); }
 .btn.merged:where(:not(:disabled):active) { background: color-mix(in srgb, var(--merged-solid) 76%, var(--on-solid)); border-color: color-mix(in srgb, var(--merged-solid) 76%, var(--on-solid)); }
 .btn.lg { height: 32px; font-size: var(--fs-ui); padding: 0 14px; border-radius: var(--r); }
@@ -377,7 +379,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .tabs-underline .tab:hover { color: var(--ink-2); }
 .tabs-underline .tab[aria-selected='true'] { background: transparent; color: var(--ink); }
 .tabs-underline .tab[aria-selected='true']::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px; background: var(--ink); }
-.input { height: 34px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--input-bg); color: var(--ink-2); outline: none; }
+.input { height: 34px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--input-bg); color: var(--ink-2); outline: none; }
 .card { border: 1px solid var(--card-line); border-radius: var(--r-md); background: var(--card-bg); }
 .code { padding: 9px 11px; border-radius: var(--r-md); background: var(--code-bg); font: var(--fs-meta)/var(--lh-relaxed) var(--mono); color: var(--ink-3); white-space: pre-wrap; user-select: text; }
 .chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 7px; border-radius: var(--r-sm); border: 1px solid var(--chip-line); background: var(--surface-3); font: var(--fs-chip) var(--mono); color: var(--ink-2); vertical-align: middle; }
@@ -397,7 +399,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .scrim { position: fixed; inset: 0; z-index: var(--z-scrim); background: var(--scrim); backdrop-filter: blur(2px); animation: scrim-in var(--dur-base) var(--ease-out); }
 .scrim[data-closing] { animation: scrim-out var(--dur-fast) linear forwards; pointer-events: none; }
 /* Modal sets `--modal-y`, the dialog's top in px on the canvas. A dialog taller than the window scrolls (D-084). */
-.modal { --modal-y: 140; --modal-top: calc(var(--modal-y) * 1px); position: fixed; z-index: var(--z-modal); left: 50%; top: var(--modal-top); transform: translateX(-50%); width: 620px; max-width: calc(100vw - 40px); max-height: calc(100vh - var(--modal-top) - 16px); overflow-y: auto; display: flex; flex-direction: column; border-radius: var(--r-xl); border: 1px solid var(--line-3); background: var(--surface-2); animation: modal-in var(--dur-slow) var(--ease-enter); }
+.modal { --modal-y: 140; --modal-top: calc(var(--modal-y) * 1px); position: fixed; z-index: var(--z-modal); left: 50%; top: var(--modal-top); transform: translateX(-50%); width: 480px; max-width: calc(100vw - 40px); max-height: calc(100vh - var(--modal-top) - 16px); overflow-y: auto; display: flex; flex-direction: column; border-radius: var(--r-modal); border: 1px solid var(--line-3); background: var(--panel); animation: modal-in var(--dur-slow) var(--ease-enter); }
 .modal[data-closing] { animation: modal-out var(--dur-fast) var(--ease-exit) forwards; pointer-events: none; }
 /* The separate translate and scale properties leave the centering transform alone. */
 @keyframes scrim-in { from { opacity: 0; } }
@@ -405,15 +407,16 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 @keyframes modal-in { from { opacity: 0; translate: 0 8px; scale: 0.98; } }
 @keyframes modal-out { to { opacity: 0; translate: 0 4px; } }
 @media (prefers-reduced-motion: reduce) { .scrim, .modal { animation: none; } }
-.modal-head { display: flex; align-items: center; height: 52px; padding: 0 10px 0 18px; }
-.modal-head h2 { flex: 1; margin: 0; font-size: var(--fs-chat); font-weight: var(--fw-medium); color: var(--ink); }
-.modal-foot { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-top: 1px solid var(--card-line); }
+.modal-head { display: flex; align-items: center; padding: 18px 14px 4px 20px; }
+.modal-head h2 { flex: 1; margin: 0; font-size: var(--fs-dialog); font-weight: var(--fw-semibold); line-height: 21px; color: var(--ink); }
+.modal-foot { display: flex; align-items: center; gap: 8px; padding: 12px 16px 12px 20px; border-top: 1px solid var(--line); }
+.modal-foot .btn { height: 34px; padding: 0 14px; border-radius: var(--r-sm); font-size: var(--fs-ui); }
 
 /* A window under 800px or over 900px tall moves every dialog in proportion to the canvas's 900px height (D-080, KERNEL-577). */
 @media (max-height: 799px), (min-height: 901px) { .modal { --modal-top: calc(var(--modal-y) * 100vh / 900); } }
 
 /* composer */
 .composer { display: flex; flex-direction: column; gap: 10px; padding: 12px 10px 10px 14px; border-radius: var(--r-lg); border: 1px solid var(--line-2); background: var(--surface); }
-.composer:focus-within { border-color: var(--line-4); }
+.composer:focus-within { border-color: var(--line-3); }
 .composer input { flex: 1 1 160px; min-width: 120px; height: 24px; padding: 0; border: 0; outline: none; background: transparent; font-size: var(--fs-chat); }
 

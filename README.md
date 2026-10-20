@@ -4,8 +4,6 @@ Your AI coding agents, finally organized. Say what you need, and Kernel plans it
 
 **[Download Kernel for Mac (Apple silicon)](https://github.com/cjjutba/kernel/releases/latest/download/Kernel-arm64.dmg)** · [Website](https://kernel.cjjutba.dev)
 
-![Projects: each project's agents and status, with its Lead chat and workspaces in the sidebar](docs/images/home.png)
-
 ## Requirements
 
 - A Mac with Apple silicon, on a recent version of macOS
@@ -21,33 +19,21 @@ On first launch Kernel checks Claude Code, Codex if a role runs on it, your sign
 
 Each repo you add is a project, and every agent in the repo's `.claude/agents/` folder is on its team, along with your personal agents. Settings, Agents lists them and sets which ones take tasks. The sidebar lists each project's Lead chat and its workspaces, and the Inbox shows what needs you across all of them. Every status comes from real Claude Code and Codex events. Nothing changes on a timer, so an idle agent looks idle.
 
-![Settings, Agents: the roles and every agent on the project's team](docs/images/team.png)
-
 ### Kernel plans and hands off
 
 Kernel is the Lead. Open the project's Lead chat from the sidebar and brief Kernel in a sentence or two. The Lead runs on Claude Code or Codex, whichever you set in Settings, Models and effort. Kernel works out a plan in plan mode and brings it to you. You approve it or ask for changes. Once you approve, Kernel creates one workspace per task and hands each one to the right teammate. Each teammate runs on Claude Code or Codex, as set for its role.
-
-![Kernel's plan for four tasks, waiting for approval in the Lead chat](docs/images/lead-plan.png)
 
 ### Workspaces and pull requests
 
 A workspace is one task: a git worktree on its own branch, with its own port for the dev server. You can chat with the agent, read the diff file by file, run setup and run scripts, and open a pull request when it's ready. Checks show up in the workspace. After the merge, archive the workspace and it moves to History.
 
-![A workspace after its pull request merged](docs/images/workspace.png)
-
 ### The Inbox
 
 Anything that needs a decision lands in the Inbox: a command an agent wants to run, a plan to review, a question, a PR that's ready to merge. You can approve a command once or always allow it in that project. Nothing merges by itself.
 
-![The Inbox with a database command waiting for approval](docs/images/inbox.png)
-
 ### Checkpoints and the big terminal
 
 Kernel snapshots the worktree after every agent turn. If a turn goes wrong, use Revert files to here in the menu under an earlier reply and the files go back while the chat stays. When you want the plain CLI, open a terminal tab in the workspace. It runs `claude` or `codex` in the same worktree, and Kernel still follows the session.
-
-![The menu under a reply, with Revert files to here](docs/images/checkpoints.png)
-
-![A Claude Code terminal tab inside a workspace](docs/images/terminal.png)
 
 ## Privacy
 

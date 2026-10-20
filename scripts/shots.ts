@@ -321,13 +321,6 @@ async function focusListRow(page: Page) {
   await page.waitForTimeout(300)
 }
 
-// LeadChatTabBranch is the open chat tab hovered, long enough for its hover card to open: the title and what the chat follows.
-async function hoverChatTab(page: Page) {
-  await page.getByRole('tab', { name: 'Export invoices as PDF' }).hover()
-  await page.locator('.tooltip').waitFor()
-  await page.waitForTimeout(300)
-}
-
 // HeaderBranchTooltip is the header with the title hovered, long enough for the tooltip to open (KERNEL-413).
 async function hoverTitle(page: Page) {
   await page.locator('.ws-title-btn').hover()
@@ -458,12 +451,14 @@ async function pickBuildHere(page: Page) {
   await page.waitForTimeout(300)
 }
 async function openBranchMenu(page: Page) {
+  await page.getByRole('button', { name: 'Build here' }).click()
   await openPlusPicker(page, /^Branch/, /invoice-table/)
   // The row with a workspace shows Open workspace while it is the active one, as on hover or focus.
   await page.getByRole('menuitemradio', { name: /t-12-invoice-schema/ }).focus()
   await page.waitForTimeout(300)
 }
 async function pickBranchChip(page: Page) {
+  await page.getByRole('button', { name: 'Build here' }).click()
   await openPlusPicker(page, /^Branch/, /invoice-table/)
   await page.getByRole('menuitemradio', { name: /t-14-invoice-table/ }).click()
   await page.mouse.move(0, 0)
@@ -473,6 +468,7 @@ async function pickBranchChip(page: Page) {
 // LeadNoChatsBranch is New chat with Kernel with the + menu's Branch picker open, main checked. The menu is the composer's own, so open it and wait for the
 // remote's branches, which the menu reads when it opens.
 async function openBaseBranch(page: Page) {
+  await page.getByRole('button', { name: 'Build here' }).click()
   await openPlusPicker(page, /^Branch/, /invoice-table/)
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
@@ -637,11 +633,10 @@ async function openRoleAgents(page: Page, row = 'Backend') {
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
-async function openRoleFlyout(page: Page, row: string, flyout: 'Effort' | 'Compact at') {
+async function openRoleEffort(page: Page, row: string) {
   await page.getByRole('row', { name: row }).getByRole('button', { name: new RegExp(`^${row} Claude Code model`) }).click()
-  await page.getByRole('button', { name: new RegExp(`^${flyout}`) }).hover()
-  await page.getByRole('menu', { name: flyout }).waitFor()
-  await page.waitForTimeout(300)
+  await page.getByRole('radio', { name: 'High', exact: true }).hover()
+  await page.waitForTimeout(500)
 }
 async function starModels(page: Page) {
   for (const name of ['Opus 5.5', 'Haiku 5.5']) {
@@ -654,9 +649,8 @@ async function starModels(page: Page) {
   await page.waitForTimeout(300)
 }
 async function openEffortFlyout(page: Page) {
-  await page.getByRole('button', { name: /^Effort/ }).hover()
-  await page.getByRole('menu', { name: 'Effort' }).waitFor()
-  await page.waitForTimeout(300)
+  await page.getByRole('radio', { name: 'High', exact: true }).hover()
+  await page.waitForTimeout(500)
 }
 async function hoverLockedProvider(page: Page) {
   await page.getByRole('tab', { name: 'Codex' }).hover()
@@ -664,6 +658,9 @@ async function hoverLockedProvider(page: Page) {
 }
 
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
+  ProjectSetupDetails: async (page) => { await page.getByRole('button', { name: 'Details' }).click(); await page.waitForTimeout(300) },
+  ConnectRepoNoMatch: async (page) => { await page.getByPlaceholder('Search').fill('kernel-docs'); await page.waitForTimeout(500) },
+  ConnectRepoCloning: async (page) => { await page.getByRole('radio').first().click(); await page.getByRole('button', { name: /^Clone repo/ }).click(); await page.waitForTimeout(300) },
   ComposerDragOver: dragOverPane,
   WorkspaceModelPickerCodex: openLegacyModels,
   WorkspaceModelPickerLegacy: openLegacyModels,
@@ -673,8 +670,16 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   SettingsModelsPickerLegacy: (page) => openRolePicker(page, undefined, true),
   SettingsModelsAgents: (page) => openRoleAgents(page),
   SettingsModelsAgentsNone: (page) => openRoleAgents(page, 'QA'),
-  SettingsModelsPickerEffort: (page) => openRoleFlyout(page, 'Kernel', 'Effort'),
-  SettingsModelsPickerCompact: (page) => openRoleFlyout(page, 'Kernel', 'Compact at'),
+  SettingsModelsPickerEffort: (page) => openRoleEffort(page, 'Kernel'),
+  SettingsModelsPickerEffortCodex: async (page) => {
+    await page.getByRole('button', { name: /^Frontend Codex model/ }).click()
+    await page.getByRole('radio', { name: 'High', exact: true }).hover()
+    await page.waitForTimeout(500)
+  },
+  SettingsModelsPickerBoth: async (page) => { await openRolePicker(page); await page.getByRole('tab', { name: 'Codex' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
+  SettingsModelsPickerCompact: (page) => openRolePicker(page),
+  NewAgentPicker: async (page) => { await page.getByRole('button', { name: /^Model, / }).click(); await page.getByRole('dialog').last().waitFor() },
+  SettingsAgentEditPicker: async (page) => { await page.getByRole('button', { name: /^Model and effort, / }).click() },
   SettingsModelsPickerCodexRole: async (page) => { await page.getByRole('button', { name: /^Frontend Codex model/ }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
   SettingsModelsNarrow: windowAt(720),
   WorkspaceModelPickerKeys: async (page) => { await page.keyboard.press('ArrowUp'); await page.waitForTimeout(300) },
@@ -717,9 +722,9 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   SearchArchived: typeArchived,
   GroupedChatArchive: hoverChatRow,
   HeaderBranchTooltip: hoverTitle,
-  LeadChatTabBranch: hoverChatTab,
   TurnFilesHover: hoverAndFocusRows,
   InboxRowFocused: focusListRow,
+  InboxPlanDoc: async (page) => { await page.getByText('Plan ready: Export invoices as PDF').click(); await page.waitForTimeout(300) },
   IssuesRowFocused: focusListRow,
   IssuesNoWork1280: windowAt(1280),
   ProjectsRowFocused: focusListRow,
@@ -751,6 +756,8 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   AuditGroupCollapseMotion: async (page) => { await page.locator('.group-btn').first().focus() },
   AuditGroupOpenMotion: async (page) => { await page.waitForTimeout(800); await page.locator('.group-btn').first().focus() },
   WorkspacePlanApproveDraft: askApprove,
+  WorkspaceLeadStepOpen: async (page) => { await page.locator('.group-btn').first().click(); await page.locator('.group-item .trow-btn:not(:disabled)').first().click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
+  WorkspaceLeadStepsOpen: async (page) => { for (const g of await page.locator('.group-btn').all()) await g.click(); await openEveryRow(page) },
   WorkspaceQuestionSteps: stepToSecondQuestion,
   WorkspaceQuestionOther: typeOtherAnswer,
   LeadOpenItemsOpen: async (page) => { await page.getByRole('button', { name: /3 open/ }).click(); await page.waitForTimeout(200) },

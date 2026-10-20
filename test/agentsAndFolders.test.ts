@@ -10,7 +10,7 @@ const team = [agent('kernel-lead', 'Kernel', { lead: true }), agent('sean', 'Sea
 describe('@ in the Lead composer (KERNEL-743)', () => {
   it('offers Sean under Agents, and not the Lead itself', () => {
     const menu = mentionMenu([], filterAgents(team, 'sean'))
-    expect(menu.map((g) => g.label)).toEqual(['Agents'])
+    expect(menu.map((g) => g.label)).toEqual(['Teammates'])
     expect(menu[0].rows.map((r) => r.kind === 'agent' && r.agent.name)).toEqual(['Sean'])
     expect(filterAgents(team, 'kernel')).toEqual([])
     expect(mentionPart(menu[0].rows[0])).toEqual({ type: 'agent', name: 'Sean', agentId: 'sean' })
@@ -26,6 +26,6 @@ describe('@ in the Lead composer (KERNEL-743)', () => {
   it('lists teammates above files and folders when both match', async () => {
     const repo = await tempRepo({ 'src/sean/a.ts': 'a\n' })
     const menu = mentionMenu(await searchFiles(repo, 'sean'), filterAgents(team, 'sean'))
-    expect(menu.map((g) => g.label)).toEqual(['Agents', 'Files'])
+    expect(menu.map((g) => g.label)).toEqual(['Teammates', 'Files'])
   })
 })

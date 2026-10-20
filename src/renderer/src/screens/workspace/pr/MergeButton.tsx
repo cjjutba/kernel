@@ -92,7 +92,7 @@ export function MergeSlot({ ws, view, busy, short, icon = true, onMerge }: { ws:
     case 'merging': return <PrStatusTag status={PR_STATUS.merging} icon={icon} />
     case 'ready': return (
       <span className="pr-tone" data-tone="ready">
-        <Button className="pr-soft tucard-merge" busy={!!busy} busyPattern="ripple-in" busyLabel={busy ?? undefined} aria-label={ws.prNumber ? `Merge PR #${ws.prNumber}` : 'Merge PR'} onClick={onMerge}>{ws.prNumber && !short ? `Merge #${ws.prNumber}` : 'Merge'}</Button>
+        <Button className="pr-soft tucard-merge" busy={!!busy} busyPattern="ripple" busyLabel={busy ?? undefined} aria-label={ws.prNumber ? `Merge PR #${ws.prNumber}` : 'Merge PR'} onClick={onMerge}>{ws.prNumber && !short ? `Merge #${ws.prNumber}` : 'Merge'}</Button>
       </span>
     )
     case 'override': return (

@@ -20,7 +20,7 @@ import { cleanupSwitch, loadRepoSettings, loadRepoSettingsSync } from '../servic
 import { gitStatus } from '../services/archive'
 import { firstLine } from '../services/text'
 import { isNudge } from '../services/sessions'
-import { answerWords, buildOpen, kernelMcpServer, type KernelToolDeps, messageWords, queuedNote, type UserWords } from '../services/kernelMcp'
+import { buildOpen, kernelMcpServer, type KernelToolDeps, queuedNote } from '../services/kernelMcp'
 import { briefParts } from '../services/issueMcp'
 import type { From } from '../services/leadUpdates'
 import { branchType, fastForward, fetchOrigin, folderGone, freeBranch, freeWorktreePath, leadBase, leadBranch, moveWorktree, renameBranch, projectWorktreeRoot, slugify, snapshotBaseline, currentBranch, taskBranch, worktreeFolder } from '../services/worktrees'
@@ -971,39 +971,17 @@ export class Lead extends Feature {
     return last && { text: last.parts.map((p) => (p.type === 'text' ? p.text : '')).join('\n'), at: last.ts }
   }
 
-  /**
-   * What a go-ahead in a tab can be quoted from (KERNEL-1079): the words of the user's latest message, and of the question cards
-   * they answered after it. A card answer since that message is from the same turn, and the next message replaces them all.
-   * `userSaidIn` keeps the message's time for everything timed, so an answer mid-build doesn't close Build here.
-   */
-  private userWordsIn(chatId: string): UserWords[] {
-    const items = this.store.items(chatId)
-    const sent = (i: ChatItem): i is ChatItem & { kind: 'user' } => isSentItem(i) && !i.from
-    let at = items.length - 1
-    while (at >= 0 && !sent(items[at])) at--
-    const last = items[at]
-    const said = last && sent(last) ? messageWords(last.parts) : []
-    const answers = items.slice(at + 1).flatMap((i) => {
-      const a = isAnswerItem(i) && i.kind === 'user' && i.approvalId ? this.store.approval(i.approvalId) : undefined
-      return a && a.chatId === chatId ? answerWords(a) : []
-    })
-    return [...said, ...answers]
-  }
-
   /** Whether the user started the turn in progress: a chat's session knows who sent the message. */
   private userTurnIn(chatId: string): boolean {
     return !this.sessions.kernelTurn(chatId)
   }
 
-  /**
-   * Whether a Build here chat may change files now (KERNEL-992), read from the saved go-ahead, the plans approved in the chat
-   * and who started the turn, at each call, so a switch or a go-ahead mid-reply counts at once.
-   */
+  /** Whether a Build here chat may change files now: closed only in plan mode, read at each call (KERNEL-1113). */
   buildOpen(chatId: string): boolean {
     const chat = this.store.chat(chatId)
     const ws = chat && this.store.workspace(chat.workspaceId)
     if (!chat || !ws) return false
-    return buildOpen({ planMode: !!chat.plan, userTurn: this.userTurnIn(chatId), branch: ws.branch, goAhead: ws.buildGoAhead, userAt: this.userSaidIn(chatId)?.at ?? 0, planAts: this.threadPlans(ws.projectId, chat).map((a) => a.createdAt) })
+    return buildOpen({ planMode: !!chat.plan })
   }
 
   /** Saves the go-ahead for this chat's branch, with the time of the message it came from (KERNEL-992). */
@@ -1142,9 +1120,6 @@ export class Lead extends Feature {
       leadMerge: () => this.settings.pr.leadMerge,
       overrule: (id, note) => this.k.reviews.overrule(id, { by: 'lead', note }),
       userTurn: () => this.userTurnIn(chat.id),
-      // The user's own latest message in this tab, not Kernel's, which a go_ahead quote has to come from (KERNEL-678).
-      userSaid: () => this.userSaidIn(chat.id),
-      userWords: () => this.userWordsIn(chat.id),
       buildOpen: () => this.buildOpen(chat.id),
       recordGoAhead: (quote) => this.recordGoAhead(chat.id, quote),
       setWait: (id, on) => this.k.waits.setWait(id, on),

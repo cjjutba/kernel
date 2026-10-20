@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ChatPart, TrackerKind } from '@shared/types'
 import { Icon, IssuePriority } from '../../icons'
 import { go, useStore } from '../../store'
-import { LinkButton } from '../../ui'
+import { Button, LinkButton } from '../../ui'
+import { chooseTracker } from '../issues/parts'
 import { readUpNext, refreshUpNext } from './upNextCache'
 
 /** Up next shows this many issues. */
@@ -14,10 +15,10 @@ const NAMES: Record<TrackerKind, string> = { linear: 'Linear', github: 'GitHub' 
  * Up next, on New chat's composer: the project tracker's issues nobody has started, the most pressing first, as `issues.next` lists them,
  * less the ones a workspace in the project already started from. A Linear project lists its own team's only. Each row is one button: the
  * priority, the key, the title and the project, with Plan always showing at the end, quiet at rest and full ink on hover and focus. Pressing it hands the issue to `onPlan` as a chip.
- * A project with no tracker, a Linear project with no team, or a tracker that doesn't answer shows nothing, and holds no space while it is asked,
+ * A project with no tracker says where to choose one. A Linear project with no team, or a tracker that doesn't answer, shows nothing, and holds no space while it is asked,
  * so the box never moves for a project that has no Up next.
  */
-export function UpNext({ projectId, lead, onPlan }: { projectId: string; lead: string; onPlan: (part: ChatPart) => void }) {
+export function UpNext({ projectId, projectName, lead, onPlan }: { projectId: string; projectName?: string; lead: string; onPlan: (part: ChatPart) => void }) {
   const [view, setView] = useState(() => ({ projectId, entry: readUpNext(projectId) }))
   // Render this project's cached rows on the first paint of a new project, before the effect below refreshes them.
   const current = view.projectId === projectId ? view : { projectId, entry: readUpNext(projectId) }
@@ -34,6 +35,15 @@ export function UpNext({ projectId, lead, onPlan }: { projectId: string; lead: s
     const taken = new Set(started.split('\n'))
     return rows.filter((i) => !taken.has(i.id)).slice(0, SHOWN)
   }, [rows, started])
+  if (current.entry?.kind === 'none') {
+    return (
+      <section className="up-next-none" aria-label="Up next">
+        <Icon name="issues" size={14} />
+        <p>{projectName ?? 'This project'} has no issue tracker. Choose Linear or GitHub Issues in this project's settings, and its issues show up here.</p>
+        <Button onClick={() => chooseTracker(projectId)}>Choose a tracker</Button>
+      </section>
+    )
+  }
   if (!kind || !shown.length) return null
 
   const name = NAMES[kind]
@@ -41,7 +51,7 @@ export function UpNext({ projectId, lead, onPlan }: { projectId: string; lead: s
   return (
     <section className="up-next" aria-label={`Up next in ${name}`}>
       <div className="up-next-head">
-        <h3>Up next in {name}</h3>
+        <h3><Icon name="issues" size={14} />Up next in {name}</h3>
         <LinkButton variant="quiet" size="meta" onClick={() => go({ name: 'issues', projectId })}>All issues</LinkButton>
       </div>
       <ul className={ranked ? undefined : 'up-next-plain'}>
@@ -52,7 +62,7 @@ export function UpNext({ projectId, lead, onPlan }: { projectId: string; lead: s
               <span className="mono up-next-key">{i.id}</span>
               <span className="up-next-title ellipsis">{i.title}</span>
               <span className="up-next-project ellipsis" title={i.project ? `Linear project: ${i.project}` : undefined}>{i.project}</span>
-              <span className="up-next-plan" aria-hidden="true">Plan<Icon name="right" size={12} /></span>
+              <span className="up-next-plan" aria-hidden="true"><Icon name="issues" size={13} />Plan</span>
             </button>
           </li>
         ))}

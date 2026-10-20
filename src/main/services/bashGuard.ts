@@ -817,13 +817,6 @@ const GH_VALUE = new Set(['-R', '--repo', '--hostname', '-t', '--title', '-b', '
   '--mention', '--json', '-q', '--jq', '-c', '--comment', '-r', '--reason', '--add-label', '--remove-label', '--add-assignee', '--remove-assignee',
   '--add-project', '--remove-project', '-X', '--method', '-H', '--header', '-f', '--raw-field', '--field', '--input', '--cache', '--preview'])
 
-/** `gh issue` actions that write: everything but reading, listing and the status page. */
-const GH_ISSUE_WRITES = new Set(['create', 'new', 'edit', 'update', 'comment', 'close', 'reopen', 'delete', 'transfer', 'lock', 'unlock', 'pin', 'unpin', 'develop'])
-
-/** gh's own commands. Any other first word is an alias or an extension, which may run `issue create` under another name. */
-const GH_COMMANDS = new Set(('accessibility agent-task alias api attestation auth browse cache co codespace completion config copilot extension gist gpg-key ' +
-  'help issue label licenses org pr preview project release repo ruleset run search secret ssh-key status variable version workflow').split(' '))
-
 /** A word gh reads as an option: `-R`, `--repo`, `--repo=x`, `-Rowner/repo`. */
 const ghFlag = (w: string) => w.startsWith('-') && w.length > 1
 
@@ -851,45 +844,9 @@ function ghWords(s: Simple): { words: string[]; dynamic: boolean[]; flags: { fla
   return { words, dynamic, flags }
 }
 
-/** A `gh api` call that may write to an issue: a REST path under `issues`, or a GraphQL mutation on an issue or a comment. */
-function apiWritesIssue(words: string[], dynamic: boolean[], flags: { flag: string; value?: string }[]): boolean {
-  const endpoint = words[1]
-  const method = flags.find((f) => f.flag === '-X' || f.flag === '--method')?.value
-  const fields = flags.filter((f) => ['-f', '-F', '--field', '--raw-field', '--input'].includes(f.flag))
-  // Fields make gh POST unless a method says otherwise.
-  const writes = method ? method.toUpperCase() !== 'GET' : fields.length > 0
-  if (!writes) return false
-  if (endpoint === undefined || dynamic[1]) return true
-  // A query read from a file or stdin (`-F query=@q.graphql`, `--input`) can't be read here, so it counts.
-  if (endpoint === 'graphql') return fields.some((f) => f.flag === '--input' || f.value === undefined || /^[^=]*=@/.test(f.value) || (/mutation/i.test(f.value) && /issue|comment/i.test(f.value)))
-  return /(^|\/)issues(\/|$|\?)/.test(endpoint)
-}
-
-/**
- * Whether a command writes a GitHub issue with gh, for the Lead, which does that with file_issue (feat-lead-files-tracker-issues-only-with).
- * Options are read wherever they stand, so `gh issue -R owner/repo create` counts. `gh issue` counts with any write action
- * among its words (create, edit, comment, close, reopen and the rest), `gh api` with a write to `issues` or a GraphQL mutation
- * on an issue or comment, and `gh alias set` or `import` that names `issue` or `api`. So does a gh whose command is only known
- * at run time, or an alias or extension gh doesn't provide, since either may be `issue create` under another name.
- */
-export function writesGhIssue(command: string): boolean {
-  return analyze(command.trim()).effective.some((s) => {
-    if (base(s.words[0] ?? '') !== 'gh') return false
-    const { words, dynamic, flags } = ghWords(s)
-    if (!words.length) return false
-    if (dynamic[0] || !GH_COMMANDS.has(words[0])) return true
-    // Every word, not only the one after `issue`: an option gh doesn't know may take the next word as its value, so the
-    // action can stand further on. An action only known at run time counts too.
-    if (words[0] === 'issue') return !!dynamic[1] || words.slice(1).some((w) => GH_ISSUE_WRITES.has(w))
-    if (words[0] === 'api') return apiWritesIssue(words, dynamic, flags)
-    if (words[0] === 'alias') return (words[1] === 'set' || words[1] === 'import') && s.words.some((w) => /\b(issue|api)\b/.test(w))
-    return false
-  })
-}
-
 /**
  * Whether a command puts work where others see it: `git commit`, `git push` or `gh pr create`, in a chain, under `bash -c` or
- * after env prefixes (KERNEL-992). Build here denies them until the user has given a go-ahead, since nothing else leaves the worktree.
+ * after env prefixes (KERNEL-992). Build here denies them while the chat is in plan mode (KERNEL-1113).
  */
 export function publishesWork(command: string): boolean {
   return analyze(command.trim()).effective.some((s) => {

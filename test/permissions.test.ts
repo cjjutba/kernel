@@ -4,7 +4,7 @@ import { tempRepo } from './helpers'
 import { createWorktree } from '../src/main/services/worktrees'
 import type { Decision, PermissionMode } from '@shared/types'
 import { DEFAULT_SETTINGS, type AppSettings } from '../src/main/services/settings'
-import { ALWAYS_ASK, LEAD_GH_ISSUE, chatMode, decide, effectiveMode, guardVerdict, hookVerdict, matchesToolRule, NETWORK_OFF, neverAllowed, pushOwnBranch, rulesOf, saveAlwaysAllow, stricter, toolRule, type ChatAvailability, type Rules, type RunMode, type Step } from '../src/main/services/permissions'
+import { ALWAYS_ASK, chatMode, decide, effectiveMode, guardVerdict, hookVerdict, matchesToolRule, NETWORK_OFF, neverAllowed, pushOwnBranch, rulesOf, saveAlwaysAllow, stricter, toolRule, type ChatAvailability, type Rules, type RunMode, type Step } from '../src/main/services/permissions'
 
 function rules(o: { mode?: RunMode; network?: boolean; projectAllow?: string[]; projectTools?: string[]; branches?: string[] } = {}): Rules & { reads: number; toolReads: number } {
   const permissions = { mode: 'acceptEdits' as const, bypassOnlyInWorktrees: true, network: o.network ?? true, alwaysAsk: ['drizzle-kit push'], neverAllow: ['rm -rf /'], protectedBranches: o.branches ?? ['main'], approvalTimeoutSec: 300 }
@@ -25,19 +25,9 @@ describe('guardVerdict', () => {
     expect(guardVerdict('ls', r)).toBeUndefined()
   })
 
-  it("denies a Lead's gh issue create and edit in every mode, project rule or not, and leaves a teammate's to the lists (feat-lead-files-tracker-issues-only-with)", () => {
-    for (const mode of ['default', 'acceptEdits', 'auto', 'bypassPermissions'] as const) {
-      const lead = { ...rules({ mode, projectAllow: ['gh issue create:*'] }), lead: true }
-      expect(guardVerdict('gh issue create -t Crash', lead), mode).toEqual({ behavior: 'deny', message: LEAD_GH_ISSUE })
-      expect(guardVerdict('gh issue edit 41 -b done', lead), mode).toEqual({ behavior: 'deny', message: LEAD_GH_ISSUE })
-      for (const c of ['gh issue -R owner/repo create -t x', 'gh issue comment 41 -b x', 'gh issue close 41', 'gh api repos/o/r/issues/41/comments -f body=x'])
-        expect(guardVerdict(c, lead), `${mode}: ${c}`).toEqual({ behavior: 'deny', message: LEAD_GH_ISSUE })
-      expect(guardVerdict('gh issue view 41', lead), mode).toBeUndefined()
-    }
+  it("leaves a Lead's gh issue writes to the lists, as any agent's (KERNEL-1113)", () => {
     expect(guardVerdict('gh issue create -t Crash', rules({ projectAllow: ['gh issue create:*'] }))).toEqual({ behavior: 'allow' })
-    const host = { settings: () => ({ permissions: rules().permissions }) as unknown as AppSettings, mode: () => 'acceptEdits' as const, projectAllow: () => [], projectTools: () => [], workspace: { branch: 'b' } as never }
-    expect(rulesOf({ ...host, agent: { lead: true } as never }).lead).toBe(true)
-    expect(rulesOf({ ...host, agent: { lead: false } as never })).not.toHaveProperty('lead')
+    expect(guardVerdict('gh issue comment 41 -b done', rules({ mode: 'bypassPermissions' }))).toBeUndefined()
   })
 
   it('folds Network off into a Never allow denial, as the Claude hook has always said it', () => {

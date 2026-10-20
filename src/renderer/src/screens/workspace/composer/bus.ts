@@ -52,8 +52,8 @@ export function onComposerFocusAsked(listener: () => void) {
   return () => { focusAsks.delete(listener) }
 }
 
-/** What a banner can ask the open composer to do: send (or queue) what is typed, or open the model picker. */
-export type ComposerCommand = 'send' | 'model'
+/** What a banner can ask the open composer to do: send (or queue) what is typed, or open the model picker. New chat also takes `project`, to open its project menu (KERNEL-1090). */
+export type ComposerCommand = 'send' | 'model' | 'project'
 const commands = new Set<(c: ComposerCommand) => void>()
 
 export function commandComposer(c: ComposerCommand) { for (const l of commands) l(c) }

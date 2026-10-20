@@ -4,7 +4,7 @@ import { leadModeName, leadModeOf, leadModeSwitched } from '@shared/leadMode'
 import { maskSecrets, stripAnsi, toolView } from '@shared/toolView'
 import { call } from '../../api'
 import { FileIcon } from '../../components/FileIcon'
-import { Avatar, Button, LinkButton, Card, CopyButton, EmptyState, Icon, IconButton, Spinner, useBusy, type IconName } from '../../ui'
+import { AgentAvatar, Button, LinkButton, Card, CopyButton, EmptyState, Icon, IconButton, Spinner, useBusy, type IconName } from '../../ui'
 import { ServiceMark } from '../../icons'
 import { actions, getState, go, loadWorkspace, setLeadMode, useStore } from '../../store'
 import { openProject } from '../../lead'
@@ -568,7 +568,7 @@ function useToolLook(item: Tool) {
   const root = useStore((s) => s.workspaces.find((w) => w.id === workspaceId)?.path)
   const target = useStore(agentNamed(item.name.endsWith('__message_agent') ? item.input?.workspace_id : undefined))
   const view = useMemo(() => toolView(item, { root, agentOf: target ? () => target : undefined }), [item, root, target])
-  const mark = view.file ? <FileIcon path={view.file} size={15} /> : view.agent ? <Avatar name={view.agent} size={15} /> : view.service ? <span className="step-mark"><ServiceMark name={view.service} size={15} /></span> : undefined
+  const mark = view.file ? <FileIcon path={view.file} size={15} /> : view.agent ? <AgentAvatar name={view.agent} size={15} /> : view.service ? <span className="step-mark"><ServiceMark name={view.service} size={15} /></span> : undefined
   return { view, mark }
 }
 
@@ -748,7 +748,7 @@ function LeadModeDivider({ mode }: { mode: LeadMode }) {
 }
 
 /** Under Kernel's reply when the work is bigger than one PR: one button, only for the newest suggestion with no mode switch after it, and only while the chat is still in Build here. Kernel never switches on its own. */
-function ModeSuggestion({ workspaceId, chatId, itemId, mode }: { workspaceId: string; chatId: string; itemId: string; mode: LeadMode }) {
+function ModeSuggestion({ workspaceId, chatId, itemId, mode, why }: { workspaceId: string; chatId: string; itemId: string; mode: LeadMode; why: string }) {
   const current = useStore((s) => leadModeOf(s.workspaces.find((w) => w.id === workspaceId)))
   const live = useStore((s) => {
     const list = s.items[chatId] ?? EMPTY
@@ -762,6 +762,7 @@ function ModeSuggestion({ workspaceId, chatId, itemId, mode }: { workspaceId: st
   if (current === mode || !live) return null
   return (
     <div className="mode-suggest">
+      <p className="mode-suggest-why">{why}</p>
       <Button icon={LEAD_MODE_ICON[mode]} busy={!!busy} busyLabel="Switching" onClick={() => void run('Switching', () => attempt('Could not switch', () => setLeadMode(workspaceId, mode)))}>Switch to {leadModeName(mode)}</Button>
     </div>
   )
@@ -827,7 +828,7 @@ const Block = memo(function Block({ block, chatId, workspaceId, changes, inWorks
     case 'approval': return <ApprovalRow id={item.approvalId} />
     case 'shared': return <SharedCard sharedId={item.sharedId} version={item.version} />
     case 'leadMode': return <LeadModeDivider mode={item.mode} />
-    case 'modeSuggestion': return <ModeSuggestion workspaceId={workspaceId} chatId={chatId} itemId={item.id} mode={item.mode} />
+    case 'modeSuggestion': return <ModeSuggestion workspaceId={workspaceId} chatId={chatId} itemId={item.id} mode={item.mode} why={item.why} />
     // Result is folded into a meta row or an error card by buildThread.
     case 'result': return null
   }

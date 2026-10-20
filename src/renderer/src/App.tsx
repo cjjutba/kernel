@@ -24,6 +24,7 @@ import { Issues } from './screens/issues/Issues'
 import { PullRequests } from './screens/prs/PullRequests'
 import { CheckHooks } from './screens/onboarding/CheckHooks'
 import { Loading } from './screens/onboarding/Loading'
+import { Onboarding } from './screens/onboarding/Onboarding'
 import { Splash } from './screens/onboarding/Splash'
 import { ConfirmRemoveProject } from './screens/projects/ConfirmRemoveProject'
 import { ConfirmDeleteHistory } from './screens/history/ConfirmDeleteHistory'
@@ -81,6 +82,7 @@ function Screen({ route }: { route: Route }): ReactNode {
   switch (route.name) {
     case 'onboarding':
       if (route.step === 'project') return <ProjectSetup projectId={route.projectId} />
+      if (route.step === 'checks' || route.step === 'accounts' || route.step === 'team' || route.step === 'loop') return <Onboarding key={route.step} step={route.step} />
       return <Splash />
     case 'inbox': return <Inbox />
     case 'issues': return <Issues issueId={route.issueId} projectId={route.projectId} tracker={route.tracker} />

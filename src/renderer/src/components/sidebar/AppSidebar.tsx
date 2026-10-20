@@ -92,7 +92,7 @@ function NavItem({ route, icon, label, right, sub, nested, slot, unread, onOpen,
 /** A row's state icon. Its state is the accessible name. While the row runs (`busy`), the loader takes the icon's box, so nothing moves when the run starts or stops. */
 function Glyph({ g, busy }: { g: WorkspaceGlyph & { icon: IconName }; busy?: boolean }) {
   return (
-    <span className="nav-glyph" data-tone={g.tone} role="img" aria-label={g.label}>
+    <span className="nav-glyph" data-tone={g.tone} data-busy={busy || undefined} data-tip={g.label || undefined} role="img" aria-label={g.label}>
       {busy ? <Spinner label={null} /> : <Icon name={g.icon} />}
     </span>
   )
@@ -165,7 +165,7 @@ function ChatItemRow({ projectId, thread, ws, tabs, owned, folded, slot, leaving
         className="nav-item nav-sub" aria-current={current && !leaving ? 'page' : undefined} data-was-current={current && leaving ? '' : undefined} data-arrive={arrive ? '' : undefined} aria-label={unread ? `${name}, Unread` : name} data-unread={unread ? '' : undefined}
         aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => openRow(projectId, { kind: 'chat', thread, tabs, owned, folded })}
       >
-        <span className="nav-glyph" data-tone={shown.tone} data-owned={owned.length ? '' : undefined} data-plan={planning ? '' : undefined} aria-hidden="true">{busy ? <Spinner label={null} /> : <Icon name={shown.icon} />}</span>
+        <span className="nav-glyph" data-tone={shown.tone} data-owned={owned.length ? '' : undefined} data-plan={planning ? '' : undefined} data-busy={busy || undefined} data-tip={g.label || undefined} aria-hidden="true">{busy ? <Spinner label={null} /> : <Icon name={shown.icon} />}</span>
         <span className="grow ellipsis">{thread.title}</span>
         {slot?.hint ? <KeyHint n={slot.n} /> : ws?.prNumber ? <span className="mono muted ws-right ws-pr">#{ws.prNumber}</span> : null}
       </button>

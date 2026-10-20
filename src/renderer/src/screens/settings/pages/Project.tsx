@@ -82,7 +82,7 @@ export function Project({ projectId }: { projectId?: string }) {
       {confirming && (
         <ConfirmDialog
           title={`Archive ${project.name}?`} body="Every agent stops and all of the project’s workspaces are archived. You can restore the project later." danger
-          confirmLabel="Archive project" busy={!!busy} busyPattern="scatter" busyLabel="Archiving" onConfirm={() => void archive()} onCancel={() => setConfirming(false)}
+          confirmLabel="Archive project" busy={!!busy} busyPattern="ripple" busyLabel="Archiving" onConfirm={() => void archive()} onCancel={() => setConfirming(false)}
         />
       )}
     </ProjectPage>

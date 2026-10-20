@@ -19,7 +19,7 @@ export function FailedState({ title, children, onRetry }: { title: string; child
   return (
     <div className="state-center">
       <div className="state-fail">
-        <Banner kind="offline" title={title} actions={<Button size="md" busy={busy === 'retry'} busyLabel="Trying again" busyPattern="rotate" onClick={() => void run('retry', async () => onRetry())}>Try again</Button>}>{children}</Banner>
+        <Banner kind="offline" title={title} actions={<Button size="md" busy={busy === 'retry'} busyLabel="Trying again" busyPattern="ripple" onClick={() => void run('retry', async () => onRetry())}>Try again</Button>}>{children}</Banner>
       </div>
     </div>
   )

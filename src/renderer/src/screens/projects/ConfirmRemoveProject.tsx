@@ -35,7 +35,7 @@ export function ConfirmRemoveProject({ projectId }: { projectId: string }) {
 
   return (
     <ConfirmDialog
-      title={`Remove ${project.name}?`} danger busy={!!busy} busyPattern="scatter" busyLabel="Removing" confirmLabel="Remove project" onConfirm={() => void remove()} onCancel={cancel}
+      title={`Remove ${project.name}?`} danger busy={!!busy} busyPattern="ripple" busyLabel="Removing" confirmLabel="Remove project" onConfirm={() => void remove()} onCancel={cancel}
       body={`Kernel stops ${n(agents, 'agent')} and archives ${n(workspaces, 'workspace')}. Your repo on disk and .claude/agents are not touched.`}
     >
       <div className="rm-box mono"><span>{tilde(project.path)}</span><span className="muted">{n(workspaces, 'workspace')} · {n(agents, 'agent')}</span></div>

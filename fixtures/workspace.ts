@@ -3,7 +3,7 @@ import type { CriterionEvidence, EvidenceLink, PrEvidence, ChatPart, Notificatio
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { describeTool } from '../src/main/services/approvals'
-import { at, ids, scene, tableItems, withWorkspace } from './base'
+import { agent, at, ids, scene, tableItems, team, withWorkspace } from './base'
 import { downloadFlowMarkdown, fontsCheckImage, invoiceLayoutStill, invoicePdfStill, pdfNotesMarkdown, pricingStill } from './sharedStills'
 
 // Workspace lane: the workspace screen (KERNEL-10), PR states (KERNEL-15), agent turns and requests (KERNEL-14).
@@ -725,7 +725,7 @@ const composing = (composer: { parts: import('@shared/types').ChatPart[]; draft:
  */
 const bypassPicked = (f: Fixture, menu?: 'mode') => ({
   workspaces: withWorkspace(f, ids.lead, { mode: 'current' }),
-  chats: f.chats.map((c) => (c.id === ids.leadChat ? { ...c, plan: false, effort: 'xhigh' as const, mode: 'bypassPermissions' as const } : c)),
+  chats: f.chats.map((c) => (c.id === ids.leadChat ? { ...c, plan: false, effort: 'medium' as const, mode: 'bypassPermissions' as const } : c)),
   ui: { route: { name: 'workspace' as const, workspaceId: ids.lead }, ...(menu ? { menu } : {}) }
 })
 
@@ -796,6 +796,8 @@ const mentionFolderTree: FileEntry[] = [{ path: 'src', dir: true }, { path: 'src
 
 /** KERNEL-750: rows from a reference folder carry the folder's name, which the menu shows where a repo file shows its folder. */
 const mentionReferenceTree: FileEntry[] = [{ path: '/Users/you/Projects/client-a-api/src/invoices/routes.ts', dir: false, reference: 'client-a-api' }, { path: '/Users/you/Projects/design-system/src/invoice-table.tsx', dir: false, reference: 'design-system' }, ...mentionFolderTree.slice(1, 2), file('src/app/invoices/table.tsx')]
+
+const mentionAgentTree: FileEntry[] = ['src/lib/money.ts', 'docs/journeys/clean-account.md'].map(file)
 
 const mentionTree: FileEntry[] = ['src/app/invoices/table.tsx', 'tests/invoices.spec.ts', 'src/pdf/invoice-pdf.ts', 'src/db/schema/invoices.ts', 'src/app/invoices/invoice-row.tsx', 'package.json'].map(file)
 
@@ -906,7 +908,9 @@ const planApproved = (f: Fixture): Partial<Fixture> => {
 const planFinished = (f: Fixture): Partial<Fixture> => {
   const s = planApproved(f)
   const id = s.approvals?.[0]?.id ?? ''
-  return { ...s, attention: { [id]: { prsMerged: 4, needed: 5, byKind: { plan: 1, tool: 2, question: 1, blocker: 0, merge: 1 }, finished: true } } }
+  const base = f.workspaces[0]
+  const merged = [0, 1, 2, 3].map((j) => ({ ...base, id: `ws-t15-${j}`, name: `t-15${'abcd'[j]}`, branch: `t-15${'abcd'[j]}`, prState: 'merged' as const, prNumber: 160 + j }))
+  return { ...s, workspaces: [...(s.workspaces ?? f.workspaces), ...merged], attention: { [id]: { prsMerged: 4, needed: 5, byKind: { plan: 1, tool: 2, question: 1, blocker: 0, merge: 1 }, finished: true } } }
 }
 
 /** The approved plan of a chat that has your answer as a message (KERNEL-838): Approved is the chat's own user row, so the plan card draws no bubble of its own. */
@@ -1207,7 +1211,7 @@ const leadPlan = (f: Fixture, ws: Partial<Workspace>, plan: Partial<Approval> = 
     tool('l-t2', 'Write the plan', 'cat > plans/t-15-invoice-pdf.md', { name: 'Write' }),
     { kind: 'text', id: 'l-tx', ts: at(10, 29), text: 'I split PDF export into four tasks that can run in parallel. Approve it and I will hand them out.' }
   ], {
-    approvals: [pending('plan', 'kernel-lead', { workspaceId: ids.lead, title: 'Plan for T-15', steps: T15_STEPS, ...plan }), ...f.approvals]
+    approvals: [pending('plan', 'kernel-lead', { workspaceId: ids.lead, title: 'Plan for T-15', planFile: 'plans/t-15-invoice-pdf.md', steps: T15_STEPS, ...plan }), ...f.approvals]
   }, { plan: true, model: 'claude-opus-5-5' }),
   changes: { [ids.lead]: [{ path: 'plans/t-15-invoice-pdf.md', status: 'A', added: 64, removed: 0 }] }
 })
@@ -2127,6 +2131,12 @@ const permWaiting = (f: Fixture) => scene2(f, { name: 'invoice-pdf-renderer', br
     approvals: [pending('tool', 'sean', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), ...f.approvals]
   })
 
+/** scene2 puts the chat and workspace on its first approval only. A queue needs them on every one, as real approvals have. */
+const queued = (s: Partial<Fixture>): Partial<Fixture> => {
+  const [first, ...rest] = s.approvals ?? []
+  return { ...s, approvals: first && [first, ...rest.map((a) => (a.status === 'pending' && a.toolName === 'Bash' ? { ...a, workspaceId: first.workspaceId, chatId: first.chatId } : a))] }
+}
+
 export const workspaceFixtures: Record<string, Fixture> = {
   Workspace: scene(() => ({ ui: open })),
   // Chat header mocks: today's two rows on a new Lead chat, then the one-row header with one tab and with three.
@@ -2144,26 +2154,26 @@ export const workspaceFixtures: Record<string, Fixture> = {
     }
   }),
   LeadChatTabBranch: scene((f) => {
-    const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead', mode: 'current', branch: 'main' }, 'Export invoices as PDF', [], {}, { model: 'claude-opus-5-5', effort: 'xhigh', plan: false })
+    const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead', mode: 'worktree', branch: 'cjjutba/refund-rounding' }, 'Refund rounding', [], {}, { model: 'claude-opus-5-5', effort: 'xhigh', plan: false })
     const { approvals: _none, ...rest } = s
     const tab = (id: string, title: string, m: number): Chat => ({ id, workspaceId: ids.lead, title, kind: 'chat', model: 'claude-opus-5-5', effort: 'xhigh', plan: false, threadId: 't-lead', createdAt: at(9, m) })
     return {
       ...rest,
       ui: { ...rest.ui!, rightPanel: false, tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: [], diffs: [] } } },
-      projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Kernel' } : r)),
-      chats: [tab('chat-hdr-long', 'Split the invoice export into one PDF per client and email each client their own copy', 1), tab('chat-hdr-inbox', 'Inbox rows', 2), ...(rest.chats ?? f.chats)]
+      projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'kernel' } : r)),
+      chats: [...(rest.chats ?? f.chats), tab('chat-hdr-usage', 'Usage meter after a reset', 2)]
     }
   }),
   // Three chat tabs and two file tabs with the right panel open: the tabs shrink and truncate, and the project, + and editor button keep their size. KERNEL-760 is the linked issue.
   LeadChatTabsFull: scene((f) => {
-    const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead', source: { kind: 'issue', id: 'KERNEL-760', title: 'Export invoices as PDF' } }, 'Export invoices as PDF', [], {}, { model: 'claude-opus-5-5', effort: 'xhigh', plan: false })
+    const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead', source: { kind: 'issue', id: 'KERNEL-760', title: 'Export invoices as PDF' } }, 'Clean-account journey', [], {}, { model: 'claude-opus-5-5', effort: 'xhigh', plan: false })
     const { approvals: _none, ...rest } = s
     const tab = (id: string, title: string, m: number): Chat => ({ id, workspaceId: ids.lead, title, kind: 'chat', model: 'claude-opus-5-5', effort: 'xhigh', plan: false, threadId: 't-lead', createdAt: at(9, m) })
     return {
       ...rest,
-      ui: { ...rest.ui!, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: ['src/app/invoices/table.tsx', 'src/app/invoices/pdf-renderer.tsx'], diffs: [] } } },
-      projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Kernel' } : r)),
-      chats: [tab('chat-hdr-long', 'Split the invoice export into one PDF per client and email each client their own copy', 1), tab('chat-hdr-inbox', 'Inbox rows', 2), ...(rest.chats ?? f.chats)]
+      ui: { ...rest.ui!, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: ['journey.test.ts', 'kernel-232-clean-account.md'], diffs: [] } } },
+      projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'kernel' } : r)),
+      chats: [tab('chat-hdr-long', 'How long should a journey run before it times out', 1), tab('chat-hdr-inbox', 'Export retries', 2), ...(rest.chats ?? f.chats)]
     }
   }),
   // KERNEL-161: the workspace started on a Linear issue shows its key after the branch.
@@ -2212,7 +2222,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
    * in every frame, with no setup text and no queue strip, though a setup script runs.
    */
   NewChatSendWorktreeMotion: { ...scene((f) => ({ ...setupWait(f, 'setup', [{ ...setupAsk, clientId: setupAsk.id }], { pending: {} }), projectSettings: handoverSettings })), motion: { action: { steps: handoverSteps() }, ms: 0, area: '.ws-main' } },
-  // Git wouldn't make it: the card says so with git's reason and Try again, and the message is Not sent yet.
+  // Git wouldn't make it: the card says so with git's reason and Try again, and the message is Not sent.
   SetupWorktreeFailed: scene((f) => setupWait(f, 'failed', [setupAsk], { pending: { error: "fatal: '/Users/cj/Kernel/worktrees/kernel/in-setup-script-tab-in' already exists" } })),
   SetupSentAnyway: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { status: 'ready', title: 'Fix duplicate Run in the script panel', setupRun: { startedAt: at(10, 0), endedAt: at(10, 1, 8), end: 1 } }),
@@ -2249,6 +2259,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
     return rest
   }),
   /** Running, done, failed and denied steps of Bash with and without a description, Edit, Read and an MCP tool the app has no mark for, and a command with tokens in it (KERNEL-782). */
+  WorkspaceLeadStepOpen: scene((f) => { const { approvals: _none, ...rest } = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Settings save feedback', leadSteps, {}, { model: 'claude-opus-5-5' }); return rest }),
+  WorkspaceLeadStepsOpen: scene((f) => { const { approvals: _none, ...rest } = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Settings save feedback', leadSteps, {}, { model: 'claude-opus-5-5' }); return rest }),
   WorkspaceStepStates: scene(() => ({
     items: { [ids.tableChat]: stepStates },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false } }
@@ -2876,6 +2888,18 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ], {
     approvals: [pending('tool', 'sean', { toolName: 'mcp__claude_ai_Linear__save_issue', input: { title: 'Export invoices as PDF', team: 'Kernel' }, ...describeTool('mcp__claude_ai_Linear__save_issue', { title: 'Export invoices as PDF', team: 'Kernel' }) }), ...f.approvals]
   })),
+  // KERNEL-1114: two permissions waiting in one chat are one card that pages through them. Next pages to the second, and an answer takes one out of the queue.
+  WorkspacePermQueue: { ...scene((f) => queued(scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'sean' }, 'PDF renderer', [
+    userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
+    ...folded('p', 11, 2),
+    { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works and the fonts are embedded. I need to push the schema and then seed the dev database.' },
+    { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
+  ], {
+    approvals: [
+      { ...pending('tool', 'sean', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), id: 'ap-tool-sean-1' },
+      { ...pending('tool', 'sean', { toolName: 'Bash', input: { command: 'pnpm db:seed' }, title: 'Run pnpm db:seed', detail: 'Fills the dev database with three sample invoices.' }), id: 'ap-tool-sean-2', createdAt: at(10, 31) }
+    ]
+  }))), motion: { action: { click: 'Show permission 2' }, ms: 700, area: '.ws-main' } },
   WorkspacePlan: scene(planWaiting),
   /** KERNEL-950: back to a Lead chat with a plan waiting from another tab. The transcript must not move once the strip has opened. */
   WorkspacePlanRoundTrip: { ...scene((f) => { const s = planAfterHistory(planWaiting(f)); return { ...s, chats: [...(s.chats ?? f.chats), { ...extraChat('chat-other', 'Empty state copy'), workspaceId: ids.lead, threadId: 't-lead' }], items: { ...s.items, 'chat-other': [userMsg('o1', 'Shorten the empty state copy.')] }, ui: { ...s.ui, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.lead]: { tab: ids.leadChat, files: [], diffs: [] } } } } }), motion: { action: { press: ['click:Empty state copy', 'click:Export invoices as PDF'] }, ms: 600, area: '.ws-scroll' } },
@@ -3138,6 +3162,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Kernel's plan for T-15 waits in the Lead's own worktree, on the Grouped sidebar, before the export chat hands anything off (KERNEL-355).
   WorkspaceLead: scene((f) => leadWaiting(f)),
   WorkspaceLeadPlan: scene((f) => leadPlan(f, { agentId: 'kernel-lead' })),
+  // KERNEL-1091: the plan opened from its path link in a file tab (4.4), the New tab menu over the Lead's chat, and a Lead turn's steps opened in place (4.2). The shots click the step.
+  WorkspacePlanFile: scene((f) => { const p = planWaiting(f); return { ...p, fileText: { [ids.lead]: { 'plans/t-15-invoice-pdf.md': LEAD_PLAN } }, ui: { ...p.ui, tabs: { [ids.lead]: { tab: 'file:plans/t-15-invoice-pdf.md', lastChat: ids.leadChat, files: ['plans/t-15-invoice-pdf.md'], diffs: [] } } } } }),
+  WorkspaceNewTabMenu: scene((f) => { const p = leadWaiting(f); return { ...p, ui: { ...p.ui, menu: 'newTab' } } }),
   // KERNEL-1064: the same plan with acceptance criteria under three of its four tasks. The third has none and looks as it always did.
   WorkspaceLeadPlanCriteria: scene((f) => leadPlan(f, { agentId: 'kernel-lead' }, { steps: T15_CRITERIA_STEPS })),
   /** What the Lead chat still owes, above the composer (KERNEL-792): a question, blockers and a proposed hand-off. The collapsed line, and the same with the list opened by scripts/shots.ts. */
@@ -3304,7 +3331,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
     return { ...g, ui: { ...g.ui!, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft } } } }
   }),
   // KERNEL-869: the first visit to New chat in a project with no tracker. The tracker answers late, and nothing was held for Up next, so the box stays where it was.
-  NewChatNoTracker: { ...scene((f) => ({ ...noPlan(leadNoChats(f)), ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }, trackers: { [ids.projectA]: { kind: 'none' as const, available: { linear: false } } }, lag: { 'issues.next': 700, 'issues.tracker': 700 } })), motion: { action: { click: 'New chat in Client A' }, ms: 1000, area: '.lead-new' } },
+  NewChatNoTracker: scene((f) => ({ ...noPlan(leadNoChats(f)), trackers: { [ids.projectA]: { kind: 'none' as const, available: { linear: false } } } })),
+  NewChatNoTrackerMotion: { ...scene((f) => ({ ...noPlan(leadNoChats(f)), ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }, trackers: { [ids.projectA]: { kind: 'none' as const, available: { linear: false } } }, lag: { 'issues.next': 700, 'issues.tracker': 700 } })), motion: { action: { click: 'New chat in Client A' }, ms: 1000, area: '.lead-new' } },
   NewChatPlan: scene((f) => ({ ...leadNoChats(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: true } } })),
   // KERNEL-786: the + menu with Run in and Branch, and each picker open (the shot opens them, scripts/shots.ts). NewChatLocal has Local picked by Settings' workspace mode, so the chip beside + says Local.
   // NewChatBranch lists branches with two that have an open workspace, one that is local only, and the default first. NewChatBranchChip picks one, so the chip says where the chat starts from.
@@ -3315,6 +3343,26 @@ export const workspaceFixtures: Record<string, Fixture> = {
     const p = noPlan(leadNoChats(f))
     const gone = { ...f.projects[0], id: 'project-gone', name: 'Old app', archived: true }
     return { ...p, projects: [...(p.projects ?? f.projects), gone], ui: { ...p.ui!, route: { name: 'leadNew', projectId: gone.id } } }
+  }),
+  // KERNEL-1090: a send with no project picked, and a send to a project that was archived or removed. Each is a toast in the bottom right, and the draft stays in the box.
+  NewChatPickProject: scene((f) => {
+    const p = noPlan(leadNoChats(f))
+    return { ...p, ui: { ...p.ui!, route: { name: 'leadNew', projectId: '' }, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: 'Plan the soak harness before anyone writes code.' } }, toasts: [{ id: 'pick-project', title: 'Pick a project first', sub: 'Kernel and its team work inside one repo at a time.', action: { label: 'Pick project', pickProject: true } }] } }
+  }),
+  NewChatProjectGone: scene((f) => {
+    const p = noPlan(leadNoChats(f))
+    const gone = { ...f.projects[0], id: 'project-gone', name: 'Old app', archived: true }
+    return { ...p, projects: [...(p.projects ?? f.projects), gone], ui: { ...p.ui!, route: { name: 'leadNew', projectId: gone.id }, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: 'Plan the soak harness before anyone writes code.' } }, toasts: [{ id: 'project-gone', title: 'This project is archived or gone', sub: 'There is nowhere to start the chat. Pick another project.', action: { label: 'Pick project', pickProject: true } }] } }
+  }),
+  // KERNEL-1090: the two confirms New chat opens, drawn over New chat. Bypass permissions asks once, and an issue someone may already be on holds the brief until Start anyway.
+  ConfirmBypassNewChat: scene((f) => {
+    const p = noPlan(leadNoChats(f))
+    return { ...p, ui: { ...p.ui!, modal: { name: 'confirm', kind: 'bypass' } } }
+  }),
+  ConfirmIssueTakenNewChat: scene((f) => {
+    const p = noPlan(leadNoChats(f))
+    const held = { projectId: ids.projectA, source: { kind: 'issue' as const, id: 'KERNEL-232', title: 'Soak harness for the sync engine' }, parts: [{ type: 'text' as const, text: 'KERNEL-232: Soak harness for the sync engine' }], picks: { mode: 'worktree' as const, model: 'claude-opus-5-5', effort: 'high' as const, plan: false, baseRef: '' } }
+    return { ...p, ui: { ...p.ui!, modal: { name: 'confirm', kind: 'issueTaken', issue: 'KERNEL-232', findings: [{ kind: 'branch', ref: 'origin/feat/kernel-232-soak-harness' }, { kind: 'pr', number: 41, title: 'Soak harness for the sync engine' }, { kind: 'assignee', name: 'Maya Chen' }], held } } }
   }),
   // KERNEL-943: no project at all yet. The title asks what we're building, and the three ways to add a project sit above the box.
   NewChatFirstProject: scene(() => ({ projects: [], agents: {}, status: {}, workspaces: [], chats: [], items: {}, approvals: [], activity: [], changes: {}, diffs: {}, push: [], ui: { route: { name: 'leadNew', projectId: '' }, workspace: { right: 'changes', bottom: 'run' } } })),
@@ -3761,10 +3809,20 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ui: { ...open, menu: 'model' }
   })),
   // KERNEL-746: in the Lead's chat @ offers the project's teammates above Files. A teammate's chat (WorkspaceMention) lists files only.
-  ComposerMentionAgent: scene(() => ({ ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: '@no' } } } })),
-  ComposerMentionAgentEmpty: scene(() => ({ ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: '@zzz' } } } })),
+  ComposerMentionAgent: scene((f) => ({
+    agents: { ...f.agents, [ids.projectA]: [...(f.agents[ids.projectA] ?? [team[0]]), agent('ivy', 'Ivy', 'QA', 'sonnet'), agent('rio', 'Rio', 'Platform', 'sonnet'), agent('theo', 'Theo', 'Review', 'sonnet'), agent('noor', 'Noor', 'Engine', 'opus')] },
+    tree: { [ids.lead]: mentionAgentTree },
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: '@' } } }
+  })),
+  ComposerMentionAgentEmpty: scene((f) => ({
+    agents: { ...f.agents, [ids.projectA]: [team[0]] },
+    workspaces: f.workspaces.map((w) => (w.projectId === ids.projectA ? { ...w, agentId: team[0].id } : w)),
+    status: { ...f.status, [ids.projectA]: {} },
+    tree: { [ids.lead]: mentionAgentTree },
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: '@' } } }
+  })),
   ComposerMentionAgentSent: scene((f) => ({
-    items: { [ids.leadChat]: [{ kind: 'user', id: 'u-agent', ts: at(10, 41), parts: [{ type: 'agent', name: 'Sean', agentId: 'sean' }, { type: 'text', text: 'take the invoice export, and ask Christian for the table first' }] }] },
+    items: { [ids.leadChat]: [{ kind: 'user', id: 'u-agent', ts: at(10, 41), parts: [{ type: 'agent', name: 'Ivy', agentId: 'ivy' }, { type: 'text', text: 'can rerun the journey on the release candidate?' }] }] },
     chats: f.chats.map((c) => (c.id === ids.leadChat ? { ...c, plan: false } : c)),
     ui: { route: { name: 'workspace', workspaceId: ids.lead } }
   })),
@@ -3772,7 +3830,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ComposerMentionReference: composing({ parts: [], draft: '@invoice' }, { tree: { [ids.table]: mentionReferenceTree } }),
   ComposerModes: scene((f) => bypassPicked(f)),
   ComposerModesNarrow: scene((f) => bypassPicked(f)),
-  ComposerModeMenu: scene((f) => bypassPicked(f, 'mode')),
+  // A Codex chat with a turn running: Auto can't run for Codex, and the Bypass pick waits on the turn.
+  ComposerModeMenu: scene((f) => {
+    const b = bypassPicked(f, 'mode')
+    return { ...b, workspaces: f.workspaces, chats: b.chats.map((c) => (c.id === ids.leadChat ? { ...c, provider: 'codex' as const, model: 'gpt-6-astra', effort: 'medium' as const } : c)), models: { codex: codexModels }, push: [{ type: 'chat.running', chatId: ids.leadChat, running: true }] }
+  }),
   // KERNEL-751: a modal opened while the mode menu was open closes it, so nothing sits above the backdrop.
   ComposerModeMenuUnderModal: scene((f) => ({ ...bypassPicked(f, 'mode'), ui: { ...bypassPicked(f).ui, modal: { name: 'search' } } })),
   WorkspaceQueued: scene((f) => ({

@@ -42,31 +42,32 @@ button.ws-issue:hover { background: var(--surface-3); }
 .tab-glyph[data-tone='plan'] svg { color: var(--plan); }
 /* The team updates a terminal Lead tab has not read yet. Quiet: muted, no badge fill. Not drawn at 0. */
 .tab-count { flex-shrink: 0; color: var(--muted); font-size: var(--fs-badge); font-variant-numeric: tabular-nums; }
+.ws-tab:has(.tab-branch) { max-width: 340px; }
+.tab-branch { flex: 0 20 auto; overflow: hidden; display: inline-flex; align-items: center; gap: 4px; min-width: 0; color: var(--ink-3); font-size: var(--fs-code); }
 .ws-tab:hover { color: var(--ink); }
 .ws-tab[aria-selected='true'] { color: var(--ink); }
 /* A tab with a reply you haven't seen is bold, like its sidebar row (KERNEL-508). The tab on screen is read, so it is never marked. */
 .ws-tab[data-unread] { color: var(--ink); font-weight: var(--fw-semibold); }
-/* The pen and the close button share one slot. Focus only counts from the keyboard, so a clicked tab keeps its pen. */
+/* The close button sits after the title. */
 .tab-end { display: inline-grid; place-items: center; margin-left: -8px; }
 .tab-end > * { grid-area: 1 / 1; }
-.tab-pen { display: flex; color: var(--muted); pointer-events: none; }
 .tab-caret { width: 22px; height: 22px; border-radius: var(--r-sm); }
-.tab-caret.more, .tab-pen { transition: opacity var(--dur-fast); }
+.tab-caret.more { transition: opacity var(--dur-fast); }
 .tab-caret.more { opacity: 0; }
-.tab-group:hover .tab-caret.more, .tab-group:has(:focus-visible) .tab-caret.more, .tab-group[data-rest] .tab-caret.more { opacity: 1; }
-.tab-group:hover .tab-pen, .tab-group:has(:focus-visible) .tab-pen { opacity: 0; }
+.tab-group:hover .tab-caret.more, .tab-group:has(:focus-visible) .tab-caret.more, .tab-group[data-rest] .tab-caret.more, .tab-group[data-on] .tab-caret.more { opacity: 1; }
 
-/* One-row header (a Lead chat): the tabs sit in the header after the project, so the row is the header's height and its hairline is the only one. */
+/* One-row header (a Lead chat): the project, then the tabs in one `$surface` pill. The open tab is `$surface-3` with its close button, and + closes the pill. The header's hairline is the only one. */
 .header[data-one-row] { padding-left: 12px; gap: 4px; }
 .header[data-one-row] .crumb { margin-left: 2px; }
-.ws-tabs[data-inline] { align-self: stretch; flex: 0 1 auto; height: auto; min-width: 0; padding: 0; border: 0; }
-.ws-tabs[data-inline] > [role='tablist'] { height: 100%; flex: 0 1 auto; min-width: 0; }
+.ws-tabs[data-inline] { align-self: center; flex: 0 1 auto; height: 32px; min-width: 0; padding: 2px; gap: 2px; align-items: center; border: 0; border-radius: 9px; background: var(--surface); }
+.ws-tabs[data-inline] > [role='tablist'] { height: 100%; flex: 0 1 auto; min-width: 0; align-items: center !important; gap: 2px; }
 /* The project avatar and name, + and the right side keep their size. The tabs are what gives way, and a title truncates. */
 .header[data-one-row] .crumb-avatar, .ws-tabs[data-inline] .tab-new { flex-shrink: 0; }
-.ws-tabs[data-inline] .tab-group { height: 100%; }
-.ws-tabs[data-inline] .tab-new { margin-left: 2px; }
-.ws-tabs[data-inline] .ws-tab { padding: 0 8px; gap: 6px; }
-.ws-tabs[data-inline] > [role='tablist'] { gap: 0; }
+.ws-tabs[data-inline] .tab-group { height: 28px; padding-right: 4px; border-bottom: 0; border-radius: 7px; }
+.ws-tabs[data-inline] .tab-group[data-on] { background: var(--surface-3); }
+.ws-tabs[data-inline] .tab-new { align-self: center; margin: 0; }
+.ws-tabs[data-inline] .tab-new .icon-btn, .ws-tabs[data-inline] .tab-new > button { width: 28px; height: 28px; border-radius: 7px; }
+.ws-tabs[data-inline] .ws-tab { padding: 0 8px 0 9px; gap: 7px; }
 
 /* transcript */
 /* The scroll area sits in a frame, so the Scroll to bottom button floats over it instead of scrolling away with the thread (KERNEL-532). */
@@ -95,8 +96,8 @@ button.ws-issue:hover { background: var(--surface-3); }
 .rail-opt[data-active] { background: var(--hover); color: var(--ink); }
 .rail-opt[data-update][data-active] { color: var(--ink-2); }
 /* The jumped-to message holds a 1px ring for 1.2s, fading over the last 400ms. */
-@keyframes jump-ring { 0%, 66.6% { outline-color: var(--line-4); } 100% { outline-color: transparent; } }
-.msg-user[data-jumped] .bubble, .jump-anchor[data-jumped] .tucard { outline: 1px solid var(--line-4); animation: jump-ring var(--dur-ring) linear forwards; }
+@keyframes jump-ring { 0%, 66.6% { outline-color: var(--line-3); } 100% { outline-color: transparent; } }
+.msg-user[data-jumped] .bubble, .jump-anchor[data-jumped] .tucard { outline: 1px solid var(--line-3); animation: jump-ring var(--dur-ring) linear forwards; }
 @media (prefers-reduced-motion: reduce) { .msg-user[data-jumped] .bubble, .jump-anchor[data-jumped] .tucard { animation: none; } }
 .thread { width: 100%; max-width: 760px; margin: 0 auto auto; display: flex; flex-direction: column; gap: 12px; }
 /* Rows far above the end skip layout and paint while off screen, and `auto` remembers the height each last had. The last twelve are left alone, so a short chat draws as it always did. The clip margin keeps focus rings, which reach past a row, from being cut. A step row bleeds 8px past its row for its hover fill, and its focus ring sits 1px further out and is 2px thick, so a ring reaches 11px out. 12px covers it (KERNEL-375). The attention line is left alone too: paint containment would clip its breakdown list to the row (KERNEL-1082). */
@@ -117,7 +118,7 @@ button.ws-issue:hover { background: var(--surface-3); }
 .msg-chip .chip-meta { color: var(--muted); }
 .msg-chip[data-state='unreadable'] { opacity: 0.6; }
 .msg-chip[data-state='gone'] .chip-name { color: var(--muted); text-decoration: line-through; }
-button.msg-chip:hover { border-color: var(--line-4); }
+button.msg-chip:hover { border-color: var(--line-3); }
 .msg-reply { gap: 6px; }
 .msg-kernel { gap: 4px; }
 /* Kernel's message as one note line that opens to its full text (KernelNote). */
@@ -173,8 +174,8 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .md ul[data-tasks] { padding-left: 2px; }
 .md li[data-task] { list-style: none; display: grid; grid-template-columns: 22px minmax(0, 1fr); }
 .md li[data-task] > :not(.md-box) { grid-column: 2; }
-.md-box { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin-top: 4px; border: 1px solid var(--line-4); border-radius: var(--r-2xs); color: var(--ink-2); }
-.md li[data-task='done'] > .md-li { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line-4); }
+.md-box { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin-top: 4px; border: 1px solid var(--line-3); border-radius: var(--r-2xs); color: var(--ink-2); }
+.md li[data-task='done'] > .md-li { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line-3); }
 .md blockquote { margin-left: 0; margin-right: 0; padding: 2px 0 2px 14px; border-left: 2px solid var(--line-3); color: var(--ink-3); }
 .md blockquote > * { margin: 0 0 6px; }
 .md blockquote > *:last-child { margin-bottom: 0; }
@@ -229,8 +230,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .group-text { min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* What went wrong in a run or a summary, after its sentence. */
 .step-bad { color: var(--del); }
-/* Steps in a fold keep their icons, joined by a thin rail in line-2 through the icons' centres. Each item draws the stretch from under its
-   own icon to the top of the next one's, so the rail never crosses an icon and runs down the side of an opened card. */
+/* Steps in a fold keep their icons, indented, with no line joining them. An opened step shows its result nested under it. */
 .run-list, .group-list { display: flex; flex-direction: column; min-width: 0; }
 /* A fold opens and closes by its height. Its list leaves the page once the close has played (ToolGroup). */
 .group-collapse { display: grid; grid-template-rows: 1fr; grid-template-columns: minmax(0, 1fr); }
@@ -248,7 +248,6 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .group-earlier { align-self: flex-start; height: 26px; margin: 4px 0 0 21px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: var(--fs-ui); }
 .group-earlier:hover { color: var(--ink-2); }
 .group-item { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 8px 0; }
-.group-item:not(:last-child)::after { content: ''; position: absolute; left: 7px; top: 29px; bottom: -7px; width: 1px; background: var(--line-2); pointer-events: none; }
 .step-glyph { display: inline-flex; flex-shrink: 0; }
 /* The service's mark in the icon slot, in ink at the row's muted tone, so a row says where it went without a color. */
 .step-mark { display: inline-flex; color: var(--muted); }
@@ -259,7 +258,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .step-cmd { font-size: var(--fs-meta); }
 /* An opened row is one hairline card. Each section has a small muted heading with its Copy in the corner, always shown, then its text capped
    at 260px with a fade where it is cut. Copy raw call sits in the card's footer. Ink and weight only: red and green are for diff lines. */
-.tool-card { border: 1px solid var(--card-line); background: var(--card-bg); border-radius: var(--r-md); overflow: hidden; min-width: 0; }
+.tool-card { border: 0; background: var(--surface); border-radius: var(--r-md); overflow: hidden; min-width: 0; }
 .tool-sec + .tool-sec, .tool-foot { border-top: 1px solid var(--line-2); }
 .tool-head { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 4px 0 12px; }
 .tool-title { font-size: var(--fs-chip); font-weight: var(--fw-medium); color: var(--muted); }
@@ -304,6 +303,10 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .running { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; font: var(--fs-code) var(--mono); color: var(--muted); }
 .interrupted { align-self: flex-start; font: var(--fs-meta) var(--mono); letter-spacing: 0.06em; color: var(--muted); }
 .note { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: var(--r); background: var(--card-bg); color: var(--ink-3); font-size: var(--fs-code); }
+.note-card { border: 1px solid var(--line); }
+.note-card .note-text { display: flex; flex-direction: column; gap: 2px; }
+.note-card .note-title { color: var(--ink-2); }
+.note-card .note-sub { color: var(--ink-3); }
 .note a { color: var(--ink-2); font-weight: var(--fw-medium); white-space: nowrap; }
 /* Kernel's notes in a chat ("PR #42 was merged on GitHub.") read as a quiet line with a hairline after it (KERNEL-274). */
 .note.inline { padding: 2px 0; border-radius: 0; background: transparent; color: var(--muted); }
@@ -335,8 +338,8 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .panel-tools .tool-text { height: 24px; margin-right: 4px; padding: 0 9px; border-radius: var(--r-sm); background: var(--surface); color: var(--ink-2); font-size: var(--fs-meta); font-weight: var(--fw-regular); }
 /* The filter under the strip (PanelFilter.png). The match is lit in the row's name and folder. */
 .ffield { flex-shrink: 0; padding: 0 10px 8px; }
-.finput { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 3px 0 10px; border: 1px solid var(--input-line); border-radius: var(--r); background: var(--input-bg); color: var(--muted); }
-.finput:focus-within { border-color: var(--ink-3); }
+.finput { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 3px 0 10px; border: 1px solid var(--line-3); border-radius: var(--r); background: var(--input-bg); color: var(--muted); }
+.finput:focus-within { border-color: var(--line-3); }
 .finput input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: var(--fs-ui); }
 .finput input::placeholder { color: var(--muted); }
 .hl { border-radius: var(--r-2xs); background: color-mix(in srgb, var(--ink) 16%, transparent); color: inherit; }
@@ -369,7 +372,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .tree-chev svg { transition: transform var(--dur-fast); }
 .tree-chev[data-open] svg { transform: rotate(90deg); }
 .tree-guide { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line-2); pointer-events: none; }
-.tree-guide[data-lit] { background: var(--line-4); }
+.tree-guide[data-lit] { background: var(--line-3); }
 .tree-name { flex: 1; min-width: 0; }
 .tree-name [data-struck], .tree-name[data-struck] { text-decoration: line-through; }
 .tree-counts { display: inline-flex; flex-shrink: 0; gap: 6px; font-size: var(--fs-chip); font-variant-numeric: tabular-nums; }
@@ -383,7 +386,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 /* The Changes ⋯ and its menu (PanelCompare.png, KERNEL-517): 332px under the button, 10px clear of it and level with its right edge, narrower in a panel that is. The ⋯ reads pressed while the menu is open. */
 .panel-tools .icon-btn[aria-expanded='true'] { background: var(--surface-3); color: var(--ink); }
 .compare-anchor { position: relative; display: inline-flex; }
-.compare-menu { top: calc(100% + 10px); right: 0; display: flex; flex-direction: column; width: min(332px, calc(100cqw - 16px)); max-height: min(480px, calc(100vh - 140px)); }
+.compare-menu { top: calc(100% + var(--menu-gap)); right: 0; display: flex; flex-direction: column; width: min(332px, calc(100cqw - 16px)); max-height: min(480px, calc(100vh - 140px)); }
 .compare-menu > * { flex-shrink: 0; }
 .compare-target { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 8px; font-size: var(--fs-ui); }
 .compare-pick { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 200px; height: 24px; padding: 0 6px 0 9px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: var(--surface); color: var(--ink-2); }
@@ -408,8 +411,8 @@ button.msg-chip:hover { border-color: var(--line-4); }
 /* The commits and the branches scroll under the rows that stay put. */
 .compare-commits, .compare-list { display: flex; flex-direction: column; flex-shrink: 1; min-height: 0; overflow-y: auto; }
 .compare-note { margin: 0; padding: 6px 8px; font-size: var(--fs-meta); color: var(--muted); }
-.compare-filter { display: flex; align-items: center; gap: 8px; height: 30px; margin-bottom: 6px; padding: 0 10px; border: 1px solid var(--input-line); border-radius: var(--r); background: var(--input-bg); color: var(--muted); }
-.compare-filter:focus-within { border-color: var(--ink-3); }
+.compare-filter { display: flex; align-items: center; gap: 8px; height: 30px; margin-bottom: 6px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: var(--r); background: var(--input-bg); color: var(--muted); }
+.compare-filter:focus-within { border-color: var(--line-3); }
 .compare-filter input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: var(--fs-ui); }
 .compare-filter input::placeholder { color: var(--muted); }
 
@@ -488,10 +491,10 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .term .xterm-viewport { background-color: transparent !important; }
 .chat-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding-bottom: 12px; text-align: center; }
 .chat-empty h2 { margin: 0; font-size: var(--fs-title-sm); font-weight: var(--fw-semibold); color: var(--ink); letter-spacing: -0.01em; }
-/* New chat is a chat's page without a transcript: the title block takes the space above Up next, Up next sits on the box, and the box is the composer shell, pinned to the bottom edge like a chat's.
-   A long draft grows the box up. The title block gives way first (NewLeadChat hides it), then Up next scrolls. */
+/* New chat is a chat's page without a transcript: the title, the box and Up next stand as one stack, with the box at the page's middle. The box is the composer shell, and a long draft grows it up:
+   the space below it is fixed, so the toolbar stays put, the title block gives way first (NewLeadChat hides it), then Up next scrolls. Once a message is sent the box is pinned to the bottom edge like a chat's. */
 .lead-new { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.lead-top { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; justify-content: center; overflow: hidden; padding: 0 24px; text-align: center; }
+.lead-top { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; padding: 0 24px 24px; text-align: center; }
 .lead-title { flex-shrink: 0; }
 /* The project menu hangs below the title, past the block's edge, so the block lets it out while it is open. */
 .lead-top:has(.lead-project-anchor [aria-expanded='true'], .lead-sub [aria-expanded='true']) { position: relative; overflow: visible; z-index: 2; }
@@ -511,34 +514,36 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .lead-pills { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 12px; }
 .lead-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px 0 12px; border: 1px solid var(--line-3); border-radius: var(--r-pill); background: transparent; color: var(--ink-2); font-size: var(--fs-ui); font-weight: var(--fw-medium); }
 .lead-pill > svg { color: var(--muted); }
-.lead-pill:hover { background: var(--surface-3); border-color: var(--line-4); color: var(--ink); }
-.lead-up { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding: 0 24px 16px; }
-.lead-up .up-next { max-width: 760px; margin: 0 auto; }
-/* Up next: the tracker's issues nobody has started. A quiet header, then one row per issue that fills on hover, with Plan showing at the end. */
-.up-next { width: 100%; max-width: 640px; text-align: left; }
-.up-next-head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 10px 8px; margin-bottom: 4px; border-bottom: 1px solid var(--line-2); }
-.up-next-head h3 { margin: 0; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--muted); }
+.lead-pill:hover { background: var(--surface-3); border-color: var(--line-3); color: var(--ink); }
+.lead-up { flex: 0 0 calc(50% - 61px); min-height: 0; overflow-y: auto; padding: 18px 24px 16px; }
+.lead-up .up-next, .lead-up .up-next-none { max-width: 760px; margin: 0 auto; }
+/* Up next: the tracker's issues nobody has started. A quiet header, then a bordered list with one row per issue and a Plan button at the end of each. */
+.up-next { width: 100%; text-align: left; }
+.up-next-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 8px; }
+.up-next-head h3 { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--muted); }
 /* The rows share one grid, so keys, titles and projects line up across rows. A tracker with no priority drops that column. */
-.up-next ul { display: grid; grid-template-columns: auto auto minmax(0, 1fr) minmax(0, max-content) auto; margin: 0; padding: 0; list-style: none; }
+.up-next ul { display: grid; grid-template-columns: auto auto minmax(0, 1fr) minmax(0, max-content) auto; margin: 0; padding: 0; list-style: none; border: 1px solid var(--line-3); border-radius: var(--r-md); overflow: hidden; }
 .up-next ul.up-next-plain { grid-template-columns: auto minmax(0, 1fr) minmax(0, max-content) auto; }
 .up-next-item { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; }
-.up-next-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; column-gap: 12px; align-items: center; height: 38px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: none; color: var(--ink-2); font: inherit; font-size: var(--fs-ui); text-align: left; cursor: pointer; }
-.up-next-item + .up-next-item { margin-top: 1px; }
+.up-next-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; column-gap: 12px; align-items: center; height: 46px; padding: 0 10px 0 14px; border: 0; background: none; color: var(--ink-2); font: inherit; font-size: var(--fs-ui); text-align: left; cursor: pointer; }
+.up-next-item + .up-next-item { border-top: 1px solid var(--line-2); }
 .up-next-row:hover, .up-next-row:focus-visible { background: var(--surface-3); color: var(--ink); }
 .up-next-row:focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
 .up-next-row > svg { color: var(--ink-3); }
 .up-next-key { font-size: var(--fs-chip); color: var(--muted); }
 .up-next-title { min-width: 0; }
 .up-next-project { max-width: 180px; justify-self: end; font-size: var(--fs-meta); color: var(--muted); }
-.up-next-plan { display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; min-width: 48px; font-size: var(--fs-meta); color: var(--muted); }
-.up-next-plan svg { transition: transform var(--dur-fast) var(--ease-out); }
-.up-next-row:hover .up-next-plan, .up-next-row:focus-visible .up-next-plan { color: var(--ink); }
-.up-next-row:hover .up-next-plan svg, .up-next-row:focus-visible .up-next-plan svg { transform: translateX(2px); }
+.up-next-plan { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: var(--r-sm); font-size: var(--fs-meta); color: var(--ink-2); }
+.up-next-row:hover .up-next-plan, .up-next-row:focus-visible .up-next-plan { color: var(--ink); background: var(--surface-2); }
+/* A project with no tracker: one line in Up next's place that says where to choose one. */
+.up-next-none { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line-3); border-radius: var(--r-md); color: var(--muted); font-size: var(--fs-ui); }
+.up-next-none > svg { flex-shrink: 0; }
+.up-next-none p { flex: 1; min-width: 0; margin: 0; }
 .chat-suggest { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 18px; }
 .chat-suggest button { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r); background: transparent; color: var(--ink-2); font-size: var(--fs-code); }
 .chat-suggest button svg { color: var(--muted); }
 .chat-suggest button:hover { background: var(--surface-3); border-color: var(--line-3); }
-.tab-rename { height: 26px; width: 150px; padding: 0 8px; margin: 0 6px; align-self: center; border: 1px solid var(--input-line); border-radius: var(--r-sm); background: var(--input-bg); color: var(--ink-2); font: inherit; font-size: var(--fs-ui); font-weight: var(--fw-medium); }
+.tab-rename { height: 26px; width: 150px; padding: 0 8px; margin: 0 6px; align-self: center; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: var(--input-bg); color: var(--ink-2); font: inherit; font-size: var(--fs-ui); font-weight: var(--fw-medium); }
 
 /* A narrow chat column: the transcript and composer pull in from the edges (D-080). */
 @container chat (max-width: 520px) {
@@ -552,13 +557,9 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .mode-divider { display: flex; align-items: center; gap: 8px; padding: 6px 0; color: var(--muted); font-size: var(--fs-meta); }
 .mode-divider::before, .mode-divider::after { content: ''; flex: 1; height: 1px; background: var(--card-line); }
 .mode-divider > svg { flex: none; }
-.mode-suggest { display: flex; padding: 2px 0 4px; }
+.mode-suggest { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 2px 0 4px; }
+.mode-suggest-why { margin: 0; color: var(--ink-3); font-size: var(--fs-code); }
 /* A check that stops agents, with its fix, above New chat's box (KERNEL-942). No box of its own: one quiet line. */
-.lead-ready { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 4px 0 14px; margin-bottom: 8px; color: var(--ink-2); }
-.lead-ready > svg { flex-shrink: 0; color: var(--ink); }
-.lead-ready-text { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
-.lead-ready-title { font-weight: var(--fw-medium); color: var(--ink); white-space: nowrap; }
-.lead-ready-detail { min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* What used to be inline styles (KERNEL-929). */
 .tab-new { position: relative; align-self: center; margin-left: 4px; }
@@ -574,6 +575,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .lead-top[data-setup] { justify-content: flex-start; text-align: left; padding-top: 24px; overflow-y: auto; }
 .su-rows { width: 100%; max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 4px; }
 .su-banner { margin: 0 0 10px; padding: 13px 16px; border-radius: var(--r); background: var(--surface-2); color: var(--ink); font-size: var(--fs-chat); }
+.su-shared { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; color: var(--ink-3); font-size: var(--fs-code); }
 .su-banner code { font: var(--fs-ui) var(--mono); }
 .su-row { display: flex; align-items: center; gap: 12px; min-height: 34px; font-size: var(--fs-chat); color: var(--ink-2); }
 .su-row[data-state='run'] { color: var(--muted); }
@@ -585,7 +587,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .su-out:hover { color: var(--ink); }
 button.su-link { border: 0; background: transparent; padding: 0; text-align: left; color: var(--muted); align-self: flex-start; }
 button.su-link:hover { color: var(--ink); }
-button.su-link:hover .su-link-text { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-4); }
+button.su-link:hover .su-link-text { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-3); }
 /* A chat's worktree and setup script, as rows above its first message (KERNEL-951). Same rows as project setup. */
 .su-rows.su-chat { margin-bottom: 18px; flex-shrink: 0; }
 .su-rows code { font: var(--fs-ui) var(--mono); color: var(--ink); }
@@ -606,3 +608,27 @@ button.su-link:hover .su-link-text { text-decoration: underline; text-underline-
 .md-file:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .code-line[data-hit] { background: var(--surface-3); }
 .code-line[data-hit] .ln { color: var(--ink-2); }
+
+/* Project setup as one line under the box (KERNEL-1089): the project, the step, n of m, Details, and a 2px track. */
+.su-line { display: flex; flex-direction: column; gap: 8px; padding: 0 6px; font-size: var(--fs-meta); color: var(--muted); }
+.su-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.su-lead { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.su-name { color: var(--ink); }
+.su-step { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.su-n { font-variant-numeric: tabular-nums; }
+.su-sep { color: var(--ink-3); }
+.su-more { position: relative; display: inline-flex; align-items: center; gap: 8px; }
+.su-details { border: 0; background: transparent; padding: 0; font: inherit; color: var(--ink-2); cursor: pointer; text-decoration: underline; text-decoration-color: var(--line-3); text-underline-offset: 3px; }
+.su-details:hover { color: var(--ink); }
+.su-track { height: 2px; border-radius: 1px; background: var(--line-3); overflow: hidden; }
+.su-fill { display: block; height: 100%; background: var(--ink); transition: width var(--dur, 200ms) ease; }
+.su-pop { width: 300px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; border-color: var(--line-3); }
+.su-pop-head { display: flex; align-items: baseline; justify-content: space-between; }
+.su-pop-title { color: var(--ink); font-weight: var(--fw-medium); }
+.su-pop-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.su-pop-row { display: flex; align-items: center; gap: 10px; color: var(--ink-2); }
+.su-pop-row[data-state='wait'] { color: var(--muted); }
+.su-pop-ico { width: 14px; display: inline-flex; justify-content: center; flex-shrink: 0; }
+.su-pop-text { flex: 1; min-width: 0; }
+.su-pop-meta { color: var(--muted); font-variant-numeric: tabular-nums; }
+.su-team { display: flex; align-items: center; gap: 8px; margin: 0; }

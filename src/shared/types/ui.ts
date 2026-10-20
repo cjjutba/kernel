@@ -9,7 +9,7 @@ import type { LeadMode, WorkspaceMode, WorkspaceSource } from './workspaces'
  * `loading` is LoadingApp.png: the app shell while the main process boots or reconnects. `splash` is the wordmark a fresh install
  * sees before New chat (KERNEL-942). The checks run behind it and show inside the app, so there is no checks or permissions step.
  */
-export type OnboardingStep = 'splash' | 'project' | 'loading'
+export type OnboardingStep = 'splash' | 'project' | 'loading' | 'checks' | 'accounts' | 'team' | 'loop'
 
 /** Where the renderer is. Lives here so fixtures can open any screen. One entry per screen family. */
 export type DevUiPage = 'components' | 'display' | 'states' | 'overlays' | 'dialogs'
@@ -114,6 +114,8 @@ export type MenuId =
   | 'plus' | 'model' | 'effort' | 'mode' | 'mention' | 'slash' | 'linkIssue' | 'linkPr' | 'linkWorkspaces'
   | 'branch' | 'from' | 'settingsFiles' | 'projectIcon' | 'projectMode' | 'preview'
   | 'projectTracker' | 'help'
+  /** Your team's menus, which a fixture opens so a shot can show them (KERNEL-1088). The app never sets them. */
+  | 'obReviewer' | 'obMode' | 'obModel' | 'obAllowed' | 'obDenied'
 
 /** Failure banners (DESIGN.md Patterns). The banner component reads the facts it shows from the store. */
 export type BannerKind = 'limit' | 'context' | 'offline' | 'auth' | 'setup' | 'hooks' | 'retry'
@@ -125,13 +127,19 @@ export interface Banner {
   chatId?: string
 }
 
-/** Bottom-right toast, auto-dismissed after 5s (WorkspaceToast.png). */
+/** What pressing a toast's button does. `href` opens in the browser. `tab` opens that tab of the workspace in the app (KERNEL-311: Open chat after a comment is sent). `route` goes to that screen (KERNEL-627). `modal` opens it (KERNEL-661). `switchAccount` switches that provider to that account, as Undo does after a switch (KERNEL-699). `primary` draws it filled, for the action that fixes what went wrong (Try again). */
+export interface ToastAction { label: string; href?: string; tab?: { workspaceId: string; id: string }; route?: Route; modal?: Exclude<Modal, null>; switchAccount?: { provider: Provider; accountId: string }; /** Copies this text, such as the command that fixes a setup problem (KERNEL-1088). */ copy?: string; /** Runs the setup checks again (KERNEL-1088). */ recheck?: true; /** Runs a project's setup again, for a step that could not finish (KERNEL-1089). */ retrySetup?: string; /** Opens New chat's project menu, or Add a project when there is none (KERNEL-1090). */ pickProject?: true; /** Checks again whether git can push from a project's checkout, and updates its Check push access step (KERNEL-1089). */ recheckPush?: string; /** Applies that check's one-click fix, such as moving the hook server to the next port, then checks again. */ fix?: 'shell' | 'claude' | 'auth' | 'git' | 'gh' | 'hooks' | 'codex'; primary?: boolean }
+
+/** Bottom-right toast, auto-dismissed after 5s (Pen 18.1 and 18.3). */
 export interface Toast {
   id: string
   title: string
   sub?: string
-  /** `href` opens in the browser. `tab` opens that tab of the workspace in the app (KERNEL-311: Open chat after a comment is sent). `route` goes to that screen (KERNEL-627). `modal` opens it (KERNEL-661). `switchAccount` switches that provider to that account, as Undo does after a switch (KERNEL-699). */
-  action?: { label: string; href?: string; tab?: { workspaceId: string; id: string }; route?: Route; modal?: Exclude<Modal, null>; switchAccount?: { provider: Provider; accountId: string } }
+  /** The icon in front of the title (KERNEL-1109): `error` for a call that failed, `merged` for a PR that landed, `done` for the rest. Left out, it is `error` when the title starts "Could not" or "Couldn't", `done` otherwise. */
+  glyph?: 'done' | 'error' | 'merged'
+  action?: ToastAction
+  /** A second, quieter button that sits before `action` (Open Scripts beside Try again). */
+  other?: ToastAction
 }
 
 /** The three ways a turn's folds behave. */

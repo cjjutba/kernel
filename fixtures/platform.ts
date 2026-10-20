@@ -26,7 +26,17 @@ const failing = (failed: PreflightCheck) => allOk.map((c) => (c.id === failed.id
 /** Every check passing, the one at `id` with more to say (KERNEL-437). */
 const passing = (row: PreflightCheck) => allOk.map((c) => (c.id === row.id ? row : c))
 
-const setup = (checks: PreflightCheck[]) => scene(() => ({ ...empty, preflight: checks, ui: onboarding }))
+// A launch after setup is done: the failing check is a toast on New chat, and nothing stops the app (KERNEL-1088).
+const setup = (checks: PreflightCheck[]) => scene(() => ({ ...empty, preflight: checks, settings: setupDone(), ui: onboarding }))
+
+// First run (KERNEL-1088): the four steps, with the checks the first one lists.
+const gitOk: PreflightCheck = { id: 'git', ok: true, blocking: true, title: 'Git', detail: 'Found on your PATH', meta: 'git 2.45' }
+const codexOff: PreflightCheck = { id: 'codex', ok: false, blocking: false, title: 'Codex', detail: 'Not set up' }
+const stepChecks = (...over: PreflightCheck[]) => [claudeOk, gitOk, authOk, ghOk, hooksOk, codexOff].map((c) => over.find((o) => o.id === c.id) ?? c)
+/** Your team as the Pen draws it: Teng left out, Artkin reviews on Opus. */
+const teamSettings = (() => { const d = DEFAULT_SETTINGS('/Users/you'); return { ...d, models: { ...d.models, roles: { ...d.models.roles, reviewer: { ...d.models.roles.reviewer, claude: { model: 'claude-opus-5-5', effort: 'high' as const } } } }, onboarding: { done: false, out: ['teng'], reviewer: 'artkin' } } })()
+const firstRun = (step: 'checks' | 'accounts' | 'team' | 'loop', extra: Partial<Fixture> = {}, menu?: 'obReviewer' | 'obMode' | 'obModel' | 'obAllowed' | 'obDenied') =>
+  scene(() => ({ ...empty, preflight: stepChecks(), telemetry: { canSend: true }, ...extra, ui: { route: { name: 'onboarding', step }, ...(menu ? { menu } : {}) } }))
 
 /** Six running sessions, the count the canvas shows: the seed's chats, topped up with copies. */
 const sixRunning = (f: Fixture) => {
@@ -350,6 +360,8 @@ const sixAgents: AgentDef[] = [
   agentFile('artkin', 'Artkin', 'Reviewer', 'Types, security, tenancy'), agentFile('wren', 'Wren', 'Designer', 'Joined today')
 ]
 /** The agents Settings, Models lists under each row: Frontend and Backend in two projects, one pinned to a model, one with a custom role. */
+/** Settings once onboarding is finished, so a failing check shows as a toast instead of the first-run steps (KERNEL-1088). */
+function setupDone(): AppSettings { const d = DEFAULT_SETTINGS('/Users/you'); return { ...d, onboarding: { ...d.onboarding, done: true } } }
 const modelsPage = () => settingsPage('models', { agents: modelsAgents(), status: {}, settings: withRoles({ frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' } }), models: { codex: codexModels } })
 const modelsAgents = (): Fixture['agents'] => {
   const christian = agentFile('christian', 'Christian', 'Frontend', 'UI work, follows DESIGN.md')
@@ -532,6 +544,9 @@ export const platformFixtures: Record<string, Fixture> = {
   // No agent follows the QA row, but Teng pins its own model, so the count still opens and lists only that agent.
   SettingsModelsAgentsNone: settingsPage('models', { agents: { ...modelsAgents(), [ids.projectA]: [...modelsAgents()[ids.projectA], agentFile('teng', 'Teng', 'QA', 'Runs tests, attaches output')] }, status: {}, settings: withRoles({ frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' } }), models: { codex: codexModels } }),
   SettingsModelsPickerEffort: modelsPage(),
+  // KERNEL-1116: the five-step track on a Codex model (Pen 8.3, 8.11), and a Claude role's picker with Codex open (Pen 15.34).
+  SettingsModelsPickerEffortCodex: modelsPage(),
+  SettingsModelsPickerBoth: modelsPage(),
   SettingsModelsPickerCompact: modelsPage(),
   SettingsModelsPickerCodexRole: modelsPage(),
   SettingsModelsNarrow: largeModels(),
@@ -779,6 +794,7 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-641: a personal agent's editor, opened from Settings, Agents: Back says Agents, and there is no status, workspace or recent work.
   SettingsAgentEdit: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'ops' } } })),
   // KERNEL-641: a plugin's agent read only: the fields are disabled, the line names the plugin, and there is no Save changes or Retire.
+  SettingsAgentEditPicker: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'ops' } } })),
   SettingsAgentPlugin: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'vercel:deployment-expert' } } })),
   // KERNEL-557: Client A's `[review]` as the canvas draws it (KERNEL-594: and its always-review paths). The code review runs as Kernel, so the project has no agent that reviews. Security runs as Artkin, and the UX review as Wren, which is optional.
   SettingsProjectPrs: scene((f) => ({
@@ -909,12 +925,12 @@ export const platformFixtures: Record<string, Fixture> = {
     return { ...project, projectSettings: { [ids.projectA]: { ...rs, references: ['/Users/you/Projects/client-a-api', '/Users/you/Projects/design-system'], missingReferences: ['/Users/you/Projects/design-system'] } } }
   }),
   DevUi: { ...gallery('components'), motion: { action: { hold: 'Deny' }, ms: 400, area: '.devui-row' } },
-  DevUiDisplay: gallery('display'),
+  DevUiDisplay: { ...gallery('display'), motion: { action: { press: [] }, ms: 800, area: '.devui-row' } },
   DevUiStates: gallery('states'),
   DevUiOverlays: gallery('overlays'),
   DevUiDialogs: gallery('dialogs'),
-  // KERNEL-942: the wordmark a fresh install sees before New chat.
-  Splash: scene(() => ({ ...empty, ui: { route: { name: 'onboarding', step: 'splash' } } })),
+  // KERNEL-1088: the K mark. The settings save that follows it is held, as the shot's finished animation would open New chat otherwise.
+  Splash: { ...scene(() => ({ ...empty, settings: setupDone(), ui: { route: { name: 'onboarding', step: 'splash' } } })), hold: ['settings.set'] },
   // KERNEL-217: boot failed. The Loading layout with the error and Try again. No PNG.
   LoadingError: scene(() => ({ ...empty, ui: { route: { name: 'onboarding', step: 'loading' }, startError: 'Could not read the Kernel database. Quit Kernel and open it again.' } })),
   LoadingApp: scene((f) => ({ ...sixRunning(f), ui: { route: { name: 'onboarding', step: 'loading' } } })),
@@ -942,6 +958,27 @@ export const platformFixtures: Record<string, Fixture> = {
   SetupGhToken: setup(passing({ ...ghOk, detail: 'Signed in as cjjutba-bot, from `GH_TOKEN` in your shell', note: 'Kernel passes it on because gh has no stored login.' })),
   SetupShellTimeout: setup([{ id: 'shell', ok: false, blocking: false, title: 'Reading your shell timed out', detail: 'Kernel reads PATH and proxy settings from your login shell and gave up after 10 seconds. Tools from nvm, or a proxy set in `.zshrc`, may be missing until it can.', note: 'Look in `.zshrc` for a slow command, or one that waits for an answer, like an update prompt.', fix: { action: 'recheck' } }, ...allOk]),
   SetupBedrock: setup(passing({ id: 'auth', ok: true, blocking: true, title: 'Using Bedrock from your shell', detail: 'Agents bill your AWS account. No Claude sign-in needed.', note: '`CLAUDE_CODE_USE_BEDROCK` is set in your shell.', meta: 'us-east-1' })),
+  // KERNEL-1088: the four first-run steps. Each state of the 1.12 sheet is one fixture, named as the sheet names it.
+  OnboardingChecks: firstRun('checks'),
+  OnboardingChecksRunning: firstRun('checks', { hold: ['preflight.run'] }),
+  ChecksRequiredFailed: firstRun('checks', { preflight: stepChecks({ id: 'claude', ok: false, blocking: true, title: 'Claude Code not found', detail: 'Kernel runs agents with its own copy. Install Claude Code to sign in from Terminal.', fix: { command: 'curl -fsSL https://claude.ai/install.sh | bash' } }) }),
+  ChecksOptionalMissing: firstRun('checks', { preflight: stepChecks({ id: 'gh', ok: false, blocking: false, title: 'GitHub CLI is not installed', detail: 'Kernel uses gh to open and merge pull requests. Everything else works without it.', fix: { command: 'brew install gh' } }) }),
+  ChecksPortTaken: firstRun('checks', { preflight: stepChecks({ id: 'hooks', ok: false, blocking: true, title: 'Port 7420 is taken', detail: 'Another app is using it. Kernel can listen on 7421 and update your hooks.', fix: { action: 'use-next-port' } }) }),
+  OnboardingAccounts: firstRun('accounts', { accounts: [claudeAccounts[0]!] }),
+  ClaudeSignedOut: firstRun('accounts', { accounts: [], preflight: stepChecks({ id: 'auth', ok: false, blocking: true, title: 'Not signed in to Claude', detail: 'Agents run on your own Claude plan.', fix: { command: 'claude auth login' } }) }),
+  ClaudeBedrock: firstRun('accounts', { accounts: [], preflight: stepChecks({ id: 'auth', ok: true, blocking: true, title: 'Using Bedrock from your shell', detail: 'Agents bill your AWS account. No Claude sign-in needed.', note: '`CLAUDE_CODE_USE_BEDROCK` is set in your shell.', meta: 'us-east-1' }) }),
+  SecondAccount: firstRun('accounts', { accounts: claudeAccounts }),
+  OnboardingTeam: firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels }, settings: teamSettings }),
+  OnboardingTeamModel: firstRun('team', { accounts: [claudeAccounts[0]!, ...codexAccounts], models: { codex: codexModels }, settings: teamSettings }, 'obModel'),
+  CodexUnavailable: firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels }, settings: withRoles({ qa: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }) }),
+  ReviewerMenu: firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels }, settings: teamSettings }, 'obReviewer'),
+  PermissionMenu: firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels }, settings: teamSettings }, 'obMode'),
+  OnboardingNewAgent: ({ ...firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels } }), ui: { route: { name: 'onboarding', step: 'team' }, modal: { name: 'newAgent', step: 'describe', prefill: { name: 'Wren', model: 'sonnet' } } } }),
+  OnboardingLoop: firstRun('loop'),
+  UsageUnpicked: firstRun('loop', {}, 'obAllowed'),
+  NotificationsAllowed: firstRun('loop', {}, 'obAllowed'),
+  NotificationsDenied: firstRun('loop', {}, 'obDenied'),
+  SettingsRunOnboarding: settingsPage('general'),
   // KERNEL-28: failure banners. Each one is the state main would push: usage, account, network, retry, setup, hooks.
   WorkspaceSessionLimit: scene(() => ({ usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }], ui: open })),
   // KERNEL-406: Christian on Claude hit its 5-hour limit while Codex runs other roles, and a second Claude account has headroom.
@@ -1083,14 +1120,14 @@ export const platformFixtures: Record<string, Fixture> = {
   // The home screen while an update downloads or fails: a quiet footer line.
   AuditHomeUpdateDownloading: { ...teamFixtures.UpdateReady, update: { status: 'downloading', current: '0.1.0', version: '0.2.0', progress: 42 } },
   AuditHomeUpdateError: { ...teamFixtures.UpdateReady, update: { status: 'error', current: '0.1.0', error: 'net::ERR_INTERNET_DISCONNECTED' } },
-  // Toasts: three at once, and one with a long title and sub, over Home.
-  AuditToastsStacked: { ...teamFixtures.UpdateReady, ui: { ...teamFixtures.UpdateReady.ui, toasts: [
-    { id: 't1', title: 'Archived Invoice table', sub: 'Its branch was kept.', action: { label: 'Undo', route: { name: 'inbox' } } },
-    { id: 't2', title: 'Could not save the setting' },
-    { id: 't3', title: 'Switched Claude Code to Work', action: { label: 'Undo', switchAccount: { provider: 'claude', accountId: 'cli' } } }
+  // Toasts: three at once (merged, failed with a second action, plain), and one with a long title and sub, over a workspace.
+  ToastsStacked: { ...workspaceFixtures.WorkspaceTurnRunning, ui: { ...workspaceFixtures.WorkspaceTurnRunning.ui, toasts: [
+    { id: 't1', glyph: 'merged', title: 'PR #1151 merged', sub: 'Squashed into main', action: { label: 'View', href: 'https://github.com/kernel/kernel/pull/1151' } },
+    { id: 't2', glyph: 'error', title: "Couldn't push to origin", sub: 'The remote rejected the push.', action: { label: 'Try again', primary: true, route: { name: 'inbox' } } },
+    { id: 't3', title: 'Copied' }
   ] } },
-  AuditToastLong: { ...teamFixtures.UpdateReady, ui: { ...teamFixtures.UpdateReady.ui, toasts: [
-    { id: 'long', title: 'Could not archive the Client portal login workspace because its worktree has uncommitted changes in 14 files', sub: 'Commit or discard them in the Changes tab, then try again. The folder is /Users/you/kernel/worktrees/client-portal/feat-login-with-a-very-long-branch-name-that-keeps-going', action: { label: 'Open workspace', route: { name: 'workspace', workspaceId: ids.table } } }
+  ToastLong: { ...workspaceFixtures.WorkspaceTurnRunning, ui: { ...workspaceFixtures.WorkspaceTurnRunning.ui, toasts: [
+    { id: 'long', glyph: 'error', title: "Couldn't start the dev server for kernel-232a-clean-account", sub: 'The port 4300 is already in use by another process. Stop it, then try again.', other: { label: 'Open Scripts', route: { name: 'inbox' } }, action: { label: 'Try again', primary: true, route: { name: 'inbox' } } }
   ] } },
   // A turn running and a toast up, and Settings with a toast up: Escape goes to the open thing first, the screen next, the toast last (KERNEL-878).
   AuditEscapeTurnToast: { ...workspaceFixtures.WorkspaceTurnRunning, ui: { ...workspaceFixtures.WorkspaceTurnRunning.ui, toasts: [{ id: 'esc', title: 'Could not save the setting' }] } },

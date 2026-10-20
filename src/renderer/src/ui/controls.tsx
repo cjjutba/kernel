@@ -14,12 +14,12 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   busy?: boolean
   /** What it says while busy, such as "Archiving". Without one it keeps its label. */
   busyLabel?: ReactNode
-  /** The dot loader's pattern while busy. It matches the action (DESIGN.md, Busy buttons) and defaults to `ripple-out`. */
+  /** The dot loader's pattern while busy. It matches the action (DESIGN.md, Busy buttons) and defaults to `ripple`. */
   busyPattern?: SpinnerPattern
 }
 
 /** Primary is ink on canvas. Danger is red and belongs on the final confirm button only. Merged is purple, for merged PRs only. */
-export function Button({ variant = 'secondary', size = 'md', icon, busy, busyLabel, busyPattern = 'ripple-out', disabled, className, children, type = 'button', ...rest }: ButtonProps) {
+export function Button({ variant = 'secondary', size = 'md', icon, busy, busyLabel, busyPattern = 'ripple', disabled, className, children, type = 'button', ...rest }: ButtonProps) {
   const cls = ['btn', variant !== 'secondary' && variant, size !== 'md' && size, className].filter(Boolean).join(' ')
   return (
     <button type={type} className={cls} disabled={disabled || busy} aria-busy={busy || undefined} {...rest}>
@@ -31,7 +31,7 @@ export function Button({ variant = 'secondary', size = 'md', icon, busy, busyLab
 
 /** `label` is required: it is the accessible name and the tooltip. `busy` swaps the icon for a spinner and the label for `busyLabel`.
  *  `size` is the icon. `box` is the button: 28px by default, md 26px, sm 24px and xs 22px for toolbars and dense rows. */
-export function IconButton({ icon, label, size = 16, box, busy, busyLabel, busyPattern = 'ripple-out', disabled, className, type = 'button', ...rest }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label'> & { icon: IconName; label: string; size?: IconSize; box?: 'xs' | 'sm' | 'md'; busy?: boolean; busyLabel?: string; busyPattern?: SpinnerPattern }) {
+export function IconButton({ icon, label, size = 16, box, busy, busyLabel, busyPattern = 'ripple', disabled, className, type = 'button', ...rest }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label'> & { icon: IconName; label: string; size?: IconSize; box?: 'xs' | 'sm' | 'md'; busy?: boolean; busyLabel?: string; busyPattern?: SpinnerPattern }) {
   return (
     <button type={type} className={['icon-btn', box, className].filter(Boolean).join(' ')} aria-label={busy && busyLabel ? busyLabel : label} disabled={disabled || busy} aria-busy={busy || undefined} {...rest}>
       {busy ? <Spinner label={null} pattern={busyPattern} /> : <Icon name={icon} size={size} />}
@@ -86,7 +86,7 @@ export function Toggle({ checked, onChange, label, disabled }: { checked: boolea
  * One choice of a few (Theme: Dark, Light, System). Arrow keys move and select, like a radio group. `busy` puts the spinner arc before an option's
  * label, for a script that is running. Every option is the same width, so none looks like the default (KERNEL-680).
  */
-export function SegmentedControl({ options, value, onChange, label, busyPattern = 'ripple-out' }: { options: { value: string; label: string; busy?: boolean }[]; value: string; onChange: (v: string) => void; label: string; busyPattern?: SpinnerPattern }) {
+export function SegmentedControl({ options, value, onChange, label, busyPattern = 'ripple' }: { options: { value: string; label: string; busy?: boolean }[]; value: string; onChange: (v: string) => void; label: string; busyPattern?: SpinnerPattern }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const onKey = (e: KeyboardEvent, i: number) => {
     const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0

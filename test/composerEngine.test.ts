@@ -222,7 +222,7 @@ describe('permission mode from the composer', () => {
 
   it('dims Auto on a Codex agent and checks the pick', () => {
     const rows = modeRows(shownMode(false, { mode: 'acceptEdits', picked: 'acceptEdits', pickedIn: 'chat' }, 'default'), 'codex', claude)
-    expect(rows[3]).toMatchObject({ mode: 'auto', desc: 'Auto isn’t available for Codex agents yet', off: true, checked: false })
+    expect(rows[3]).toMatchObject({ mode: 'auto', desc: 'Auto isn’t available for Codex agents yet. They use Accept edits instead.', off: true, checked: false })
     expect(rows[1]).toMatchObject({ mode: 'acceptEdits', desc: 'Edits files without asking', checked: true })
   })
 
