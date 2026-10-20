@@ -46,7 +46,7 @@ export function WorktreeWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
           </div>
         ))}
         {queue.length > 0 && going(queue[0]) && !ws.worktreePending?.error && <TurnLine since={Math.min(queue[0].ts, sentAt(queue[0].id) ?? Infinity)} waiting={false} />}
-        <CopyFailedRow ws={ws} />
+        {ws.worktreePending?.fromShared && <CopyFailedRow ws={ws} />}
       </div>
     </div>
   )
