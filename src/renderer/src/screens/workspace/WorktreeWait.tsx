@@ -52,7 +52,7 @@ export function WorktreeWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
             )}
           </div>
         ))}
-        {queue.length > 0 && going(queue[0]) && !ws.worktreePending?.error && <TurnLine since={Math.min(queue[0].ts, sentAt(queue[0].id) ?? Infinity)} waiting={false} note={ws.worktreePending ? 'Creating the worktree' : undefined} />}
+        {queue.length > 0 && going(queue[0]) && !ws.worktreePending?.error && <TurnLine since={Math.min(queue[0].ts, sentAt(queue[0].id) ?? Infinity)} note={ws.worktreePending ? 'Creating the worktree' : undefined} />}
       </div>
     </div>
   )

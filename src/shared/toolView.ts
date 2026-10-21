@@ -243,7 +243,7 @@ function builtIn(name: string, i: Record<string, unknown>, ctx: ToolCtx, stored?
     case 'Skill': return { ...say('use', 'Using', 'Used', ' skill'), object: str(i.skill) ?? str(i.name) }
     case 'ExitPlanMode': return say('finish', 'Finishing', 'Finished', ' the plan')
     case 'EnterPlanMode': return say('start', 'Starting', 'Started', ' a plan')
-    case 'AskUserQuestion': return say('ask', 'Asking', 'Asked', ' a question')
+    case 'AskUserQuestion': { const q = Array.isArray(i.questions) && i.questions[0] && typeof i.questions[0] === 'object' ? str((i.questions[0] as Record<string, unknown>).question) : undefined; return { ...say('ask', 'Asking', 'Asked', ' a question'), object: q } }
     case 'BashOutput': case 'TaskOutput': return say('read', 'Reading', 'Read', ' command output')
     case 'KillShell': case 'TaskStop': return say('stop', 'Stopping', 'Stopped', ' a command')
     case 'Monitor': return { ...say('watch', 'Watching', 'Watched', ' a command'), object: str(i.description) }

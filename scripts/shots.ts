@@ -57,7 +57,7 @@ async function hoverPreview(page: Page, target: ReturnType<Page['locator']>) {
 
 // A Read image row clicked: the first one loads and opens its image in a tab, the one for the deleted file opens to its path (KERNEL-671).
 async function clickReadImage(page: Page, name: string) {
-  await page.locator('.trow-btn', { hasText: 'Read image' }).filter({ hasText: name }).first().click()
+  await page.locator('.trow-btn', { hasText: name }).first().click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(400)
 }
@@ -801,11 +801,11 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   AuditQuestionAnswerMotion: async (page) => { await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click({ force: true }); await page.locator('.tcard').getByRole('button', { name: 'Send', exact: true }).focus() },
   AuditRailJumpMotion: async (page) => { await page.getByRole('button', { name: 'Jump to message' }).focus() },
   AuditRailJumpSendMotion: async (page) => { await page.getByRole('button', { name: 'Jump to message' }).focus() },
-  AuditGroupCollapseMotion: async (page) => { await page.locator('.group-btn').first().focus() },
-  AuditGroupOpenMotion: async (page) => { await page.waitForTimeout(800); await page.locator('.group-btn').first().focus() },
+  AuditGroupCollapseMotion: async (page) => { await page.locator('.fold-head').first().focus() },
+  AuditGroupOpenMotion: async (page) => { await page.waitForTimeout(800); await page.locator('.fold-head').first().focus() },
   WorkspacePlanApproveDraft: askApprove,
-  WorkspaceLeadStepOpen: async (page) => { await page.locator('.group-btn').first().click(); await page.locator('.group-item .trow-btn:not(:disabled)').first().click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
-  WorkspaceLeadStepsOpen: async (page) => { for (const g of await page.locator('.group-btn').all()) await g.click(); await openEveryRow(page) },
+  WorkspaceLeadStepOpen: async (page) => { await page.locator('.fold-head').first().click(); await page.locator('.step .trow-btn:not(:disabled)').first().click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
+  WorkspaceLeadStepsOpen: async (page) => { for (const g of await page.locator('.fold-head').all()) await g.click(); await openEveryRow(page) },
   WorkspaceQuestionSteps: stepToSecondQuestion,
   WorkspaceQuestionOther: typeOtherAnswer,
   LeadOpenItemsOpen: async (page) => { await page.getByRole('button', { name: /3 open/ }).click(); await page.waitForTimeout(200) },
@@ -834,7 +834,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   // KERNEL-1068: the breakdown opened from the keyboard, over the rows after the plan card.
   WorkspacePlanFinishedFollowed: async (page) => { await page.locator('.plan-attn-n').focus(); await page.waitForTimeout(300) },
   WorkspacePlanFinishedLong: async (page) => { await page.locator('.plan-attn-n').focus(); await page.waitForTimeout(300) },
-  WorkspaceReadImagePreview: (page) => hoverPreview(page, page.locator('.trow-btn', { hasText: 'Read image' })),
+  WorkspaceReadImagePreview: (page) => hoverPreview(page, page.locator('.trow-btn', { hasText: 'image.png' })),
   WorkspacePasteImagePreview: (page) => hoverPreview(page, page.getByRole('button', { name: 'Open image.png' })),
   WorkspacePasteTextPreview: (page) => hoverPreview(page, page.getByRole('button', { name: 'Open pasted_text_1.txt' })),
   WorkspaceIssuePreview: (page) => hoverPreview(page, page.getByRole('button', { name: /^Open issue T-17/ })),

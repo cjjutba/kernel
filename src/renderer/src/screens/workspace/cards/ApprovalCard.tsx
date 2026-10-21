@@ -12,8 +12,7 @@ import { decideAtOnce, useFoldPhase } from './decideFold'
 import { decideInChat } from './optimisticAnswer'
 import { Criteria, PlanInline, PlanTasks, planCopyText, stepLine } from './plan'
 import { AnswerBubble } from './AnswerBubble'
-import { answerItemId } from '@shared/approvalAnswer'
-import { questionAnswer } from '@shared/approvalAnswer'
+import { answerItemId, answeredList, questionAnswer } from '@shared/approvalAnswer'
 import { activeRow, rowStep } from './questionRows'
 import { allAnswered, answerDecision, emptyPick, isPlanApproval, isStepList, nextUnanswered, outcome, isPermission, permissionQueue, permissionTitle, pickReady, queueTitle, planSteps, planText, type Picked } from './steps'
 import './cards.css'
@@ -51,7 +50,9 @@ function PermCard({ a, who, queue }: { a: Approval; who: string; queue?: PermQue
   const input = (a.input ?? {}) as Record<string, unknown>
   const bash = a.toolName === 'Bash'
   const path = String(input.file_path ?? input.path ?? '')
-  const title = queue ? queueTitle(queue.items, who) : permissionTitle(a, who)
+  const decided = a.status !== 'pending'
+  // Once it is decided the card says what was asked in the past tense, and what you did.
+  const title = queue ? queueTitle(queue.items, who) : decided ? permissionTitle(a, who).replace(' wants to ', ' wanted to ') : permissionTitle(a, who)
   const code = bash ? `$ ${String(input.command ?? '')}` : path || (a.input ? JSON.stringify(a.input, null, 2) : '')
   return (
     <section aria-label={title} className="card tcard">
@@ -59,12 +60,13 @@ function PermCard({ a, who, queue }: { a: Approval; who: string; queue?: PermQue
       <div className="tc-body">
         {a.detail && <span className="sub">{a.detail}</span>}
         {code && <div className="code">{!bash && path ? <FileLabel path={path} /> : code}</div>}
-        {a.reason && <p className="reason"><Icon name="info" size={12} />{a.reason}</p>}
-        {a.status !== 'pending' && phase !== 'folding' && <Result a={a} />}
+        {a.reason && !decided && <p className="reason"><Icon name="info" size={12} />{a.reason}</p>}
+        {decided && phase !== 'folding' && <span className="done-line">{a.status === 'allowed' ? 'You allowed it' : a.status === 'denied' ? 'You denied it' : outcome(a)}</span>}
       </div>
       {phase === 'folded' && a.status === 'pending' ? null : (a.status === 'pending' || phase === 'folding') && (
         <div className={`tc-foot${phase ? ' decide-fold' : ''}`}>
           <Button onClick={() => decideAtOnce(a, { behavior: 'deny', message: 'Denied in Kernel.' })}>Deny</Button>
+          <span className="grow" />
           <Button onClick={() => decideAtOnce(a, { behavior: 'allow', always: true })}>Always allow here</Button>
           <Button variant="primary" aria-keyshortcuts="Meta+Enter" onClick={() => decideAtOnce(a, { behavior: 'allow' })}>Allow once<span className="tc-kbd" aria-hidden="true">⌘↵</span></Button>
         </div>
@@ -114,8 +116,11 @@ function AnswerRow({ mark, value, disabled, onChange, onEnter, onEscape }: { mar
   )
 }
 
-/** One question that is no longer waiting: what was asked. Your answer is the bubble under it; a question that ended unanswered says how. */
-function AnsweredQuestion({ a, who, answered }: { a: Approval; who: string; answered: boolean }) {
+/**
+ * One question that is no longer waiting: what was asked. Your answer is a bubble inside the card, or, when the chat holds it as its own message, the bubble under it
+ * (`answer` is the text for the first and nothing for the second). A question that ended unanswered says how.
+ */
+function AnsweredQuestion({ a, who, answered, answer }: { a: Approval; who: string; answered: boolean; answer?: string }) {
   const title = `${who} has a question`
   return (
     <section aria-label={title} className="card tcard">
@@ -123,25 +128,26 @@ function AnsweredQuestion({ a, who, answered }: { a: Approval; who: string; answ
       <div className="tc-body">
         <span className="sub">{a.title}</span>
         {!answered && <Result a={a} />}
+        {answer && <AnswerBubble text={answer} />}
       </div>
     </section>
   )
 }
 
-/** Several questions that are no longer waiting, as asked. Your answers are the bubble under the card, one line each. */
-function AnsweredQuestions({ who, questions }: { who: string; questions: AskedQuestion[] }) {
-  const title = `${who} asked ${questions.length} questions`
+/** Several questions that are no longer waiting: each as it was asked, with your answer under it. */
+function AnsweredQuestions({ who, rows }: { who: string; rows: { question: string; answer?: string }[] }) {
+  const title = `${who} asked ${rows.length} questions`
   return (
     <section aria-label={title} className="card tcard">
       <CardHead who={who} title={`${who} asked`} aside={<span className="tc-aside">Answered</span>} />
-      <ol className="qans tc-body">
-        {questions.map((q, i) => (
-          <li key={i}>
-            <span className="n mono">{i + 1}</span>
-            <span className="qans-text">{q.question}</span>
-          </li>
+      <div className="qdone tc-body">
+        {rows.map((r, i) => (
+          <div key={i} className="qdone-row">
+            <span className="qdone-q">{r.question}</span>
+            {r.answer && <span className="qdone-a"><span aria-hidden="true">↳</span>{r.answer}</span>}
+          </div>
         ))}
-      </ol>
+      </div>
     </section>
   )
 }
@@ -308,11 +314,14 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
 
 function QuestionCard({ a, who, inChat, hasItem }: { a: Approval; who: string; inChat?: boolean; hasItem?: boolean }) {
   if (a.status === 'pending') return <QuestionSteps a={a} who={who} />
-  // The answer is the user's bubble below the card, one line per answer. Outside a chat there is no bubble, so the card says it.
-  // The bubble is the chat's own answer row (KERNEL-838). The card draws it only for an older chat that has none.
+  // The answer is the user's bubble in the card, or the chat's own message under it (KERNEL-838), which only a single question has. Several are listed in the card with their answers.
+  // Outside a chat there is no bubble, so a line under the card says it.
   const text = questionAnswer(a)
-  const card = (a.questions?.length ?? 0) > 1 ? <AnsweredQuestions who={who} questions={a.questions ?? []} /> : <AnsweredQuestion a={a} who={who} answered={!!text} />
-  return <>{card}{text && (inChat ? (hasItem ? null : <AnswerBubble text={text} />) : <span className="done-line">{text.split('\n').join(' · ')}</span>)}</>
+  const several = (a.questions?.length ?? 0) > 1
+  const card = several
+    ? <AnsweredQuestions who={who} rows={answeredList(a) ?? (a.questions ?? []).map((q) => ({ question: q.question }))} />
+    : <AnsweredQuestion a={a} who={who} answered={!!text} answer={inChat && !hasItem ? text : undefined} />
+  return <>{card}{text && !inChat && <span className="done-line">{text.split('\n').join(' · ')}</span>}</>
 }
 
 /** Approve with one click. "Request changes" opens a note and sends it back as the reason. */

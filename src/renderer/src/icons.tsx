@@ -4,6 +4,7 @@ import {
   Add01Icon,
   Alert02Icon,
   AlertCircleIcon,
+  BanIcon,
   ArrowDown01Icon,
   ArrowDown02Icon,
   ArrowLeft01Icon,
@@ -32,12 +33,14 @@ import {
   Download02Icon,
   EyeIcon,
   File01Icon,
+  FileAddIcon,
   FlaskConicalIcon,
   Folder01Icon,
   GaugeIcon,
   GitForkIcon,
   GridViewIcon,
   HelpCircleIcon,
+  HourglassIcon,
   HistoryIcon,
   Home01Icon,
   Image01Icon,
@@ -47,10 +50,12 @@ import {
   Layers01Icon,
   ListTreeIcon,
   MinusSignIcon,
+  MessageSquareOffIcon,
   MoreHorizontalIcon,
   Notification01Icon,
   PauseIcon,
   PlayIcon,
+  PowerIcon,
   RefreshIcon,
   ReplyIcon,
   Search01Icon,
@@ -142,7 +147,13 @@ const H = {
   gauge: GaugeIcon,
   circleGauge: DashboardSpeed01Icon,
   calendarClock: CalendarClockIcon,
-  calendarX: CalendarXIcon
+  calendarX: CalendarXIcon,
+  /** The glyphs of the transcript's steps and turn ends (KERNEL-1094): a new file, the waiting hourglass, a refused step, a quit, and a chat that didn't load. */
+  filePlus: FileAddIcon,
+  hourglass: HourglassIcon,
+  ban: BanIcon,
+  power: PowerIcon,
+  chatOff: MessageSquareOffIcon
 }
 
 /**
