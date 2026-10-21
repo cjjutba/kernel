@@ -108,6 +108,7 @@ export function refusal(channel: string, req: unknown): string | undefined {
       return partsRefusal(r.parts)
     case 'lead.start':
       if (r.mode !== undefined) return 'The permission mode can only be changed in the app'
+      if (isObject(r.where) && r.where.kind === 'current') return 'A chat in the project folder itself can only be started in the app'
       return partsRefusal(r.parts)
     case 'chats.configure':
       if (r.mode !== undefined) return 'The permission mode can only be changed in the app'

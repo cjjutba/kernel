@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ChatPart } from '../src/shared/types'
+import type { ChatPart, Thread, Workspace } from '../src/shared/types'
+import { checkoutHolder, reusableWorktrees } from '../src/shared/leadWorkspace'
 import { ageOf, branchLine, branchRows } from '../src/renderer/src/screens/workspace/composer/branchRows'
 
 // KERNEL-786: New chat's where row. Moving the typed draft between projects, and the branch menu's tags.
@@ -92,5 +93,27 @@ describe('the branch menu', () => {
     expect(ageOf(minutes(60 * 24 * 3), now)).toBe('3d')
     expect(ageOf(minutes(60 * 24 * 15), now)).toBe('15d')
     expect(ageOf(minutes(60 * 24 * 45), now)).toBe('6w')
+  })
+})
+
+describe('the Workspace menu offers', () => {
+  const ws = (id: string, over: Partial<Workspace> = {}): Workspace => ({ id, projectId: 'p', name: id, branch: `kernel/${id}`, baseRef: 'origin/main', path: `/wt/${id}`, mode: 'worktree', agentId: 'lead', lead: true, threadId: `t-${id}`, port: 4000, status: 'ready', prState: 'none', createdAt: 1, ...over })
+  const thread = (id: string, over: Partial<Thread> = {}): Thread => ({ id: `t-${id}`, projectId: 'p', title: id, createdAt: 1, ...over })
+
+  it('the worktrees of open chats, the chat touched last first and five at most, and none that cannot take a tab', () => {
+    const open = ['a', 'b', 'c', 'd', 'e', 'f'].map((id, i) => ws(id, { createdAt: i }))
+    const threads = Object.fromEntries([...open.map((w, i) => thread(w.id, { createdAt: i })), thread('x'), thread('y'), thread('z'), thread('w')].map((t) => [t.id, t]))
+    threads['t-a'] = thread('a', { createdAt: 0, lastSentAt: 100 })
+    const others = [ws('x', { status: 'archived' }), ws('y', { folderGone: true }), ws('z', { worktreePending: {} }), ws('w', { mode: 'current' }), ws('v', { projectId: 'q' }), ws('u', { shared: true })]
+    expect(reusableWorktrees([...others, ...open], threads, 'p').map((w) => w.id)).toEqual(['a', 'f', 'e', 'd', 'c'])
+    expect(reusableWorktrees(open, { ...threads, 't-f': thread('f', { closedAt: 5 }) }, 'p').map((w) => w.id)).toEqual(['a', 'e', 'd', 'c', 'b'])
+  })
+
+  it('the checkout as taken by another open chat on it, never by the asking chat or an archived one', () => {
+    const held = ws('h', { mode: 'current', path: '/repo' })
+    expect(checkoutHolder([ws('a'), held], 'p', { agentId: 'lead', lead: true })?.id).toBe('h')
+    expect(checkoutHolder([held], 'p', { id: 'h', agentId: 'lead', lead: true })).toBeUndefined()
+    expect(checkoutHolder([{ ...held, status: 'archived' }], 'p', { agentId: 'lead', lead: true })).toBeUndefined()
+    expect(checkoutHolder([held], 'q', { agentId: 'lead', lead: true })).toBeUndefined()
   })
 })

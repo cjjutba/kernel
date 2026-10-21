@@ -488,8 +488,9 @@ const queuedItems = (): ChatItem[] => {
 
 /** The invoice-table workspace (or the Lead's) retitled for one agent request: its name, chat title and transcript. */
 /** New chat with Kernel in a project with no open chat (KERNEL-366, KERNEL-405), with Todo issues for Up next and the remote's branches. */
-function leadNoChats(f: Fixture): Partial<Fixture> {
-  const g = grouped(f, { running: [], threads: (t) => t.map((x) => ({ ...x, closedAt: at(10, 50) })) })
+function leadNoChats(f: Fixture, open = 0): Partial<Fixture> {
+  // `open` chats stay open, the newest first, so New chat has worktrees to offer as Previous worktree.
+  const g = grouped(f, { running: [], threads: (t) => t.map((x, i) => (i >= t.length - open ? x : { ...x, closedAt: at(10, 50) })) })
   const issue = (id: string, title: string, priority: number, project?: string): IssueSummary => ({ id, title, url: `https://linear.app/client-a/issue/${id}`, source: 'linear', priority, ...(project ? { project } : {}) })
   // Nothing is open, so no tab is stored and the archived chats keep no transcript here.
   return {
@@ -3191,7 +3192,16 @@ export const workspaceFixtures: Record<string, Fixture> = {
   }),
   // KERNEL-943: no project at all yet. The title asks what we're building, and the three ways to add a project sit above the box.
   NewChatFirstProject: scene(() => ({ projects: [], agents: {}, status: {}, workspaces: [], chats: [], items: {}, approvals: [], activity: [], changes: {}, diffs: {}, push: [], ui: { route: { name: 'leadNew', projectId: '' }, workspace: { right: 'changes', bottom: 'run' } } })),
-  NewChatMode: scene((f) => noPlan(leadNoChats(f))),
+  // docs/decisions/workspace-picker.md: the chip beside + opens the Workspace menu (the shot opens it, scripts/shots.ts). NewChatWorkspace has one previous worktree and a free checkout. NewChatWorkspaceTaken
+  // has the checkout held by the demo chat, so Current checkout is off with that chat named. NewChatWorkspaceRecent has four previous worktrees, newest first, in the list under Previous worktree.
+  // NewChatWorkspacePrevious picks the one previous worktree, so the chip names its chat.
+  NewChatWorkspace: scene((f) => noPlan(leadNoChats(f, 1))),
+  NewChatWorkspaceTaken: scene((f) => {
+    const g = noPlan(leadNoChats(f, 2))
+    return { ...g, workspaces: g.workspaces!.map((w) => (w.id === 'ws-chat-demo' ? { ...w, mode: 'current' as const, branch: 'main', path: '/Users/you/Projects/client-a', baselineRef: 'f3a9c21' } : w)) }
+  }),
+  NewChatWorkspaceRecent: scene((f) => noPlan(leadNoChats(f, 4))),
+  NewChatWorkspacePrevious: scene((f) => noPlan(leadNoChats(f, 1))),
   NewChatKeyboard: scene((f) => noPlan(leadNoChats(f))),
   NewChatBranch: scene(newChatBranches),
   NewChatBranchChip: scene(newChatBranches),

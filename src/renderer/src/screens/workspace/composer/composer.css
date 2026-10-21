@@ -30,7 +30,7 @@
 .cmp-foot .cmp-model-name > span { white-space: nowrap; }
 /* The effort sits beside the model name in muted text and gives way before the name does. */
 .cmp-foot .cmp-model-name .cmp-effort-text { color: var(--muted); font-weight: var(--fw-regular); }
-/* The + button, and the chip beside it when New chat's Run in or Branch differs from the default. */
+/* The + button, and the Workspace chip beside it in New chat (docs/decisions/workspace-picker.md). */
 .cmp-plus { position: relative; display: inline-flex; align-items: center; gap: 4px; }
 .cmp-where-chip { max-width: 180px; font-size: var(--fs-code); }
 .cmp-where-chip > svg:first-child { color: var(--muted); }
@@ -386,7 +386,7 @@
 .ctx-foot .btn { flex-shrink: 0; }
 
 
-/* New chat's Run in and Branch menus (KERNEL-786). They open upward from the + button, lined up with its right edge, and may cover the box (KERNEL-805). */
+/* New chat's project and branch menus (KERNEL-786). They open upward from the + button, lined up with its right edge, and may cover the box (KERNEL-805). */
 .where-pop { left: -8px; bottom: calc(100% + var(--menu-gap)); display: flex; flex-direction: column; max-height: min(420px, calc(100vh - 220px)); padding: 4px; background: var(--surface-2); z-index: var(--z-popover); }
 .where-pop[data-align='end'] { left: auto; right: 0; }
 .where-pop > * { flex-shrink: 0; }
@@ -401,6 +401,9 @@
 .where-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .menu-item[data-rich]:has(> .where-tx) { flex-direction: row; align-items: flex-start; gap: 10px; }
 .where-t { font-size: var(--fs-ui); line-height: 18px; color: var(--ink); }
+/* Workspace menu rows: a row that is off says so in the faint colour, both lines, and the lists beside it stay narrow. */
+.menu-item:disabled .where-t, .menu-item:disabled .where-d { color: inherit; }
+.submenu .where-tx { max-width: 260px; }
 .where-t.mono { font-size: var(--fs-code); }
 .where-d { font-size: var(--fs-meta); line-height: 16px; color: var(--muted); }
 .where-note { margin: 0; padding: 6px 10px; font-size: var(--fs-meta); color: var(--muted); }

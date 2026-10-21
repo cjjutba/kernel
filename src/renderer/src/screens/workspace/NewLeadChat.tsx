@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { modelLabelOf, useCodexInUse, useProviderModels } from './composer/providerModels'
-import type { ChatPart, IssueTakenFinding, NewChatPicks, WorkspaceMode, WorkspaceSource } from '@shared/types'
+import type { ChatPart, IssueTakenFinding, LeadWhere, NewChatPicks, WorkspaceMode, WorkspaceSource } from '@shared/types'
 import { bypassConfirmed } from '../../bypassConfirm'
 import { useModeAvailability } from '../../permissionModes'
 import { providerOf } from '@shared/providers'
@@ -9,7 +9,6 @@ import { actions, getState, useStore } from '../../store'
 import { leadOf, unusedFirstChat } from '../../lead'
 import { leadNewKey } from '../../components/sidebar/slots'
 import { Icon, useBusy } from '../../ui'
-import { briefParts, pickedLines } from '../new-workspace/brief'
 import { startChat } from '../new-workspace/start'
 import { takenFindings } from '../new-workspace/taken'
 import { issueTracker } from './issueKey'
@@ -18,6 +17,7 @@ import { useProjectTracker } from '../issues/useProjectTracker'
 import { focusComposerIn, onComposerCommand, onComposerFocusAsked, takeComposerFocus } from './composer/bus'
 import { readBranches, useBaseBranch, useBranches } from './composer/BranchPicker'
 import { useDraft } from './composer/draft'
+import { shownWhere, useWorkspaceChoices, whereToSend } from './composer/workspaceChoices'
 import { ComposerInput } from './composer/ComposerInput'
 import { ComposerShell } from './composer/ComposerShell'
 import { loadPicks, moveDraft, newChatDraftOf, onPicksChange, savePicks, type DraftPicks } from './composer/draftStore'
@@ -54,7 +54,7 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
   // Model, effort and plan mode are the Lead's until picked here, and a pick stays with the project's draft (KERNEL-544).
   const { model, effort, plan, mode, fallback, pickModel, pickEffort, savePick } = useLeadBox(draftKey, lead, picks && { model: picks.model, effort: picks.effort, plan: picks.plan })
   const [menu, setMenu] = useState<'model' | 'mode' | 'project' | PlusPanel>(null)
-  const plusPanel: PlusPanel = menu === 'plus' || menu === 'linkIssue' || menu === 'linkPr' || menu === 'linkWorkspaces' || menu === 'runIn' || menu === 'branch' ? menu : null
+  const plusPanel: PlusPanel = menu === 'plus' || menu === 'linkIssue' || menu === 'linkPr' || menu === 'linkWorkspaces' || menu === 'workspace' || menu === 'branch' ? menu : null
   // The projects the title's menu offers: the active ones, and a hidden project only while it is the one on show.
   const allProjects = useStore((s) => s.projects)
   const projects = allProjects.filter((r) => !r.archived && (!r.hidden || r.id === projectId))
@@ -62,13 +62,17 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
   const boxPicks = useSyncExternalStore(onPicksChange, () => loadPicks(draftKey))
   // The issue warning's way back brings what the box had picked (KERNEL-500).
   useLayoutEffect(() => {
-    if (picks) savePicks(draftKey, { place: picks.mode === appPlace ? undefined : picks.mode, ...(picks.baseRef ? { baseRef: picks.baseRef } : {}) })
+    if (picks) savePicks(draftKey, { place: picks.mode === appPlace ? undefined : picks.mode, previous: picks.previous, ...(picks.baseRef ? { baseRef: picks.baseRef } : {}) })
   }, [])
-  // Worktree or Local starts from Settings' workspace mode, and a pick stays with the project the same way. The chat gets the folder it
-  // names, since Kernel may edit files in it (one-lead-chat).
+  // Where the chat works starts from Settings' workspace type, and a pick stays with the project the same way. The chat gets the folder it
+  // names (the checkout, a new worktree or a previous one), since Kernel may edit files in it (workspace-picker).
   const appPlace: WorkspaceMode = useStore((s) => s.settings?.workspace.mode) ?? 'worktree'
-  const place: WorkspaceMode = boxPicks?.place ?? appPlace
-  const pickPlace = (m: WorkspaceMode) => savePicks(draftKey, { place: m === appPlace ? undefined : m })
+  const choices = useWorkspaceChoices(projectId)
+  const where = shownWhere(boxPicks, appPlace, choices)
+  const place: WorkspaceMode = where.kind === 'current' ? 'current' : 'worktree'
+  const previous = where.kind === 'previous' ? where.workspaceId : undefined
+  // A pick of Previous worktree sits over the Worktree or Current checkout pick, which stays for when it is dropped.
+  const pickWhere = (w: LeadWhere) => savePicks(draftKey, w.kind === 'previous' ? { previous: w.workspaceId } : { place: w.kind === appPlace ? undefined : w.kind, previous: undefined })
   // The branch picked, empty for the default. It stays with the project's draft until a chat starts, which goes back to the default, so no
   // chat starts from an old branch by accident. Local keeps it for when Worktree is picked again.
   const picked = boxPicks?.baseRef ?? ''
@@ -155,7 +159,7 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
     if (!found.length) return false
     if (getState().ui.modal) return true
     const held: WorkspaceSource = { kind: 'issue', id: issue.name, title: issue.title, ...(issue.url ? { url: issue.url } : {}), tracker: issue.source }
-    actions.ui.openModal({ name: 'confirm', kind: 'issueTaken', issue: issue.name, findings: found, held: { projectId, source: held, parts, picks: { mode: place, model, effort, plan, baseRef: picked } } })
+    actions.ui.openModal({ name: 'confirm', kind: 'issueTaken', issue: issue.name, findings: found, held: { projectId, source: held, parts, picks: { mode: place, ...(previous ? { previous } : {}), model, effort, plan, baseRef: picked } } })
     return true
   }
 
@@ -174,13 +178,13 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
       d.focus()
       return
     }
-    const parts = briefParts(typed, null, pickedLines({ mode: place, target: base.target, fallback: base.fallback, picked: '' }))
+    const parts = typed
     void run('send', async () => {
       const issue = typed.find((p): p is Extract<ChatPart, { type: 'issue' }> => p.type === 'issue')
       if (issue && (await someoneIsOn(issue, parts))) return
       const at = Date.now()
       setSent({ parts: typed, at })
-      const failed = await startChat({ projectId, parts, model, effort, plan, mode, baseRef: picked && place === 'worktree' ? picked : '', at })
+      const failed = await startChat({ projectId, parts, model, effort, plan, mode, baseRef: picked && where.kind === 'worktree' ? picked : '', where: whereToSend(place, previous, appPlace), at })
       if (failed) { setSent(null); actions.ui.toast({ title: 'Could not send', sub: failed }); refocus.current = true }
     })
   }
@@ -298,7 +302,7 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
         foot={<ComposerToolbar disabled={busy}
           model={{ label: modelLabelOf(model, codexModels), provider: providerOf(model), open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider: providerOf(model), grouped: codexInUse, model, effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x) }, onEffort: pickEffort } }}
           mode={{ provider: providerOf(model), availability, shown, open: menu === 'mode', onOpen: (o) => setMenu(o ? 'mode' : null), onPick: (m) => { setMenu(null); pickMode(m); d.focus() }, onCycle: cycleMode }}
-          plus={{ panel: plusPanel, onPanel: setMenu, projectId, disabled: busy || !usable, where: { place, picked, branch: stripRemote(base.target, base.remote), local: stripRemote(base.fallback, base.remote), onPlace: pickPlace, onBranch: (ref) => savePicks(draftKey, { baseRef: ref || undefined }) }, onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
+          plus={{ panel: plusPanel, onPanel: setMenu, projectId, disabled: busy || !usable, where: { pick: where, taken: choices.taken, previous: choices.previous, picked, branch: stripRemote(base.target, base.remote), onPick: pickWhere, onBranch: (ref) => savePicks(draftKey, { baseRef: ref || undefined }) }, onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
           send={{ label: 'Send', ready: hasDraft, busy: busy || d.pending > 0, busyLabel: d.pending > 0 ? 'Attaching' : checking ? 'Checking' : 'Sending', onSend: start }} />}
         below={project && setupSteps ? <SetupLine project={project} steps={setupSteps} /> : undefined}
         hidden={<input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />}

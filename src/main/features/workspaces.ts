@@ -1,19 +1,19 @@
-import { mkdir } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { mkdir, realpath, stat } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 import { PORT_BLOCK, type AgentDef, type Chat, type ChatPart, type CompareTarget, type Effort, type Provider, type Project, type ResolvedPath, type Workspace, type WorkspaceMode, type WorkspaceSource } from '@shared/types'
 import { chatProvider, providerOf } from '@shared/providers'
-import { isLeadChatWorkspace, ownsFolder } from '@shared/leadWorkspace'
+import { checkoutHolder, isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { newId } from '../db'
 import { bus } from '../bus'
 import { DEFAULT_BASE_REF, loadRepoSettings, referencesInProject, type RepoSettings } from '../services/settings'
 import { clock, worktreeTree, writeTree } from '../services/checkpoints'
 import { branchCommits, branchName, branchType, capBranch, changedFiles, compareRange, createWorktree, currentBranch, defaultBranch, diffText, fetchOrigin, folderGone, freeBranch, freeWorktreePath, hasCommit, isWorktreeOf, leadBase, leadBranch, listBranches, mergeBase, onRemote, rangeDiff, rangeFiles, removeWorktree, resolveBaseRef, reviewBranch, projectWorktreeRoot, shortSlug, slugify, snapshotBaseline, stripRemote, taskBranch, validBranchName } from '../services/worktrees'
-import { claimSpare as turnSpareIntoWorktree, fastForward, isAncestor, makeSpare, revParse, sweepSpares } from '../services/worktrees'
+import { claimSpare as turnSpareIntoWorktree, fastForward, isAncestor, listWorktrees, makeSpare, revParse, sweepSpares } from '../services/worktrees'
 import { linkNodeModules, NoFreePortBlock, portBlock } from '../services/scripts'
 import { exec } from '../services/exec'
 import { listTree, readImage, readWorkspaceFile, resolvePaths, scratchpadDir, searchFiles } from '../services/files'
 import { commitHunks, listHunks } from '../services/hunks'
-import { head, messageOf, NEW_TAB } from './shared'
+import { head, messageOf, NEW_CHAT, NEW_TAB } from './shared'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
@@ -180,9 +180,12 @@ export class Workspaces extends Feature {
       }
       // A project with no commit to start from keeps the Lead on the checkout, with no baseline, as before KERNEL-355.
       if (o.lead && !main) return save(project.path, await currentBranch(project.path).catch(() => project.defaultBranch))
-      if (s.workspace.oneCurrentBranchPerProject && this.onCheckout(projectId, { agentId: agent.id, lead: !!o.lead }))
-        throw new Error('Another workspace is already working on the current branch in this project.')
-      return save(project.path, await currentBranch(project.path).catch(() => project.defaultBranch), s.workspace.baselineCurrentBranch ? (await snapshotBaseline(project.path)).ref : undefined)
+      // Check, snapshot and save sit in the project's lock, so two chats picked at once can't both take the checkout.
+      return this.withBranchLock(project.id, async () => {
+        const held = s.workspace.oneCurrentBranchPerProject ? this.onCheckout(projectId, { agentId: agent.id, lead: !!o.lead }) : undefined
+        if (held) throw new Error(this.checkoutTaken(held))
+        return save(project.path, await currentBranch(project.path).catch(() => project.defaultBranch), s.workspace.baselineCurrentBranch ? (await snapshotBaseline(project.path)).ref : undefined)
+      })
     })
     // Until its brief has gone out, the Lead's messages to it wait here (KERNEL-118). Nobody messages the Lead's own workspace.
     if (!o.lead) this.k.setup.setSetup(ws.id, { later: [] })
@@ -281,6 +284,42 @@ export class Workspaces extends Feature {
 
   async sweepAllSpares(): Promise<void> {
     await Promise.all(this.store.projects().map((p) => sweepSpares(p.path)))
+    await this.reportStrays().catch(() => undefined)
+  }
+
+  /**
+   * At launch: a worktree of a project, directly under the project's worktree root, that no workspace record names. A crash
+   * between `git worktree add` and the saved record leaves one. It may hold the only copy of someone's work, so Kernel never
+   * removes it: a note in the project's feed and a toast name the folder, and say when it has uncommitted changes. Each folder
+   * is reported once, and one younger than a minute is skipped, as a workspace being made has its folder before its record.
+   * Returns the folders reported now (docs/decisions/durable-tool-calls.md).
+   */
+  async reportStrays(): Promise<string[]> {
+    const reportedBefore = new Set(this.store.meta<string[]>('strayWorktrees') ?? [])
+    const stillStray = new Set<string>()
+    const now: string[] = []
+    const real = (p: string) => realpath(p).catch(() => p)
+    const known = new Set<string>()
+    for (const w of this.store.workspaces()) { known.add(w.path); known.add(await real(w.path)) }
+    for (const project of this.store.projects().filter((p) => !p.archived)) {
+      if (this.stopped) break
+      const root = await real(projectWorktreeRoot(this.settings.worktreeRoot, project))
+      for (const w of (await listWorktrees(project.path).catch(() => [])).slice(1)) {
+        const path = await real(w.path)
+        if (dirname(path) !== root || known.has(w.path) || known.has(path) || w.branch?.startsWith('kernel-spare/')) continue
+        const made = await stat(join(path, '.git')).then((s) => s.mtimeMs, () => undefined)
+        if (made === undefined || Date.now() - made < 60_000) continue
+        stillStray.add(w.path)
+        if (reportedBefore.has(w.path)) continue
+        const dirty = (await exec('git', ['-C', path, 'status', '--porcelain'])).stdout.trim().length > 0
+        now.push(w.path)
+        const left = dirty ? ', with uncommitted changes. Kernel left it alone:' : '. Kernel left it alone:'
+        bus.activity({ kind: 'note', projectId: project.id, actor: 'kernel', text: `found a worktree no chat uses${left}`, object: w.path, warn: true })
+        bus.push({ type: 'toast', toast: { title: `Found a folder in ${project.name} that no chat uses`, sub: `${basename(path)}${w.branch ? ` on ${w.branch}` : ''} is still on disk${dirty ? ' and has uncommitted changes' : ''}. Kernel left it alone.` } })
+      }
+    }
+    if (!this.stopped) this.store.saveMeta('strayWorktrees', [...stillStray])
+    return now
   }
 
   /**
@@ -597,8 +636,14 @@ export class Workspaces extends Feature {
    * does a chat of the same agent unless both are chats with Kernel.
    */
   onCheckout(projectId: string, self: { id?: string; agentId: string; lead?: boolean }): Workspace | undefined {
-    return this.store.workspaces(projectId).find((w) => w.mode === 'current' && w.status !== 'archived' && w.id !== self.id
-      && (w.agentId !== self.agentId || (!!self.lead && ownsFolder(w))))
+    return checkoutHolder(this.store.workspaces(projectId), projectId, self)
+  }
+
+  /** Why the checkout can't be shared, naming the chat or workspace that holds it and the way out. */
+  checkoutTaken(holder: Workspace): string {
+    const titled = holder.threadId ? this.store.thread(holder.threadId)?.title : undefined
+    const name = (titled && titled !== NEW_TAB && titled !== NEW_CHAT ? titled : undefined) || holder.title || holder.name
+    return `Another workspace is already working on the current branch in this project: ${name}. Pick New worktree, or archive it first.`
   }
 
   /**

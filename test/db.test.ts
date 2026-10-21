@@ -127,6 +127,23 @@ describe('kernel.db versions', () => {
     store.db.close()
   })
 
+  it('adds tool_receipts to a file at version 10 and keeps its remote_devices rows', () => {
+    const d = dir()
+    const file = join(d, 'kernel.db')
+    const db = new Database(file)
+    migrate(db, file, Date.now(), migrations.filter((m) => m.version <= 10))
+    db.prepare('insert into remote_devices values (?, ?, ?, ?, ?, ?)').run('d1', 'hash', 'Phone', 1, 1, 2)
+    expect(db.prepare("select name from sqlite_master where name = 'tool_receipts'").all()).toEqual([])
+    db.close()
+
+    const store = new Store(file)
+    expect(store.db.pragma('user_version', { simple: true })).toBe(LATEST)
+    expect(store.db.prepare('select id from remote_devices').all()).toEqual([{ id: 'd1' }])
+    store.db.prepare('insert into tool_receipts values (?, ?, ?, ?, ?)').run('c1', 'call1', 'tool', '{}', 1)
+    expect(store.db.prepare('select call_id from tool_receipts').all()).toEqual([{ call_id: 'call1' }])
+    store.db.close()
+  })
+
   it('starts a new file at the latest version with no backup', () => {
     const d = dir()
     const store = new Store(join(d, 'kernel.db'))

@@ -1,12 +1,6 @@
-import type { ChatPart, WorkspaceMode, WorkspaceSource } from '@shared/types'
+import type { ChatPart, WorkspaceSource } from '@shared/types'
 import { plainText } from '../workspace/composer/draft'
 import { issueTracker } from '../workspace/issueKey'
-
-/** What the pickers chose, as plain lines for the Lead. A picked source already wrote its own prompt (pick.ts). */
-export function pickedLines({ mode, target, fallback, picked }: { mode: WorkspaceMode; target: string; fallback: string; picked: string }): string[] {
-  if (mode === 'current') return ['Work on the current branch, not a new worktree.']
-  return target !== fallback && target !== picked ? [`Cut the branch from ${target}.`] : []
-}
 
 /** The message the Lead gets: what was typed or attached, a picked issue as a chip, then the lines the pickers add. */
 export function briefParts(typed: ChatPart[], source: WorkspaceSource | null, lines: string[]): ChatPart[] {
