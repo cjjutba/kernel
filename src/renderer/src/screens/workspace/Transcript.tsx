@@ -673,7 +673,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
         </TranscriptGlide.Provider>
       </div>
       {away && !empty && (newCount > 0
-        ? <Button icon="arrowDown" className="ws-jump new" aria-label={`Scroll to bottom, ${newCount} new`} onClick={() => owner.toEnd()}>{newCount} new</Button>
+        ? <Button icon="arrowDown" className="ws-jump new" aria-label={`Scroll to bottom, ${newCount} new ${newCount === 1 ? 'message' : 'messages'}`} onClick={() => owner.toEnd()}>{newCount} new {newCount === 1 ? 'message' : 'messages'}</Button>
         : <IconButton icon="arrowDown" label="Scroll to bottom" className="ws-jump" onClick={() => owner.toEnd()} />)}
     </div>
   )

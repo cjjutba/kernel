@@ -1,4 +1,4 @@
-import type { LinearIssueDetail, ChangedFile, ChatItem, ChatPart, Chat, Checkpoint, CheckpointPreview, Effort, FileEntry, MenuId, ProviderModel, QueuedMessage, QueueReason, Skill, Toast } from '@shared/types'
+import type { LinearIssueDetail, Workspace, ChangedFile, ChatItem, ChatPart, Chat, Checkpoint, CheckpointPreview, Effort, FileEntry, MenuId, ProviderModel, QueuedMessage, QueueReason, Skill, Toast } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import type { Fixture } from './types'
 import { agent, at, ids, scene } from './base'
@@ -40,6 +40,8 @@ interface Talk extends Works {
   queue?: QueuedMessage[]
   why?: QueueReason
   contextOpen?: boolean
+  /** Other workspaces of the project, changed: Rio's, whose PR a held message waits on. */
+  others?: Record<string, Partial<Workspace>>
   extra?: Partial<Fixture>
 }
 
@@ -50,7 +52,7 @@ const codexModels: ProviderModel[] = [['GPT-5.5', false], ['GPT-5.5 Codex', fals
 
 /** The chat on the clean-account journey, Ivy's, with the Session rail beside it. `composer` is what the box starts with, and `menu` a menu already open. */
 function talk(f: Fixture, items: ChatItem[], o: Talk = {}): Partial<Fixture> {
-  const { composer, menu, modal, queue, why, contextOpen, extra, ...rest } = o
+  const { composer, menu, modal, queue, why, contextOpen, others, extra, ...rest } = o
   const codex = o.chat?.provider === 'codex'
   const who = codex ? RIO : IVY
   const base = works(f, items, { ...rest, ws: { agentId: who.id, ...rest.ws }, chat: { plan: false, mode: 'bypassPermissions', effort: 'medium', ...rest.chat } })
@@ -58,6 +60,7 @@ function talk(f: Fixture, items: ChatItem[], o: Talk = {}): Partial<Fixture> {
   return {
     ...base,
     agents: { ...f.agents, [ids.projectA]: [...(f.agents[ids.projectA] ?? []), IVY, RIO] },
+    ...(others ? { workspaces: base.workspaces!.map((w) => (others[w.id] ? { ...w, ...others[w.id] } : w)) } : {}),
     ...(queue ? { queue: { [ids.tableChat]: queue } } : {}),
     ...(queue && why ? { push: [...(base.push ?? f.push), { type: 'chat.queue', chatId: ids.tableChat, queue, why } as PushEvent] } : {}),
     ...extra,
@@ -190,7 +193,7 @@ export const talkFixtures: Record<string, Fixture> = {
   WorkspaceModelPickerLegacyChat: scene((f) => pickerScene(f, { chat: { model: 'claude-sonnet-4-6' } })),
   WorkspaceModelPickerLocked: scene((f) => pickerScene(f, { chat: sessionOf })),
   WorkspaceContextRing: scene((f) => talk(f, jRest(), { chat: contextOf(41_300) })),
-  WorkspaceContextRingNear: scene((f) => talk(f, jRest(), { chat: contextOf(133_400) })),
+  WorkspaceContextRingNear: scene((f) => talk(f, jRest(), { chat: contextOf(137_300) })),
   WorkspaceContextPopover: scene((f) => talk(f, jRest(), { chat: contextOf(41_300), contextOpen: true })),
   WorkspaceContextPopoverFull: scene((f) => talk(f, jRest(), { chat: contextOf(167_300), contextOpen: true })),
   WorkspaceModelSwitchToast: scene((f) => talk(f, jRest(), { chat: { ...sessionOf, model: 'claude-opus-5-5', effort: 'xhigh', ...contextOf(41_300) }, toasts: [toast({ title: 'Switched to Opus 5.5', sub: 'The next turn re-reads 68k tokens on Opus 5.5.', glyph: 'switch', action: { label: 'Undo', retry: 'composer-model' } })] })),
@@ -202,7 +205,7 @@ export const talkFixtures: Record<string, Fixture> = {
   WorkspaceQueuedMerge: scene((f) => talk(f, running(), { running: true, queue: [q('q1', 'Rebase on main and rerun the journey.')], why: 'merge' })),
   WorkspaceQueuedCapacity: scene((f) => talk(f, jRest(), { queue: [q('q1', 'Start the soak harness for 24 hours.')], why: 'capacity' })),
   WorkspaceQueuedOffline: scene((f) => talk(f, running(), { running: true, queue: [QA, QB], why: 'offline' })),
-  WorkspaceWaitedOn: scene((f) => talk(f, running(), { running: true, queue: [q('q1', 'Rebase on main and rerun the journey.')], why: 'merge' })),
+  WorkspaceWaitedOn: scene((f) => talk(f, running(), { running: true, queue: [q('q1', 'Rebase on main and rerun the journey.')], why: 'merge', ws: { waitsFor: { on: [ids.schema], held: true } }, others: { [ids.schema]: { agentId: 'rio', prNumber: 1153, prState: 'open', prUrl: 'https://github.com/cjjutba/kernel/pull/1153' } } })),
   ChatNewMessages: scene((f) => talk(f, longChat())),
   ChatRailOpen: scene((f) => talk(f, longChat())),
   WorkspaceRevertMenu: scene((f) => reverting(f, { menu: 'reply:j-reply' })),

@@ -1,6 +1,7 @@
 import type { Fixture } from './types'
 import { ids } from './base'
 import { teamFixtures } from './team'
+import { talkFixtures } from './talk'
 import { workspaceFixtures } from './workspace'
 
 // Long versions of the screens the scroll check drives (KERNEL-923, scripts/scrollCheck.ts). Each is an existing fixture with more rows,
@@ -76,7 +77,7 @@ export const scrollCheckFixtures: Record<string, Fixture> = {
   ScrollCheckIssueDetail: longIssue(teamFixtures.IssuesMany),
   ScrollCheckLeadChat: workspaceFixtures.ChatRailLead,
   ScrollCheckInboxPane: longPlan(teamFixtures.Inbox),
-  ScrollCheckChat: workspaceFixtures.ChatNewMessages,
+  ScrollCheckChat: talkFixtures.ChatNewMessages,
   ScrollCheckFiles: workspaceFixtures.PanelToolbarFiles,
   ScrollCheckChanges: (() => {
     const f = workspaceFixtures.PanelToolbarChanges

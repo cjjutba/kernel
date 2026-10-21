@@ -90,9 +90,10 @@
 /* A skill and an @ file are compact: 18px, mono, no outline. They name something in the text and carry nothing. */
 .chip.cmp-chip[data-kind='repo'], .chip.cmp-chip[data-kind='skill'] { height: 18px; gap: 4px; padding: 0 6px 0 5px; border-color: transparent; border-radius: var(--r-2xs); font: var(--fs-code) var(--mono); color: var(--ink); }
 .cmp-chip[data-kind='repo'] .chip-name, .cmp-chip[data-kind='skill'] .chip-name { color: var(--ink); }
-/* A token has no remove button in view: Backspace takes it like a character, and an image's thumbnail has its own. Pointing at it or tabbing to it brings the button over its end. */
-.cmp-chip .chip-x { position: absolute; top: 3px; right: 3px; width: 16px; height: 16px; border-radius: var(--r-2xs); background: var(--surface-3); opacity: 0; }
-.cmp-chip[data-kind='repo'] .chip-x, .cmp-chip[data-kind='skill'] .chip-x { top: 0; right: 0; }
+/* A token has no remove button in view: Backspace takes it like a character, and an image's thumbnail has its own. Pointing at it or tabbing to it turns its icon into one, so no meta is covered. */
+.cmp-chip .chip-x { position: absolute; top: 3px; left: 6px; width: 18px; height: 18px; border-radius: var(--r-2xs); background: var(--surface-3); opacity: 0; }
+.chip.cmp-chip[data-kind='image'] .chip-x, .chip.cmp-chip[data-kind='file'] .chip-x, .chip.cmp-chip[data-kind='folder'] .chip-x { left: 3px; }
+.cmp-chip[data-kind='repo'] .chip-x, .cmp-chip[data-kind='skill'] .chip-x { top: 0; left: 3px; width: 16px; height: 16px; }
 .cmp-chip:hover .chip-x, .cmp-chip:focus-within .chip-x { opacity: 1; }
 .chip-open { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; font: inherit; color: inherit; }
 .cmp-chip[data-kind='repo'] .chip-open, .cmp-chip[data-kind='skill'] .chip-open { gap: 4px; }

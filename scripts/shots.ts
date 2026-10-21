@@ -685,6 +685,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   // Part 8 (KERNEL-1095): a box with a draft shows the caret, and a menu over the word being typed reads the caret, so the shots focus the box.
   ChatComposer: focusComposer,
   // A popover opened without a pointer takes the focus ring on its first control, which a person who clicked doesn't see.
+  WorkspaceContextRingNear: async (page) => { await page.locator('.ctx-ring').hover(); await page.waitForTimeout(900) },
   WorkspaceContextPopover: blurFocus,
   WorkspaceContextPopoverFull: blurFocus,
   ContextPopoverEmpty: blurFocus,
@@ -704,9 +705,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   ComposerFilePdf: focusComposer,
   ComposerFileCap: focusComposer,
   ComposerFileUnreadable: focusComposer,
-  WorkspaceModelPickerCodex: openLegacyModels,
   WorkspaceModelPickerLegacy: openLegacyModels,
-  WorkspaceModelPickerLegacyChat: openLegacyModels,
   SettingsModels: fullLength(),
   SettingsModelsPicker: (page) => openRolePicker(page),
   SettingsModelsPickerCodex: (page) => openRolePicker(page, 'Codex', false, 'Frontend'),

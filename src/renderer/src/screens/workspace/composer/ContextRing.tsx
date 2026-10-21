@@ -58,7 +58,7 @@ export function ContextRing({ chat, name, blocked, open, onOpen }: { chat: Chat;
 
   return (
     <span ref={anchor} style={{ position: 'relative' }}>
-      <button ref={ring} type="button" className={['icon-btn sm ctx-ring', level].filter(Boolean).join(' ')} aria-label={`Context, ${pct}% used`} aria-haspopup="dialog" aria-expanded={open}
+      <button ref={ring} type="button" className={['icon-btn sm ctx-ring', level].filter(Boolean).join(' ')} aria-label={`Context, ${pct}% used`} aria-haspopup="dialog" aria-expanded={open} data-tip-side="above"
         data-tip={usage ? `${formatTokens(usage.used)} of ${formatTokens(usage.max)} tokens used` : `${pct}% of context used`}
         onClick={() => onOpen(!open)}>
         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
