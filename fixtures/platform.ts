@@ -4,7 +4,7 @@ import { mcpCounts } from '@shared/mcpCounts'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import type { Fixture } from './types'
 import { teamFixtures } from './team'
-import { SETUP_RAW, setupData, workspaceFixtures } from './workspace'
+import { along, leadAlong, SETUP_RAW, setupData, workspaceFixtures } from './workspace'
 import { at, base, ids, invaderIcon, scene, tableItems, withWorkspace } from './base'
 
 // Platform lane: setup checks (KERNEL-27), limits and setup failures (KERNEL-28).
@@ -479,26 +479,6 @@ const bigTerminal: Partial<Fixture> = {
   terminalClis: [codex]
 }
 
-
-/** Kernel's chat in its own workspace while its setup runs, or once it failed with `code`, the first message in the queue (KERNEL-405). */
-function leadSetup(f: Fixture, lines: Omit<ScriptLine, 'kind'>[], code?: number): Partial<Fixture> {
-  const queue = [{ id: 'q-lead', chatId: ids.leadChat, parts: [{ type: 'text' as const, text: 'Add PDF export to invoices. Spec first.' }], ts: at(10, 40) }]
-  return {
-    ...clientA({ scripts: { ...kernelFiles.scripts, setup: 'pnpm install --frozen-lockfile' } }),
-    workspaces: withWorkspace(f, ids.lead, { status: code === undefined ? 'setup' : 'failed', name: 'add-pdf-export-to-invoices', branch: 'kernel/add-pdf-export-to-invoices' }),
-    threads: [{ id: 't-lead', projectId: ids.projectA, title: 'Add PDF export to invoices', createdAt: at(10, 40) }],
-    chats: f.chats.map((c) => (c.id === ids.leadChat ? { ...c, title: 'New tab' } : c)),
-    items: {},
-    queue: { [ids.leadChat]: queue },
-    push: [
-      ...f.push,
-      { type: 'chat.queue', chatId: ids.leadChat, queue, why: 'worktree' },
-      ...lines.map((l): PushEvent => ({ type: 'script.output', workspaceId: ids.lead, kind: 'setup', lines: [l] })),
-      ...(code === undefined ? [] : [{ type: 'script.exit' as const, workspaceId: ids.lead, kind: 'setup' as const, code }])
-    ],
-    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'files', leadRight: 'files', bottom: 'setup' }, tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: [], diffs: [] } } }
-  }
-}
 
 const projectGitToast: Fixture = (() => { const f = projectPage('git', { ...clientA({}), branches: ['origin/main'], ...pushCheck('ok') }); return { ...f, ui: { ...f.ui, toasts: [{ id: 'esc', title: 'Could not save the setting' }] } } })()
 
@@ -1111,37 +1091,46 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-941: an added account in use signed out. The banner names it and its Sign in opens its row in Settings, Accounts.
   WorkspaceSignedOutAdded: scene(() => ({ account: { signedIn: false, name: 'Personal', plan: 'Claude Pro' }, accounts: [{ ...workClaude, active: false }, { ...personalClaude, active: true, signedIn: false }], ui: open })),
   // KERNEL-218: the dialog the banner's Review opens, over the held workspace.
-  WorkspaceSetupFailed: scene((f) => ({
-    ...clientA({ scripts: { ...kernelFiles.scripts, setup: 'pnpm install --frozen-lockfile' } }),
-    workspaces: withWorkspace(f, ids.table, { status: 'failed' }),
-    items: {},
-    push: [
-      ...f.push,
-      { type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line: '$ pnpm install --frozen-lockfile', stream: 'stdout' }] },
-      { type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line: 'ERR_PNPM_OUTDATED_LOCKFILE  Cannot install with "frozen-lockfile" because pnpm-lock.yaml is not up to date', stream: 'stderr' }] },
-      { type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line: 'Setup failed with exit code 1', stream: 'stderr' }] },
-      setupData(ids.table, SETUP_RAW.frozen),
-      { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: 1 }
-    ],
-    ui: { ...open, workspace: { right: 'files', bottom: 'setup' } }
-  })),
-  // A chat with Kernel sets up like a teammate's before its first message goes out (KERNEL-405): the skeleton, and the message in the queue.
-  WorkspaceLeadSetup: scene((f) => leadSetup(f, [
-    { line: '$ pnpm install --frozen-lockfile', stream: 'stdout' },
-    { line: 'Progress: resolved 812, reused 806, downloaded 6, added 0', stream: 'stdout' }
-  ])),
-  // Its setup failed: the banner and Run again, as for a teammate, and the first message still waits.
-  WorkspaceLeadSetupFailed: scene((f) => leadSetup(f, [
-    { line: '$ pnpm install --frozen-lockfile', stream: 'stdout' },
-    { line: 'ERR_PNPM_OUTDATED_LOCKFILE  Cannot install with "frozen-lockfile" because pnpm-lock.yaml is not up to date', stream: 'stderr' },
-    { line: 'Setup failed with exit code 1', stream: 'stderr' }
-  ], 1)),
+  // KERNEL-1093: the Setup tab after a run failed. The log keeps pnpm's output and its last line, with Edit script and Run again under it. The toast already said so and has gone.
+  WorkspaceSetupFailed: scene((f) => {
+    const w = along(f, { setup: 'failed', steps: 3, pane: true, right: 'files', secs: 72, quiet: true })
+    return {
+      ...clientA({ scripts: { ...kernelFiles.scripts, setup: 'pnpm install --frozen-lockfile' } }),
+      ...w,
+      push: [
+        ...f.push,
+        { type: 'chat.running', chatId: ids.tableChat, running: true },
+        { type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line: '$ pnpm install --frozen-lockfile', stream: 'stdout' }] },
+        { type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line: 'ERR_PNPM_OUTDATED_LOCKFILE  Cannot install with "frozen-lockfile" because pnpm-lock.yaml is not up to date', stream: 'stderr' }] },
+        { type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line: 'Setup failed with exit code 1', stream: 'stderr' }] },
+        setupData(ids.table, SETUP_RAW.frozen),
+        { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: 1 }
+      ]
+    }
+  }),
+  // The Lead's chat sets up the same way, silently, and when its setup fails Kernel keeps working (KERNEL-1093).
+  WorkspaceLeadSetup: scene((f) => leadAlong(f, false)),
+  WorkspaceLeadSetupFailed: scene((f) => leadAlong(f, true)),
   // A worktree deleted outside Kernel (KERNEL-291): the banner says so and offers Archive, and the composer waits.
   WorkspaceFolderMissing: scene((f) => ({ workspaces: withWorkspace(f, ids.table, { folderGone: true }), ui: open })),
   WorkspaceHooksDown: scene(() => ({ hooks: { port: 7420, listening: false, installed: true, events: hookEvents }, ui: open })),
   // KERNEL-401: a GitHub rate limit holds PR reads off until 3:41 PM, over a PR that passed its checks.
+  // Pen 12.1: a branch that is up to date archives with one button.
   ConfirmArchive: scene((f) => ({
+    gitStatus: { [ids.table]: { branch: 'feat/t-14-invoice-table', ahead: 0, behind: 0, dirty: { files: 0, added: 0, removed: 0 } } },
+    push: f.push,
+    ui: { ...open, modal: { name: 'confirm', kind: 'archive', workspaceId: ids.table } }
+  })),
+  // Two commits that never reached GitHub: the main button pushes first, and Archive anyway leaves them on the local branch.
+  ConfirmArchiveUnpushed: scene((f) => ({
     gitStatus: { [ids.table]: { branch: 'feat/t-14-invoice-table', ahead: 2, behind: 0, dirty: { files: 0, added: 0, removed: 0 } } },
+    push: f.push,
+    ui: { ...open, modal: { name: 'confirm', kind: 'archive', workspaceId: ids.table } }
+  })),
+  // Its PR is still open: archiving stops Kernel watching it but leaves it open on GitHub, and the box says so before it goes (Pen 12.3).
+  ConfirmArchiveOpenPr: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { prNumber: 43, prState: 'ready' }),
+    gitStatus: { [ids.table]: { branch: 'feat/t-14-invoice-table', ahead: 0, behind: 0, dirty: { files: 2, added: 34, removed: 6 } } },
     push: f.push,
     ui: { ...open, modal: { name: 'confirm', kind: 'archive', workspaceId: ids.table } }
   })),

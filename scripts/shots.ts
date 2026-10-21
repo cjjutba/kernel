@@ -543,9 +543,9 @@ async function typeSwitch(page: Page) {
   await page.waitForTimeout(300)
 }
 
-// SearchArchived is the palette with "archived" typed, which lists the archived workspaces.
+// SearchArchived is the palette with "datatable" typed, which finds one archived workspace and nothing else (Pen 12.7).
 async function typeArchived(page: Page) {
-  await page.getByRole('combobox', { name: 'Type a command or search' }).fill('archived')
+  await page.getByRole('combobox', { name: 'Type a command or search' }).fill('datatable')
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }

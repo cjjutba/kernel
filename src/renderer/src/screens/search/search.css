@@ -16,6 +16,8 @@
 .cp-row[aria-selected='true'] .cp-label { color: var(--ink); }
 .cp-hit { background: transparent; color: var(--ink); font-weight: var(--fw-semibold); }
 .cp-meta { flex-shrink: 0; max-width: 45%; font-size: var(--fs-meta); color: var(--muted); }
+.cp-note { flex-shrink: 0; max-width: 40%; font-size: var(--fs-meta); color: var(--muted); }
+.cp-act { flex-shrink: 0; font-size: var(--fs-meta); color: var(--muted); }
 .cp-keys { flex-shrink: 0; display: inline-flex; align-items: center; gap: 3px; }
 .cp-keys kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 19px; box-sizing: border-box; height: 20px; padding: 0 5px; border-radius: var(--r-2xs); border: 1px solid var(--line-3); font: var(--fs-badge) var(--mono); color: var(--ink-3); }
 .cp-none { padding: 28px 10px; text-align: center; color: var(--muted); font-size: var(--fs-ui); }

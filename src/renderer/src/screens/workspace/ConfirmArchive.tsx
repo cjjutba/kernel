@@ -43,6 +43,8 @@ export function ConfirmArchive({ workspaceId }: { workspaceId: string }) {
 
   const unpushed = git?.ahead ?? 0
   const current = ws.mode === 'current'
+  // Archiving stops Kernel watching the PR, but leaves it open on GitHub, so the box says so before it goes (Pen 12.3).
+  const openPr = !!ws.prNumber && ws.prState !== 'merged' && ws.prState !== 'closed'
   // The main button pushes first when there are unpushed commits. Archive anyway doesn't.
   const archive = (key: 'main' | 'anyway') => run(key, async () => {
     const push = key === 'main' && unpushed > 0
@@ -73,7 +75,9 @@ export function ConfirmArchive({ workspaceId }: { workspaceId: string }) {
       <div className="wsc-facts mono">
         <span>{ws.branch}</span>
         {git && unpushed > 0 && <span>{plural(unpushed, 'commit')} ahead of origin</span>}
+        {git && unpushed === 0 && !current && <span className="wsc-quiet">Up to date with origin</span>}
         {dirty && <span>{dirty}</span>}
+        {openPr && <span>PR #{ws.prNumber} stays open on GitHub, but Kernel stops checking it</span>}
       </div>
       {!current && !unread && <Checkbox checked={deleteBranch} onChange={setPicked}>Also delete the local branch</Checkbox>}
       {error && <p role="alert" className="wsc-error">{error}</p>}

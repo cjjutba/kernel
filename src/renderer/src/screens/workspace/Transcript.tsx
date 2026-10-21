@@ -35,7 +35,7 @@ import { countNew, keepOpen, leftAtEnd, markRevealed, opensAtEnd, placeTop, read
 import { RAIL_MIN, railEntries, sameEntries } from './railEntries'
 import { createChatScroll, followsAfterScroll, movesToEnd, PIN_PX, type ChatScroll, type ScrollView } from './chatScroll'
 import { TranscriptGlide } from './glideContext'
-import { ChatSetupRows } from './ChatSetupRows'
+import { ChatSetupRows, SharedFolderNote } from './ChatSetupRows'
 
 const EMPTY: ChatItem[] = []
 /** A plan revealing itself within this long of the chat opening is placed, not glided. */
@@ -729,7 +729,7 @@ function ToolFold({ block, changes }: { block: Extract<ThreadBlock, { kind: 'gro
  * The line at the end of a running turn, under every fold, card and note: the spinner and the seconds since the turn started, counted from the message's own
  * timestamp so it is right after a reload, or from the press of Send for a chat New chat just started. New chat and the setup wait draw it too. While a request waits on the reader it says "Waiting for you", with no spinner and no clock.
  */
-export function TurnLine({ since, waiting }: { since: number; waiting: boolean }) {
+export function TurnLine({ since, waiting, note }: { since: number; waiting: boolean; /** What the turn is doing before it has steps to show, such as "Creating the worktree". It takes the clock's place. */ note?: string }) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     if (waiting) return
@@ -737,6 +737,7 @@ export function TurnLine({ since, waiting }: { since: number; waiting: boolean }
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
   }, [waiting])
+  if (note && !waiting) return <span className="running" data-note><Spinner label="Working" pattern="spiral" />Working<span className="running-note">{note}</span></span>
   return waiting
     ? <span className="running">{WAITING}</span>
     : <span className="running"><Spinner label="Working" pattern="spiral" />{fmtDuration(now - since)}</span>
@@ -840,6 +841,18 @@ interface TranscriptProps { chat: Chat; workspaceId: string; changes: ChangedFil
 export const Transcript = memo(function Transcript(props: TranscriptProps) {
   return <ChatTranscript key={props.chat.id} {...props} />
 })
+
+/** A chat whose messages haven't arrived yet: two of yours and two replies as grey bars, never a spinner (Pen 6.12). */
+function TranscriptSkeleton() {
+  return (
+    <div className="ts-skel" aria-hidden="true">
+      <div className="ts-skel-you" />
+      <div className="ts-skel-reply"><i /><i /><i /><i /></div>
+      <div className="ts-skel-you" />
+      <div className="ts-skel-reply"><i /><i /><i /></div>
+    </div>
+  )
+}
 
 const blockKey = (b: ThreadBlock) => (b.kind === 'item' ? b.item.id : b.id)
 
@@ -1042,7 +1055,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   const unreadAt = chat.unreadAt
   useEffect(() => { if (unreadAt !== undefined) void call('chats.markRead', { chatId: chat.id }).catch(() => undefined) }, [chat.id, unreadAt])
 
-  // The project's first chat, made when the project was added: its setup block stands where it will stay once the first message is sent, so Send moves nothing.
+  // The project's first chat, made when the project was added: its setup block shows until the first message is sent.
   const firstChat = useStore((s) => s.projects.find((p) => p.id === ws?.projectId)?.firstChatId === chat.id)
   // An empty chat shows the centred welcome in place of the thread, which sits at the bottom of the scroll area.
   // A chat whose items have not arrived is not empty, whatever it holds: it shows nothing until they do, or Try again when the load failed (KERNEL-860).
@@ -1095,8 +1108,10 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
             <Button busy={retrying !== null} busyLabel="Loading" onClick={() => void retry('load', () => loadWorkspace(workspaceId).catch(() => undefined))}>Try again</Button>
           </EmptyState>
         )}
-        {/* The worktree and its setup, above the first message (KERNEL-951). Outside the thread, whose children line up with its blocks. */}
-        {ws && !failed && (!empty || firstChat) && <ChatSetupRows ws={ws} />}
+        {/* The project's first chat opens with its worktree and setup, and sending the first message clears them (KERNEL-951, KERNEL-1093). Outside the thread, whose children line up with its blocks. */}
+        {ws && !failed && empty && firstChat && <ChatSetupRows ws={ws} />}
+        {ws && !failed && !firstChat && <SharedFolderNote ws={ws} />}
+        {loading && <TranscriptSkeleton />}
         {empty && !firstChat && (
           <ChatWelcome title={`New tab with ${agentName}`} suggestions={isLead ? LEAD_SUGGESTIONS : SUGGESTIONS}
             onPick={(text) => sendMessage(chat.id, [{ type: 'text', text }])} />

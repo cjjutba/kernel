@@ -59,7 +59,7 @@ export function Toasts() {
       <ToastStack>
         {toasts.map((t) => (
           <Toast
-            key={t.id} title={t.title} sub={t.sub} glyph={glyphOf(t)} closing={closing.includes(t.id)} onDismiss={() => actions.ui.dismissToast(t.id)}
+            key={t.id} title={t.title} sub={t.sub} detail={t.detail} glyph={glyphOf(t)} closing={closing.includes(t.id)} onDismiss={() => actions.ui.dismissToast(t.id)}
             // A plain link would navigate the app window away, so an action opens its link in the browser, or its tab in the app.
             actions={[t.other, t.action].flatMap((a) => a && undoable(a) ? [{ label: a.label, primary: a.primary, kbd: a === actionable?.action ? UNDO_KBD : undefined, onClick: () => press(a) }] : [])}
           />

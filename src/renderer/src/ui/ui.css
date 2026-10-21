@@ -5,6 +5,7 @@
 .input:focus { border-color: var(--line-3); }
 
 /* button xs and sm and icon button boxes (Button size, IconButton box). The 28px default is .btn and .icon-btn in tokens.css. */
+.btn.danger:disabled:not([aria-busy='true']) { opacity: 1; background: var(--surface-3); border-color: var(--surface-3); color: var(--muted); }
 .btn.xs { height: 24px; padding: 0 8px; border-radius: var(--r-sm); font-size: var(--fs-meta); }
 .btn.sm { height: 26px; padding: 0 10px; border-radius: var(--r-sm); font-size: var(--fs-meta); }
 .icon-btn.md { width: 26px; height: 26px; }
@@ -111,6 +112,7 @@
 .toast-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-row); line-height: var(--lh-snug); }
 .toast-title { font-weight: var(--fw-semibold); color: var(--ink); }
 .toast-sub { color: var(--muted); font-size: var(--fs-code); line-height: var(--lh-ui); }
+.toast-detail { color: var(--muted); font-size: var(--fs-meta); line-height: var(--lh-ui); }
 .toast-action { height: 28px; padding: 0 11px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: var(--fs-code); font-weight: var(--fw-medium); cursor: pointer; transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
 .toast-action:hover { background: var(--surface-3); color: var(--ink); }
 .toast-action[data-primary] { border-color: var(--ink); background: var(--ink); color: var(--on-ink); }
@@ -159,7 +161,7 @@
 /* kbd, avatar */
 .kbd { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface); font: var(--fs-badge) var(--mono); color: var(--muted); }
 .avatar { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface); color: var(--ink); font-weight: var(--fw-semibold); }
-.agent-avatar { display: inline-block; flex-shrink: 0; border-radius: var(--r-pill); box-shadow: inset 0 0 0 1px var(--line-2); background: linear-gradient(135deg, var(--pal-a), var(--pal-b)); }
+.agent-avatar { display: inline-block; flex-shrink: 0; border-radius: var(--r-pill); outline: 1px solid var(--line-2); outline-offset: -1px; background: linear-gradient(135deg, var(--pal-a), var(--pal-b)); }
 .agent-avatar[data-palette='ivy'] { --pal-a: var(--agent-ivy-a); --pal-b: var(--agent-ivy-b); }
 .agent-avatar[data-palette='rio'] { --pal-a: var(--agent-rio-a); --pal-b: var(--agent-rio-b); }
 .agent-avatar[data-palette='sky'] { --pal-a: var(--agent-sky-a); --pal-b: var(--agent-sky-b); }

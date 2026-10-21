@@ -289,7 +289,7 @@ describe('deleting workspaces from History', () => {
     const ids = [(await archived('p1', { commit: true })).id, (await archived('p2', { commit: true, merged: true })).id, (await archived('p3')).id]
 
     const p = await k.deletePreview(ids)
-    expect(p).toEqual({ workspaces: 3, skipped: [], unpushedBranches: 1, transcriptBytes: 3750 })
+    expect(p).toEqual({ workspaces: 3, skipped: [], unpushedBranches: 1, unpushed: [{ id: ids[0], branch: expect.any(String) }], transcriptBytes: 3750 })
     // Counting changes nothing.
     expect(ids.every((id) => k.store.workspace(id))).toBe(true)
 
