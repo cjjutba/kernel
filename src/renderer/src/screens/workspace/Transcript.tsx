@@ -20,7 +20,7 @@ import { InstructionCard } from './pr/InstructionCard'
 import { instructionOf } from './pr/model'
 import { isQuitNote, userView } from './sender'
 import { KernelNote, QuitNote } from './KernelNote'
-import { SharedCard } from './cards/SharedCard'
+import { SharedCard, SharedCards } from './cards/SharedCard'
 import { TeamUpdateCard, UpdateRowCard } from './cards/TeamUpdateCard'
 import { isHiddenUpdate } from './cards/teamUpdate'
 import { LocalMergeRow } from './pr/LocalMerge'
@@ -332,6 +332,7 @@ function sameBlock(a: ThreadBlock, b: ThreadBlock): boolean {
     case 'files': return b.kind === 'files' && a.id === b.id && sameList(a.files, b.files)
     case 'meta': return b.kind === 'meta' && a.id === b.id && a.text === b.text && a.actions?.copy === b.actions?.copy && a.actions?.files === b.actions?.files && a.actions?.checkpointId === b.actions?.checkpointId && !a.actions === !b.actions
     case 'notes': return b.kind === 'notes' && a.id === b.id && sameList(a.items, b.items)
+    case 'shared': return b.kind === 'shared' && a.id === b.id && sameList(a.items, b.items)
     case 'reply': return b.kind === 'reply' && a.item === b.item && a.meta === b.meta && a.checkpointId === b.checkpointId && sameList(a.files ?? [], b.files ?? [])
     case 'relaunch': return b.kind === 'relaunch' && a.note === b.note && a.message === b.message
     case 'end': return b.kind === 'end' && a.id === b.id && a.why === b.why && a.ms === b.ms
@@ -349,6 +350,7 @@ const Block = memo(function Block({ block, chatId, workspaceId, changes, agentNa
   if (block.kind === 'end') return <EndLine block={block} chatId={chatId} agentName={agentName} />
   if (block.kind === 'group') return <ToolGroup block={block} changes={changes} />
   if (block.kind === 'notes') return <NoteFold block={block} />
+  if (block.kind === 'shared') return <SharedCards items={block.items} />
   if (block.kind === 'relaunch') return <KernelNote item={block.message} agentName={agentName} lead={`Kernel quit and relaunched. ${agentName} picked up where it stopped.`} />
   if (block.kind === 'meta') return block.actions ? <TurnEnd block={block} chatId={chatId} workspaceId={workspaceId} onFork={onFork} onForkWorkspace={onForkWorkspace} /> : <span className="meta">{block.text}</span>
   if (block.kind === 'files') return <TurnFilesCard rowId={block.id} files={block.files} onOpenDiff={onOpenDiff} />

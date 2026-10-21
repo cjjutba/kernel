@@ -17,7 +17,8 @@ describe('fixtures', () => {
     }
     for (const c of f.chats) expect(workspaces.has(c.workspaceId), `chat ${c.id} workspace`).toBe(true)
     for (const id of Object.keys(f.items)) expect(chats.has(id), `items for chat ${id}`).toBe(true)
-    for (const id of [...Object.keys(f.changes), ...Object.keys(f.diffs)]) expect(workspaces.has(id), `changes for ${id}`).toBe(true)
+    // A diff is keyed by its workspace, or by `<workspace>:<path>` for one file's own diff.
+    for (const id of [...Object.keys(f.changes), ...Object.keys(f.diffs).map((k) => k.split(':')[0]), ...Object.keys(f.changesAgainst ?? {}), ...Object.keys(f.fileErrors ?? {})]) expect(workspaces.has(id), `changes for ${id}`).toBe(true)
     for (const a of f.approvals) {
       if (a.projectId) expect(projects.has(a.projectId), `approval ${a.id} project`).toBe(true)
       if (a.workspaceId) expect(workspaces.has(a.workspaceId), `approval ${a.id} workspace`).toBe(true)

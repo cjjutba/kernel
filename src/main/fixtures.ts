@@ -24,6 +24,8 @@ const fixtureAccount: ClaudeAccount = { signedIn: true, name: 'Sam Rivera', logi
  * Reads serve the fixture. Writes return a plausible value and change nothing, so a screenshot shows the same state every time.
  */
 export function fixtureHandlers(f: Fixture): Handlers {
+  /** The `mentionsGone` paths already answered once. */
+  const asked = new Set<string>()
   const chat = (id: string): Chat => {
     const c = f.chats.find((x) => x.id === id)
     if (!c) throw new Error(`Unknown chat ${id}`)
@@ -157,15 +159,25 @@ export function fixtureHandlers(f: Fixture): Handlers {
       const files = f.changes[workspaceId] ?? []
       return { branch: workspace(workspaceId).branch, ahead: 0, behind: 0, dirty: { files: files.length, added: files.reduce((n, c) => n + c.added, 0), removed: files.reduce((n, c) => n + c.removed, 0) } }
     },
-    'workspaces.changes': async ({ workspaceId }) => f.changes[workspaceId] ?? [],
-    'workspaces.diff': async ({ workspaceId }) => f.diffs[workspaceId] ?? '',
+    // A compare pick reads its own files when the fixture has them (Pen 9.21), else the workspace's changes.
+    'workspaces.changes': async ({ workspaceId, target }) => (target && target.kind !== 'base' ? f.changesAgainst?.[workspaceId]?.[target.kind] : undefined) ?? f.changes[workspaceId] ?? [],
+    // A fixture can give a file its own diff under `<workspace id>:<path>`.
+    'workspaces.diff': async ({ workspaceId, file }) => (file ? f.diffs[`${workspaceId}:${file}`] : undefined) ?? f.diffs[workspaceId] ?? '',
     'workspaces.commits': async ({ workspaceId }) => f.commits?.[workspaceId] ?? [],
     'workspaces.compareBranches': async ({ workspaceId }) => [...new Set([workspace(workspaceId).baseRef, ...(f.branches ?? [])])],
     'workspaces.tree': async ({ workspaceId }) => f.tree?.[workspaceId] ?? [],
     'workspaces.files': async ({ workspaceId, query, limit = 8 }) => (f.tree?.[workspaceId] ?? []).filter((e) => e.path.toLowerCase().includes(query.toLowerCase())).slice(0, limit),
-    'workspaces.readFile': async ({ workspaceId, path }) => f.fileText?.[workspaceId]?.[path] ?? '',
+    'workspaces.readFile': async ({ workspaceId, path }) => {
+      const refused = f.fileErrors?.[workspaceId]?.[path]
+      if (refused) throw new Error(refused)
+      return f.fileText?.[workspaceId]?.[path] ?? ''
+    },
     // A fixture's mentions resolve to the rows of its tree, by exact path.
     'workspaces.resolvePaths': async ({ workspaceId, paths }) => Object.fromEntries(paths.map((p) => {
+      if (f.mentionsGone?.[workspaceId]?.includes(p)) {
+        if (asked.has(`${workspaceId}:${p}`)) return [p, null]
+        asked.add(`${workspaceId}:${p}`)
+      }
       const m = f.mentions?.[workspaceId]?.[p]
       if (m !== undefined) return [p, m]
       const e = f.tree?.[workspaceId]?.find((t) => t.path === p)

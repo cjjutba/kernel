@@ -313,12 +313,12 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 /* Sidebar hidden: the header clears the traffic lights, which always sit on its row (KERNEL-431), and drags the window. */
 .app[data-sidebar='hidden'] .main { padding-left: 8px; }
 .app[data-sidebar='hidden'] .panel > .header { padding-left: 78px; }
-/* The top row drags the window, sidebar shown or hidden (KERNEL-657): a screen header, the workspace's right panel header and the 8px strip above the panels.
+/* The top row drags the window, sidebar shown or hidden (KERNEL-657): a screen header and the 8px strip above the panels.
    Controls inside them, and any menu or popover that opens over them, opt out, since Electron's drag regions swallow clicks. Pick by kind, not by position. */
-.panel > .header, .ws-aside-head { -webkit-app-region: drag; }
+.panel > .header { -webkit-app-region: drag; }
 .main { position: relative; }
 .main::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 8px; -webkit-app-region: drag; }
-:is(.panel > .header, .ws-aside-head) :is(button, a, input, select, textarea, label, summary, [role='button'], [role='tab'], [role='menu'], [role='menuitem'], [role='listbox'], [role='dialog'], [role='separator'], [tabindex], [data-tip], .menu) { -webkit-app-region: no-drag; }
+.panel > .header :is(button, a, input, select, textarea, label, summary, [role='button'], [role='tab'], [role='menu'], [role='menuitem'], [role='listbox'], [role='dialog'], [role='separator'], [tabindex], [data-tip], .menu) { -webkit-app-region: no-drag; }
 .menu, [role='menu'], [role='listbox'], [role='dialog'], [role='separator'] { -webkit-app-region: no-drag; }
 
 /* sidebar */

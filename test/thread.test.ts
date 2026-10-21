@@ -567,4 +567,14 @@ describe('a quieter transcript (KERNEL-1025, KERNEL-1094)', () => {
     const failed: ChatItem[] = [user('u', 1), { kind: 'result', id: 'r', ts: at(2), durationMs: 1, ok: false, error: 'Boom' }]
     expect(kinds([note('a', 1), note('b', 2), ...failed, note('c', 3), note('d', 4)])).toEqual(['notes', 'item', 'end', 'meta', 'notes'])
   })
+
+  it('folds two or more shared files in a row into one block, so their images are laid out together (KERNEL-1096)', () => {
+    const shared = (id: string, n: number): ChatItem => ({ kind: 'shared', id, ts: at(n), sharedId: `s-${id}`, version: 1 })
+    const kinds = (items: ChatItem[]) => buildThread(items).map((b) => b.kind)
+    expect(kinds([shared('a', 1)])).toEqual(['item'])
+    expect(kinds([shared('a', 1), shared('b', 2), shared('c', 3)])).toEqual(['shared'])
+    const folded = buildThread([shared('a', 1), shared('b', 2)])[0]
+    expect(folded.kind === 'shared' && folded.items.map((i) => i.id)).toEqual(['a', 'b'])
+    expect(kinds([shared('a', 1), note('n', 2), shared('b', 3)])).toEqual(['item', 'item', 'item'])
+  })
 })

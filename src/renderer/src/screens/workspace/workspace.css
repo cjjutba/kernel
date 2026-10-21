@@ -1,13 +1,11 @@
 /* Workspace screens (KERNEL-10). Tokens only. */
 
-/* layout: three columns with the sidebar. The header tops the chat column; the right panel runs the full height. */
+/* layout: the header is one row over the chat column and the right panel or Session rail, which panel.css lays out as cards (KERNEL-1096). */
 .panel.ws-panel { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto minmax(0, 1fr); }
 .ws-panel > .header { grid-column: 1; grid-row: 1; container: ws-head / inline-size; }
 .ws-main { position: relative; grid-column: 1; grid-row: 2; min-width: 0; min-height: 0; display: flex; flex-direction: column; container: chat / inline-size; }
-/* 28% of the window between 320 and 400px, so 400px at 1440 as on the canvas. The panel folds below 1024px (D-080). A dragged width
-   is inline over this (Workspace.tsx), and its resize handle sits on the left border (components/resize.css). */
-.ws-aside { position: relative; grid-column: 2; grid-row: 1 / span 2; width: clamp(320px, 28vw, 400px); display: flex; flex-direction: column; border-left: 1px solid var(--line); min-height: 0; background: var(--panel); }
-.ws-aside-head { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 0; padding: 0; border-bottom: 1px solid var(--line); }
+/* The panel's width is in panel.css. It folds below 1024px (D-080), a dragged width is inline over it (Workspace.tsx), and its resize handle sits on the left border (components/resize.css). */
+.ws-aside { position: relative; display: flex; flex-direction: column; min-height: 0; }
 .crumb-avatar { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface-3); font-size: var(--fs-tile); font-weight: var(--fw-semibold); }
 .crumb { flex-shrink: 0; max-width: 30%; overflow: hidden; text-overflow: ellipsis; padding: 0; border: 0; background: transparent; color: var(--ink-2); }
 .crumb:hover { color: var(--ink); }
@@ -19,11 +17,6 @@
 .ws-title-btn:hover { background: var(--hover); }
 /* What the Lead's workspace and a current-branch workspace follow. A label, not a branch to copy. */
 .ws-label { flex-shrink: 4; min-width: 0; font-size: var(--fs-meta); }
-.header .icon-btn, .ws-aside-head .icon-btn { flex-shrink: 0; }
-/* The one panel toggle, fixed 10px from the screen's right edge (the header's padding) and 8px from its top, whole pixels so it can't
-   round differently in the header and the band. The slots hold its project and are never a drag region or a click target. */
-.ws-panel > .panel-toggle { position: absolute; top: 8px; right: 10px; z-index: 2; -webkit-app-region: no-drag; }
-.panel-toggle-slot { flex: none; width: 28px; height: 28px; }
 .ws-issue { flex-shrink: 0; display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid var(--line-2); border-radius: var(--r-xs); background: transparent; color: var(--ink-2); font-family: var(--mono); font-size: var(--fs-chip); }
 button.ws-issue { cursor: pointer; }
 button.ws-issue:hover { background: var(--surface-3); }
@@ -383,12 +376,10 @@ button.rail-row:hover { background: var(--surface); color: var(--ink-2); }
 @media (max-width: 1023px) { .ws-rail { display: none; } .ws-panel[data-rail] > .header { grid-column: 1; } }
 
 /* right panel */
-.panel-tabs { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px; }
 /* The right of the strip: the tab on show draws its actions here (PanelTools, KERNEL-515). A tab with none leaves it empty and hidden. */
 .panel-tools { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .panel-tools:empty { display: none; }
 .panel-tools .icon-btn { width: 24px; height: 24px; border-radius: var(--r-sm); }
-.panel-tools .tool-text { height: 24px; margin-right: 4px; padding: 0 9px; border-radius: var(--r-sm); background: var(--surface); color: var(--ink-2); font-size: var(--fs-meta); font-weight: var(--fw-regular); }
 /* The filter under the strip (PanelFilter.png). The match is lit in the row's name and folder. */
 .ffield { flex-shrink: 0; padding: 0 10px 8px; }
 .finput { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 3px 0 10px; border: 1px solid var(--line-3); border-radius: var(--r); background: var(--input-bg); color: var(--muted); }
@@ -410,9 +401,6 @@ button.rail-row:hover { background: var(--surface); color: var(--ink-2); }
 .tab-more[data-side='right'] { right: 0; justify-content: flex-end; background: linear-gradient(to right, transparent, var(--panel) 58%); }
 .tab-more[data-side='left'] svg { transform: rotate(180deg); }
 /* The Lead's strip, as LeadPrs.png draws it (KERNEL-354): 12.5px tabs with a faint count. */
-.panel-tabs[data-lead] .tab { height: auto; padding: 4px 8px; border-radius: var(--r-sm); font-size: var(--fs-code); font-weight: var(--fw-regular); }
-.panel-tabs[data-lead] [role='tablist'] { gap: 4px !important; } /* Tabs sets its gap inline. */
-.panel-tabs[data-lead] .tab-count { color: var(--muted); font-size: var(--fs-chip); }
 .panel-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
 .panel-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 20px; color: var(--muted); text-align: center; }
 /* File trees (All files, the Changes tree) and the Changes list, drawn like VS Code's explorer (KERNEL-399). */
@@ -433,34 +421,17 @@ button.rail-row:hover { background: var(--surface); color: var(--ink-2); }
 .change-row { gap: 6px; padding-left: 6px; }
 .change-dir { margin-left: 8px; color: var(--muted); font-size: var(--fs-meta); }
 /* "4 files changed" and its totals, with a hairline under it before the files (KERNEL-274). Review all is in the strip (KERNEL-515). */
-.changes-head { display: flex; align-items: center; gap: 8px; flex-shrink: 0; height: 40px; margin: 0 -10px 6px; padding: 0 16px; border-bottom: 1px solid var(--line); }
-.changes-count { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-ui); color: var(--ink-2); }
-.changes-total { display: inline-flex; gap: 6px; font-size: var(--fs-chip); font-variant-numeric: tabular-nums; }
 /* The Changes ⋯ and its menu (PanelCompare.png, KERNEL-517): 332px under the button, 10px clear of it and level with its right edge, narrower in a panel that is. The ⋯ reads pressed while the menu is open. */
 .panel-tools .icon-btn[aria-expanded='true'] { background: var(--surface-3); color: var(--ink); }
 .compare-anchor { position: relative; display: inline-flex; }
 .compare-menu { top: calc(100% + var(--menu-gap)); right: 0; display: flex; flex-direction: column; width: min(332px, calc(100cqw - 16px)); max-height: min(480px, calc(100vh - 140px)); }
 .compare-menu > * { flex-shrink: 0; }
-.compare-target { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 8px; font-size: var(--fs-ui); }
-.compare-pick { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 200px; height: 24px; padding: 0 6px 0 9px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: var(--surface); color: var(--ink-2); }
-.compare-pick .mono { font-size: var(--fs-meta); }
-.compare-pick svg { flex-shrink: 0; color: var(--muted); }
-.compare-pick:hover, .compare-pick:focus-visible { background: var(--hover); }
-.compare-pick:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .compare-rule { height: 1px; margin: 6px -6px; background: var(--line-3); }
 .compare-row, .compare-back { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 30px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: var(--fs-ui); text-align: left; }
 .compare-row:hover, .compare-row:focus-visible, .compare-back:hover, .compare-back:focus-visible { background: var(--hover); }
 .compare-row:focus-visible, .compare-back:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .compare-back svg { color: var(--muted); }
 .compare-ck { display: inline-flex; flex-shrink: 0; width: 16px; height: 16px; color: var(--ink); }
-.compare-commit { align-items: flex-start; min-height: 44px; padding: 6px 8px; }
-.compare-commit .compare-ck { margin-top: 1px; }
-.compare-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-.compare-subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.compare-sub { display: flex; align-items: center; gap: 6px; margin-top: 1px; font-size: var(--fs-meta); color: var(--muted); white-space: nowrap; }
-.compare-sha { font-size: var(--fs-chip); color: var(--muted); }
-.compare-dot { color: var(--faint); }
-.compare-age { margin-left: auto; color: var(--muted); }
 /* The commits and the branches scroll under the rows that stay put. */
 .compare-commits, .compare-list { display: flex; flex-direction: column; flex-shrink: 1; min-height: 0; overflow-y: auto; }
 .compare-note { margin: 0; padding: 6px 8px; font-size: var(--fs-meta); color: var(--muted); }
@@ -538,7 +509,6 @@ button.rail-row:hover { background: var(--surface); color: var(--ink-2); }
 /* terminals */
 .term { flex: 1; min-height: 0; display: flex; background: var(--code-bg); padding: 12px 0 8px 18px; }
 .term-compact { padding: 8px 0 4px 12px; }
-.term-notice { margin: 0; padding: 8px 18px; border-bottom: 1px solid var(--line-2); font-size: var(--fs-code); color: var(--muted); }
 .term-host { flex: 1; min-width: 0; min-height: 0; }
 .term .xterm { height: 100%; }
 .term .xterm-viewport { background-color: transparent !important; }
@@ -619,7 +589,6 @@ button.rail-row:hover { background: var(--surface); color: var(--ink-2); }
 .panel-scroll.tree-skel { padding: 4px 12px; }
 .panel-scroll.tree-scroll { padding: 0 8px 8px; }
 .panel-scroll.changes-scroll { padding: 4px 10px; }
-.panel-scroll.checks-body { gap: 14px; padding: 6px 16px; }
 .changes-hidden { margin: 8px 6px 0; }
 .check-spin { display: inline-flex; margin: 0 1px; }
 .code-view.code-view-flush { padding: 8px 0; }

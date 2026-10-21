@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
+import type { BottomKind, UiState } from '@shared/types'
 import { actions, getState, panelShownIn, useStore } from '../store'
-import { IconButton } from '../ui'
+import { IconButton, Kbd } from '../ui'
+import { toggleBottomPanel } from '../screens/workspace/bottomSplit'
 
 /** Window widths below which a panel folds: the right panel first, then the sidebar (D-080). */
 const FOLD_BELOW = { rightPanel: 1024, sidebar: 900 } as const
@@ -29,11 +31,35 @@ export const toggleRightPanel = () => {
   const { ui } = getState()
   actions.ui.setRightPanel(!panelShownIn(ui, inView(ui.route)))
 }
-/** Focus mode (Cmd+backslash): hides both sides, or shows both once both are hidden. */
+/** The Session rail is what the right side shows: wanted, and no panel over it. Only a teammate's workspace has one (KERNEL-1096). */
+export const railShownIn = (ui: Pick<UiState, 'rail' | 'rightPanel' | 'panelHeld'>, workspaceId?: string) => ui.rail && !panelShownIn(ui, workspaceId)
+
+/**
+ * The title bar's Session toggle: from the panel it switches to the rail, from the rail it hides it, and from neither it brings it back. Pressing the panel's toggle and this
+ * one therefore switch between the two, and pressing the one that is on leaves neither, which is Focus mode once the sidebar is hidden too (KERNEL-1096).
+ */
+export const toggleRail = () => {
+  const { ui } = getState()
+  if (panelShownIn(ui, inView(ui.route))) { actions.ui.setRightPanel(false); actions.ui.setRail(true) }
+  else actions.ui.setRail(!ui.rail)
+}
+
+/** What was on before Focus mode hid it, so leaving Focus puts it back. */
+let beforeFocus: { rightPanel: boolean; rail: boolean } | null = null
+/** Focus mode (Cmd+backslash): hides the sidebar, the panel and the rail, or shows them again as they were once all are hidden. */
 export const toggleFocus = () => {
-  const { sidebar, rightPanel } = getState().ui
-  actions.ui.setSidebar(!sidebar && !rightPanel)
-  actions.ui.setRightPanel(!sidebar && !rightPanel)
+  const { sidebar, rightPanel, rail } = getState().ui
+  if (sidebar || rightPanel || rail) {
+    beforeFocus = { rightPanel, rail }
+    actions.ui.setSidebar(false)
+    actions.ui.setRightPanel(false)
+    actions.ui.setRail(false)
+    return
+  }
+  const back = beforeFocus ?? { rightPanel: false, rail: true }
+  actions.ui.setSidebar(true)
+  actions.ui.setRightPanel(back.rightPanel)
+  actions.ui.setRail(back.rail)
 }
 
 /** Back and Forward (⌘[ and ⌘]), each disabled when the history has nowhere reachable to go. In the sidebar's top strip, and in the screen header while the sidebar is hidden (KERNEL-643). In the header they sit 1px lower, which puts them on the strip's row: the header's content area is 43px (its border), the strip's 44px. */
@@ -70,16 +96,28 @@ export function SidebarToggleSlot() {
 }
 
 /**
- * The toggle of a screen with a right panel (Cmd+Shift+B, or Cmd+Option+B), rendered once, at a fixed spot in the screen's top right
- * corner (`.panel-toggle` in workspace.css). It is positioned against the screen and not against the header or the PR band, so it never
- * moves when the panel opens or closes. `name` is what the panel holds, for the label.
+ * The title bar's view toggles of a workspace (Pen 9.1): the bottom pane, the Session rail and the right panel, in the header's right corner. The rail and the panel switch
+ * places, and the one that is on turns off when it is pressed. `rail` is false in a chat with Kernel, which has no Session rail, so its toggle goes. `kind` says whose bottom pane it is.
  */
-export function RightPanelToggle({ name }: { name: string }) {
-  const open = useStore((s) => panelShownIn(s.ui, inView(s.ui.route)))
-  return <IconButton className="panel-toggle" icon="panelRight" size={16} label={`${open ? 'Hide' : 'Show'} ${name}`} data-tip-kbd="⌘⇧B" onClick={toggleRightPanel} />
+export function ViewToggles({ rail, kind }: { rail: boolean; kind: BottomKind }) {
+  const ui = useStore((s) => s.ui)
+  const id = inView(ui.route)
+  const panel = panelShownIn(ui, id)
+  const bottomOpen = panel && !ui.bottomCollapsed[kind]
+  return (
+    <div className="view-toggles" role="group" aria-label="Views">
+      <IconButton icon="panelBottom" size={16} label={bottomOpen ? 'Hide bottom panel' : 'Show bottom panel'} aria-pressed={bottomOpen} data-tip-kbd="⌘J" onClick={toggleBottomPanel} />
+      {rail && <IconButton icon="railList" size={16} label={railShownIn(ui, id) ? 'Hide Session' : 'Show Session'} aria-pressed={railShownIn(ui, id)} onClick={toggleRail} />}
+      <IconButton icon="panelRight" size={16} label={panel ? 'Hide panels' : 'Show panels'} aria-pressed={panel} data-tip-kbd="⌘⇧B" onClick={toggleRightPanel} />
+    </div>
+  )
 }
 
-/** The empty project the header or the PR band keeps for the toggle, which sits over it. */
-export function PanelToggleSlot() {
-  return <span className="panel-toggle-slot" aria-hidden="true" />
+/** Shown in the title bar while Focus mode hides everything: the way back, with its key. */
+export function FocusChip() {
+  return (
+    <button type="button" className="focus-chip" aria-label="Leave Focus mode" onClick={toggleFocus}>
+      Focus<Kbd>⌘\</Kbd>
+    </button>
+  )
 }

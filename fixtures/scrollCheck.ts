@@ -66,8 +66,8 @@ export const scrollCheckFixtures: Record<string, Fixture> = {
   ScrollCheckHistory: manyHistory(teamFixtures.History, 8),
   ScrollCheckHistoryProject: manyHistory(teamFixtures.HistoryProject, 8),
   ScrollCheckProjects: manyProjects(teamFixtures.Projects, 6),
-  ScrollCheckFile: { ...workspaceFixtures.WorkspaceFile, fileText: { [ids.table]: { 'src/app/invoices/table.tsx': longFile } } },
-  ScrollCheckDiff: { ...workspaceFixtures.WorkspaceDiffTab, diffs: { [ids.table]: longDiff('src/app/invoices/page.tsx') } },
+  ScrollCheckFile: { ...workspaceFixtures.WorkspaceFile, fileText: { [ids.table]: { 'test/journey.test.ts': longFile } } },
+  ScrollCheckDiff: { ...workspaceFixtures.WorkspaceDiffTab, diffs: { [ids.table]: longDiff('test/journey.test.ts') } },
   ScrollCheckLog: (() => {
     const f = workspaceFixtures.PanelToolbarChecks
     const more = runLines.map((line) => ({ type: 'script.output' as const, workspaceId: ids.table, kind: 'run' as const, lines: [{ line, stream: 'stdout' as const }] }))

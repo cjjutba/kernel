@@ -44,7 +44,6 @@ export function UpdateSlot() {
 /** With the sidebar hidden its footer goes too, so the Update pill moves to the title bar's right end (Pen 17.3). Rendered once by App while the sidebar is hidden. */
 export function TitleBarUpdate() {
   const ready = useStore((s) => s.system.update?.status === 'ready')
-  const inWorkspace = useStore((s) => s.ui.route.name === 'workspace')
   if (!ready) return null
-  return <div className="titlebar-update" data-in-workspace={inWorkspace || undefined}><UpdatePill where="titlebar" /></div>
+  return <div className="titlebar-update"><UpdatePill where="titlebar" /></div>
 }

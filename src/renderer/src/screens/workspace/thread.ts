@@ -36,6 +36,8 @@ export type ThreadBlock =
   | { kind: 'reply'; id: string; item: Extract<ChatItem, { kind: 'text' }>; files?: ChangedFile[]; meta: string; checkpointId?: string }
   /** Two or more grey notes in a row, as one line: the latest and "and N more", which opens to all of them. A PR state note never joins one, and neither does an error. */
   | { kind: 'notes'; id: string; items: NoteItem[] }
+  /** Two or more shared files in a row: the images among them become one card that lays its pictures out by count (KERNEL-1096). */
+  | { kind: 'shared'; id: string; items: Extract<ChatItem, { kind: 'shared' }>[] }
   /** Kernel's message right after a quit or crash note, folded into that note's line: the line says what happened, opening it shows the message. */
   | { kind: 'relaunch'; id: string; note: Extract<ChatItem, { kind: 'note' }>; message: Extract<ChatItem, { kind: 'user' }> }
   /**
@@ -399,7 +401,7 @@ export function buildThread(items: ChatItem[], running = false): ThreadBlock[] {
     } else turn.push(item)
   }
   finish(running)
-  return foldNotes(blocks)
+  return foldShared(foldNotes(blocks))
 }
 
 const isGrey = (b: ThreadBlock): b is { kind: 'item'; item: NoteItem } => b.kind === 'item' && b.item.kind === 'note' && !b.item.pr
@@ -414,6 +416,23 @@ function foldNotes(blocks: ThreadBlock[]): ThreadBlock[] {
     if (end === i) { out.push(blocks[i]); continue }
     const items = blocks.slice(i, end + 1).map((b) => (b as { item: NoteItem }).item)
     out.push({ kind: 'notes', id: `notes-${items[0].id}`, items })
+    i = end
+  }
+  return out
+}
+
+const isShared = (b: ThreadBlock): b is { kind: 'item'; item: Extract<ChatItem, { kind: 'shared' }> } => b.kind === 'item' && b.item.kind === 'shared'
+
+/** Two or more shared files in a row become one `shared` block, so the card can draw the images among them together. */
+function foldShared(blocks: ThreadBlock[]): ThreadBlock[] {
+  const out: ThreadBlock[] = []
+  for (let i = 0; i < blocks.length; i++) {
+    if (!isShared(blocks[i])) { out.push(blocks[i]); continue }
+    let end = i
+    while (end + 1 < blocks.length && isShared(blocks[end + 1])) end++
+    if (end === i) { out.push(blocks[i]); continue }
+    const items = blocks.slice(i, end + 1).map((b) => (b as { item: Extract<ChatItem, { kind: 'shared' }> }).item)
+    out.push({ kind: 'shared', id: `shared-${items[0].id}`, items })
     i = end
   }
   return out

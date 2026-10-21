@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { CriterionEvidence, EvidenceLink, PrEvidence, ChatPart, Notification, AccountProfile, MoveNotice, AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { PanelTab, WorkspaceView, CriterionEvidence, EvidenceLink, PrEvidence, ChatPart, Notification, AccountProfile, MoveNotice, AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { describeTool } from '../src/main/services/approvals'
@@ -53,12 +53,12 @@ const criteriaScene = (kinds: (keyof typeof CRITERIA)[], o: { provider?: 'claude
       }),
       prs: prInfo('open', { head: 'h42', checks: [{ name: 'vitest', state: 'pass', meta: '48s' }, { name: 'playwright', state: 'fail' }] }),
       evidence: { [ids.table]: evidence },
-      ui: { ...open, workspace: { right: 'checks', bottom: 'run' } }
+      ui: { ...open, workspace: { right: 'pr', bottom: 'run' } }
     }
   })
 
 /** PR #42 on the invoice table in one state, with the transcript, checks and comments the canvas shows for it. */
-const prScene = (prState: Workspace['prState'], items: ChatItem[], extra: Partial<Fixture> = {}, right: 'changes' | 'checks' = 'changes') =>
+const prScene = (prState: Workspace['prState'], items: ChatItem[], extra: Partial<Fixture> = {}, right: 'changes' | 'pr' = 'changes') =>
   scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { ...pr, prTitle, prState }),
     items: { [ids.tableChat]: [...tableItems, ...items] },
@@ -134,66 +134,6 @@ const localScene = (state: LocalState) => scene((f) => {
     ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
   }
 })
-
-/** KERNEL-249: the Run tab of an open PR's workspace, with the project's three run scripts and `frontend` running. The port is the workspace's first. */
-function runScripts(): Fixture {
-  const open = prScene('open', [], { prs: prInfo('open') })
-  const frontend = ['$ pnpm --filter web dev --port $KERNEL_PORT', 'Next.js ready on http://localhost:4312', 'Studio ready on http://localhost:4314', 'Compiled /invoices', 'GET /invoices 200 in 84ms', 'GET /api/invoices 200 in 31ms']
-  return {
-    ...open,
-    projectSettings: { [ids.projectA]: {
-      scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' },
-      runScripts: [
-        { name: 'run', command: 'pnpm dev --port $KERNEL_PORT' },
-        { name: 'frontend', command: 'pnpm --filter web dev --port $KERNEL_PORT' },
-        { name: 'backend', command: 'pnpm --filter api dev --port $((KERNEL_PORT + 1))' }
-      ],
-      files: { copy: [] }, workspace: {}
-    } },
-    // The seed's output belongs to `run`, which is idle here, so only `frontend` has lines.
-    push: [
-      ...open.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
-      ...frontend.map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', name: 'frontend', lines: [{ line, stream: 'stdout' }] })),
-      scriptData(ids.table, 'run', `${dim(`$ ${frontend[0].slice(2)}`)}\r\n${green('▲')} ${bold('Next.js 15.3')}\r\n   - Local:   ${cyan('http://localhost:4312')}\r\n   - Studio:  ${cyan('http://localhost:4314')}\r\n\r\n ${green('✓')} Ready in 1.4s\r\n ${green('✓')} Compiled /invoices in 312ms\r\n ${dim('GET /invoices 200 in 84ms')}\r\n ${dim('GET /api/invoices 200 in 31ms')}\r\n`, 'frontend')
-    ]
-  }
-}
-
-/**
- * KERNEL-250: the Checks tab of an open PR with the Open menu showing. The project has two preview URLs and `run` printed a third, so
- * the menu lists the named ones, a hairline and Detected. The workspace's first port is 4312 and `run` prints 4314.
- */
-function preview(): Fixture {
-  const open = prScene('open', [], {
-    prs: prInfo('open', { checks: [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'typecheck', state: 'pass', meta: '31s' }, { name: 'vitest', state: 'pass', meta: '48s' }, { name: 'playwright', state: 'pass', meta: '2m 4s' }] })
-  }, 'checks')
-  const run = ['$ pnpm dev --port $KERNEL_PORT', 'Next.js ready on http://localhost:4314', 'Compiled /inbox', 'GET /inbox 200 in 84ms', 'GET /api/requests 200 in 31ms']
-  return {
-    ...open,
-    projectSettings: { [ids.projectA]: {
-      scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' },
-      runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }],
-      files: { copy: [] }, workspace: {},
-      preview: { urls: [{ name: 'Web app', url: 'http://localhost:$KERNEL_PORT' }, { name: 'API docs', url: 'http://localhost:$((KERNEL_PORT + 1))/docs' }] }
-    } },
-    push: [
-      ...open.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
-      ...run.map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', lines: [{ line, stream: 'stdout' }] }))
-    ],
-    ui: { ...open.ui, menu: 'preview' }
-  }
-}
-
-/** KERNEL-1035: the tab strip's + menu with Chat and Terminal, over an open PR and a terminal tab. */
-function newTabMenu(): Fixture {
-  const open = prScene('open', [], { prs: prInfo('open') })
-  return {
-    ...open,
-    chats: [...open.chats, extraChat('chat-term', 'Terminal (claude)', 'terminal')],
-    settings: DEFAULT_SETTINGS('/Users/you'),
-    ui: { ...open.ui, menu: 'newTab' }
-  }
-}
 
 /** The invoice table's PR as one GitHub won't merge until someone approves it (KERNEL-388). */
 const blocked = (f: Fixture): Fixture => ({ ...f, workspaces: f.workspaces.map((w) => (w.id === ids.table ? { ...w, prBlocked: 'review' as const } : w)) })
@@ -658,40 +598,8 @@ const file = (path: string): FileEntry => ({ path, dir: false })
 /** A stand-in for a pasted screenshot, so hovering the image chip in WorkspacePaste shows a preview. */
 const pastedLog = Array.from({ length: 212 }, (_, i) => `2025-03-11T10:${String(i % 60).padStart(2, '0')}:07Z ${i % 9 === 4 ? 'ERROR invoices.list: relation "invoice_lines" does not exist' : `INFO  request ${1000 + i} GET /api/invoices 200 ${12 + (i % 7)}ms`}`).join('\n')
 const screenshot = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800"><rect width="1280" height="800" fill="#141518"/><rect width="240" height="800" fill="#1b1c20"/><rect x="300" y="60" width="520" height="22" rx="4" fill="#3a3c42"/><rect x="300" y="120" width="920" height="420" rx="10" fill="#1f2024" stroke="#2c2e33"/><rect x="330" y="160" width="400" height="14" rx="3" fill="#5a2a2a"/><rect x="330" y="196" width="760" height="12" rx="3" fill="#2f3136"/><rect x="330" y="224" width="680" height="12" rx="3" fill="#2f3136"/></svg>')}`
-/** A deeper repo for the file trees (KERNEL-399): every git status, two compact folder chains (.github/workflows, lib/db) and many file types. */
-const treeChanges: ChangedFile[] = [
-  { path: 'docs/ARCHITECTURE.md', status: 'M', added: 12, removed: 3 },
-  { path: 'src/app/invoices/empty-state.tsx', status: 'A', added: 64, removed: 0 },
-  { path: 'src/app/invoices/legacy-table.tsx', status: 'D', added: 0, removed: 148 },
-  { path: 'src/app/invoices/page.tsx', status: 'M', added: 18, removed: 9 },
-  { path: 'src/app/invoices/sortable-header.tsx', status: '?', added: 41, removed: 0 },
-  { path: 'src/app/invoices/table.tsx', status: 'M', added: 212, removed: 20 },
-  { path: 'src/lib/db/schema.ts', status: 'R', added: 6, removed: 2 },
-  { path: 'tests/invoices.spec.ts', status: 'A', added: 118, removed: 9 }
-]
-const treeStatus = new Map(treeChanges.map((c) => [c.path, c.status]))
-const deepTree: FileEntry[] = [
-  '.github/', '.github/workflows/', '.github/workflows/ci.yml', 'docs/', 'docs/ARCHITECTURE.md', 'docs/DECISIONS.md',
-  'src/', 'src/app/', 'src/app/invoices/', 'src/app/invoices/empty-state.tsx', 'src/app/invoices/legacy-table.tsx', 'src/app/invoices/page.tsx',
-  'src/app/invoices/sortable-header.tsx', 'src/app/invoices/table.tsx', 'src/app/layout.tsx', 'src/components/', 'src/lib/', 'src/lib/db/',
-  'src/lib/db/client.ts', 'src/lib/db/schema.ts', 'src/styles.css', 'tests/', 'tests/invoices.spec.ts',
-  '.env.example', '.gitignore', 'CLAUDE.md', 'package.json', 'pnpm-lock.yaml', 'README.md', 'tsconfig.json', 'vite.config.ts'
-].map((p) => (p.endsWith('/') ? { path: p.slice(0, -1), dir: true } : { path: p, dir: false, ...(treeStatus.has(p) ? { status: treeStatus.get(p) } : {}) }))
-const treeScene = (right: 'files' | 'changes', tab: string, changesView?: 'list' | 'tree') => scene((f) => ({
-  tree: { ...f.tree, [ids.table]: deepTree },
-  changes: { ...f.changes, [ids.table]: treeChanges },
-  ui: { ...open, workspace: { right, bottom: 'run', changesView }, tabs: { [ids.table]: { tab, files: tab.startsWith('file:') ? [tab.slice(5), 'package.json'] : [], diffs: tab.startsWith('diff:') ? [tab.slice(5)] : [] } } }
-}))
-
 const imageBefore = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAABkCAIAAACO1KzYAAAA2klEQVR42u3coREAMAgEQapDpH+NSCXpIQIBO3MV/PqPqqvBhQkAC7AAC7AAC7AAAxZgARZgARZgAQYswAIswAIswAIswIAF+K/MsyrAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDlkt/ARZgARZgAQYswAIswAIswAIMWIAFWIAFWIAFGLAAC7AAq7cHvsLF6uuQAxcAAAAASUVORK5CYII='
 const imageAfter = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAABkCAIAAACO1KzYAAABM0lEQVR42u3dsQ3DQAwEwatEgatUpIoVuATHzhQJz/sBtgIOFNlP5jwvFRcjACzAAizAAizA+gO+76+KAwxYgAVYgAVYgAUYsAALsAC/33F8APdYPg9wp2u9dLh2S4dut3HQdjMHbTdz6HYbh263ceh2G4dut3HodhuHbrcxYMB0JxsDBkx3snHodhsDBgwY8M66ixsDBgwY8Oa6KxsDBgwYMGDAgAEDBgy4BHic7rLGvmBfMGDAgAEDBgwYMGDAgP0e7PdgwIABA/avSsCAAQP2Nomu14VeFwIGzNgLf8CAbdkBvLzxoInZdGfTHWO7Kjcxnjgo+6Lti96eefR83Gxws2FX446xuJvkbtIe0q1DcLuwPNdHAQuwAAuwAAuwAAMWYAEWYAEWYAEGLMACLMB6tR96o4AjuY6UBwAAAABJRU5ErkJggg=='
-const imageDiffScene = (status: 'A' | 'M') => scene((f) => ({
-  changes: { ...f.changes, [ids.table]: [{ path: 'public/logo.png', status, added: 0, removed: 0 }, ...(f.changes[ids.table] ?? [])] },
-  diffs: { ...f.diffs, [ids.table]: '' },
-  images: { [ids.table]: { 'worktree:public/logo.png': { dataUrl: imageAfter }, ...(status === 'M' ? { 'base:public/logo.png': { dataUrl: imageBefore } } : {}) } },
-  ui: { ...open, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.table]: { tab: 'diff:public/logo.png', files: [], diffs: ['public/logo.png'] } } }
-}))
-
 /** What @inv finds, in the order the canvas lists it. */
 /** What @src finds: the folder first, then the folders and files under it. */
 const mentionFolderTree: FileEntry[] = [{ path: 'src', dir: true }, { path: 'src/app', dir: true }, { path: 'src/app/invoices', dir: true }, ...['src/app/index.ts', 'src/app/invoices/table.tsx'].map(file)]
@@ -1258,7 +1166,7 @@ const PANEL_COMMITS: BranchCommit[] = ([
 ] as const).map(([short, subject, age]) => ({ sha: short.padEnd(40, '0'), subject, author: 'Sean', time: Date.now() - age }))
 
 /** PR #147 on `right`, the bottom folded to its tab bar unless `open`, and its run script idle unless `running`. */
-const panelScene = (right: 'files' | 'changes' | 'checks', o: { tree?: boolean; open?: boolean; running?: boolean } = {}): Fixture => {
+const panelScene = (right: 'files' | 'changes' | 'pr', o: { tree?: boolean; open?: boolean; running?: boolean } = {}): Fixture => {
   const f = headerScene('ready', [], { panel: true })
   const idle = idleRun(f)
   return {
@@ -1438,6 +1346,7 @@ const sharedTabScene = (f: Fixture, file?: string, htmlLatest = 3): Partial<Fixt
   shared: sharedFiles(htmlLatest).filter((x) => x.workspaceId === ids.table),
   ui: {
     ...open,
+    rightPanel: false,
     workspace: { right: 'changes', bottom: 'run' },
     ...(file ? { tabs: { [ids.table]: { tab: `shared:${file}`, lastChat: ids.tableChat, files: [], diffs: [], shared: [file] } } } : {})
   }
@@ -1532,7 +1441,7 @@ const sharedPanel = (f: Fixture): Partial<Fixture> => {
     shared: sharedFiles(),
     sharedData: sharedStills,
     ui: {
-      route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'shared', bottom: 'run' },
+      route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run' },
       tabs: { [ids.lead]: { tab: 'shared:sh-html', lastChat: ids.leadChat, files: [], diffs: [], shared: ['sh-html'] } }
     }
   }
@@ -2135,6 +2044,169 @@ const jKernelNote = (): ChatItem[] => [
   jShots(J(49)), jSay('j-n2', J(51, 10), 'Picked up from the screenshot run. git status was clean, so nothing was lost. All six steps pass on a clean account.'), jResult(J(51, 12), 125_000)
 ]
 
+// ---- KERNEL-1096, Review the work (Pen Part 9): Teng's clean-account journey in the right panel, its files, changes, review and pull request, and the pane under them. ----
+
+const R9_BRANCH = 'test/kernel-232a-clean-account'
+const R9_TREE: FileEntry[] = [
+  { path: '.changes', dir: true }, { path: '.changes/unreleased', dir: true }, { path: 'docs', dir: true },
+  { path: 'fixtures', dir: true }, { path: 'fixtures/journey.ts', dir: false, status: 'A' }, { path: 'fixtures/team.ts', dir: false }, { path: 'fixtures/workspace.ts', dir: false },
+  { path: 'scripts', dir: true }, { path: 'shots', dir: true }, { path: 'src', dir: true },
+  { path: 'test', dir: true }, { path: 'test/support', dir: true }, { path: 'test/helpers.ts', dir: false }, { path: 'test/journey.test.ts', dir: false, status: 'M' },
+  { path: 'test/kernel.test.ts', dir: false }, { path: 'test/merge.test.ts', dir: false },
+  { path: 'AGENTS.md', dir: false }, { path: 'DESIGN.md', dir: false }, { path: 'electron-builder.yml', dir: false }, { path: 'package.json', dir: false }, { path: 'README.md', dir: false }
+]
+const R9_TEST = [
+  "import { describe, expect, it } from 'vitest'", "import { diff, missing, shots } from './support/shots'", "import { journey } from '../fixtures/journey'", '',
+  "describe('clean-account journey', () => {", "  it('steps 1 to 5 pass on a new account', async () => {", '    for (const step of journey.slice(0, 5)) {',
+  "      await expect(step.run()).resolves.toBe('passed')", '    }', '  })', '', "  it('step 6 compares the review screen', async () => {",
+  "    await shots(['Review', 'ReviewRc'])", "    expect(diff('Review', 'ReviewRc')).toBeLessThan(0.01)", '    expect(missing()).toEqual([])', '  })', '',
+  "  it('files each failure as its own issue', async () => {", '    const failed = journey.filter((s) => s.failed)', '    expect(failed.map((s) => s.issue)).toHaveLength(failed.length)', '  })', '})'
+].join('\n') + '\n'
+const R9_JOURNEY = ["import type { Fixture } from './types'", '', "export const ReviewRc: Fixture = {", "  screen: 'Review',", "  build: 'release-candidate',", '  account: freshAccount(),', '  chats: [cleanAccountChat],', '}'].join('\n') + '\n'
+const R9_DIFF = [
+  'diff --git a/test/journey.test.ts b/test/journey.test.ts', '--- a/test/journey.test.ts', '+++ b/test/journey.test.ts', "@@ -9,9 +9,11 @@ describe('clean-account journey', () => {",
+  '     }', '   })', ' ', "   it('step 6 compares the review screen', async () => {", "-    await shots(['Review'])", "+    await shots(['Review', 'ReviewRc'])",
+  "+    expect(diff('Review', 'ReviewRc')).toBeLessThan(0.01)", '+    expect(missing()).toEqual([])', '   })', ' ', "   it('files each failure as its own issue', async () => {"
+].join('\n') + '\n'
+const R9_FILE_DIFF = [
+  'diff --git a/fixtures/journey.ts b/fixtures/journey.ts', 'new file mode 100644', '--- /dev/null', '+++ b/fixtures/journey.ts', '@@ -0,0 +1,8 @@',
+  ...R9_JOURNEY.trimEnd().split('\n').map((l) => `+${l}`)
+].join('\n') + '\n'
+/** A moment before now, so the review reads "12 min ago" on any day. */
+const MIN = 60_000
+
+/** Theo's review of PR #1157, as Kernel's reviewer found it: two blockers on the head commit, and the GitHub thread that was fixed already. */
+const R9_REVIEW: NonNullable<Workspace['reviews']> = [{
+  workspaceId: 'ws-review-1157', agentId: 'artkin', verdict: 'blockers', sha: 'h1157', prNumber: 1157, ts: Date.now() - 12 * MIN,
+  summary: "The journey change looks right. Two things before it merges: step 6's threshold is a bare number, and the fixture hard-codes the build it compares against.",
+  blockers: [
+    { text: '0.01 is a bare number. Name it, so step 6 says what the threshold means.', file: 'test/journey.test.ts', line: 14 },
+    { text: 'The build name is hard-coded. Read it from the release manifest so the fixture follows the next candidate.', file: 'fixtures/journey.ts', line: 3 }
+  ]
+}]
+const R9_CHECKS: PrCheck[] = [
+  { name: 'Test', state: 'pass', meta: 'Ubuntu' }, { name: 'Build', state: 'pass', meta: 'Ubuntu' }, { name: 'Other apps', state: 'pass', meta: 'names check' }, { name: 'Test on macOS', state: 'running' }
+]
+const r9Pr = (o: Partial<PrInfo> = {}): Record<string, PrInfo> => ({ [ids.table]: {
+  workspaceId: ids.table, number: 1157, url: 'https://github.com/cjjutba/kernel/pull/1157', title: 'Clean-account journey: all six steps pass', state: 'open', baseRef: 'main', head: 'h1157',
+  checks: R9_CHECKS, conflicts: [], comments: [{ id: 'c-typo', author: 'artkin', path: 'docs/qa/kernel-31.md', line: 22, body: 'Typo in step 4', resolved: true, association: 'trusted' }], ...o
+} })
+const R9_SCRIPTS: NonNullable<Fixture['projectSettings']> = { [ids.projectA]: {
+  scripts: { setup: 'pnpm install', run: 'pnpm dev', runMode: 'concurrent' },
+  runScripts: [{ name: 'app', command: 'pnpm dev --port $KERNEL_PORT' }, { name: 'shots', command: 'pnpm shots --all --no-build' }, { name: 'tests', command: 'pnpm test' }], files: { copy: [] }, workspace: {}
+} }
+
+interface R9 {
+  /** The right panel's tab. */ right?: PanelTab
+  /** The bottom pane's tab, and whether it is open or folded to its bar. Folded unless `pane`. */ bottom?: 'setup' | 'run' | 'terminal'; pane?: boolean
+  /** The panel is closed, so the Session rail shows. */ rail?: boolean
+  /** Setup is still running, instead of done. */ setting?: boolean
+  /** The tab in front, and the file and diff tabs open. */ tab?: string; files?: string[]; diffs?: string[]
+  /** A pull request in `state`, with its checks and reviews, or none. */ pr?: Workspace['prState']; reviewed?: boolean
+  ws?: Partial<Workspace>; view?: Partial<WorkspaceView>; ui?: Partial<Fixture['ui']>
+}
+
+/** Teng's journey with the panel open (or the rail, when `rail`), the worktree's files, the changes and a pull request to read. */
+function review9(f: Fixture, o: R9 = {}): Partial<Fixture> {
+  const state = o.pr ?? 'open'
+  const w = works(f, jRest(), {
+    panel: !o.rail,
+    ws: { baseRef: 'main', ...(state === 'none' ? {} : { prNumber: 1157, prUrl: 'https://github.com/cjjutba/kernel/pull/1157', prTitle: 'Clean-account journey: all six steps pass', prHead: 'h1157' }), prState: state, ...(o.reviewed ? { reviews: R9_REVIEW } : {}), ...o.ws },
+    view: { right: o.right ?? 'changes', bottom: o.bottom ?? 'run', ...o.view }
+  })
+  const tab = o.tab ?? ids.tableChat
+  return {
+    ...w,
+    changes: { [ids.table]: jFiles },
+    tree: { [ids.table]: R9_TREE },
+    fileText: { [ids.table]: { 'test/journey.test.ts': R9_TEST, 'fixtures/journey.ts': R9_JOURNEY } },
+    diffs: { [ids.table]: R9_DIFF, [`${ids.table}:fixtures/journey.ts`]: R9_FILE_DIFF },
+    prs: state === 'none' ? {} : r9Pr(),
+    projectSettings: R9_SCRIPTS,
+    commits: { [ids.table]: [{ sha: 'e4f5a6b'.padEnd(40, '0'), subject: 'Compare the review screen', author: 'Teng', time: Date.now() - 50 * MIN }, { sha: 'a1b2c3d'.padEnd(40, '0'), subject: 'Add the ReviewRc fixture', author: 'Teng', time: Date.now() - 80 * MIN }] },
+    branches: ['main', 'release/0.43', 'feat/kernel-1075-auto-review'],
+    push: [...(w.push ?? f.push).filter((e) => e.type !== 'script.output'), { type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line: '$ pnpm install', stream: 'stdout' }, { line: 'Lockfile is up to date, resolution step is skipped', stream: 'stdout' }, { line: 'Packages: +1214', stream: 'stdout' }] }, ...(o.setting ? [] : [{ type: 'script.exit' as const, workspaceId: ids.table, kind: 'setup' as const, code: 0 }])],
+    ui: {
+      ...w.ui!, ...o.ui,
+      workspace: { ...w.ui!.workspace!, ...o.view, right: o.right ?? 'changes', bottom: o.bottom ?? 'run' },
+      bottomCollapsed: { lead: true, teammate: !o.pane },
+      tabs: { [ids.table]: { tab, lastChat: ids.tableChat, files: o.files ?? [], diffs: o.diffs ?? [] } }
+    }
+  }
+}
+
+/** The chats a busy workspace has beside the one on screen: one waiting on an answer, one working, and a terminal (Pen 9.1). `w` is the scene they are added to. */
+const r9Tabs = (f: Fixture, w: Partial<Fixture>): Partial<Fixture> => ({
+  chats: [...(w.chats ?? f.chats), extraChat('chat-ask', 'Should a 2px margin count as a failure'), extraChat('chat-run', 'Snapshot tests for the review screen'), extraChat('chat-term', 'Terminal (claude)', 'terminal')],
+  approvals: [{ ...pending('question', 'teng', { title: 'Should a 2px margin count as a failure?', options: ['Yes', 'No'] }), chatId: 'chat-ask' }, ...(w.approvals ?? f.approvals)],
+  push: [...(w.push ?? f.push), { type: 'chat.running', chatId: 'chat-run', running: true }],
+  settings: DEFAULT_SETTINGS('/Users/you')
+})
+
+/** `n` images Teng shared in one turn, each its own file with its own title, as Pen 9.19 lays them out by count. */
+const R9_IMAGES = [
+  ['Clean account', invoiceLayoutStill], ['Release candidate', pricingStill], ['Phone width', fontsCheckImage], ['Tablet width', invoiceLayoutStill],
+  ['Dark theme', pricingStill], ['Light theme', fontsCheckImage], ['High contrast', invoiceLayoutStill]
+] as const
+const r9Images = (f: Fixture, n: number, title?: string, version = 1): Partial<Fixture> => {
+  const files = R9_IMAGES.slice(0, n).map(([name, data], i) => sharedFile(`sh-img-${i}`, 'teng', ids.table, name, 'image', `shots/${name.toLowerCase().replace(/ /g, '-')}.png`, [sharedVersion(version, 14, 2, 'image/png', { width: 616, height: 385 })], 5 * MIN))
+  const w = review9(f, { rail: true, ws: { name: 'kernel-232a' } })
+  return {
+    ...w,
+    shared: files,
+    sharedData: Object.fromEntries(files.map((file, i) => [file.id, { [version]: { dataUrl: R9_IMAGES[i][1], thumb: R9_IMAGES[i][1] } }])),
+    items: { [ids.tableChat]: [
+      jBrief(J(43)),
+      jSay('j-sh', J(49, 10), n === 1 ? 'Here is the review screen on a clean account.' : 'Here are the review screens side by side. The banner’s top margin is the only difference, 2px at 1280 wide.'),
+      ...files.map((file, i): ChatItem => ({ kind: 'shared', id: `sh-i${i}`, ts: J(50, i), sharedId: file.id, version })),
+      jResult(J(50, 10), 150_000)
+    ] },
+    settings: { ...DEFAULT_SETTINGS('/Users/you'), experimental: { ...DEFAULT_SETTINGS('/Users/you').experimental, sharing: true } },
+    ...(title ? {} : {})
+  }
+}
+
+
+const r9SetupDone: PushEvent[] = [
+  { type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line: '$ pnpm rebuild better-sqlite3', stream: 'stdout' }, { line: 'Rebuilt dependencies successfully', stream: 'stdout' }, { line: '✓ Setup script finished in 1:12', stream: 'stdout' }] },
+  { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: 0 }
+]
+/** The diff tab of a picture: an added one as it is, a changed one as Before and After (Pen 9.17). */
+const r9ImageDiff = (f: Fixture, status: 'A' | 'M'): Partial<Fixture> => {
+  const name = status === 'A' ? 'shots/ReviewRc.png' : 'shots/Review.png'
+  const w = review9(f, { rail: true, tab: `diff:${name}`, diffs: [name] })
+  return {
+    ...w,
+    changes: { [ids.table]: [{ path: name, status, added: 0, removed: 0 }, ...jFiles] },
+    diffs: { [ids.table]: '' },
+    images: { [ids.table]: { [`worktree:${name}`]: { dataUrl: fontsCheckImage }, ...(status === 'M' ? { [`base:${name}`]: { dataUrl: invoiceLayoutStill } } : {}) } }
+  }
+}
+
+/** One shared file in the chat, with its picture or text, for the cards of a page, a note and a PDF (Pen 9.19). */
+const r9Shared = (f: Fixture, file: SharedFile, data: { text?: string; dataUrl?: string; thumb?: string }): Partial<Fixture> => ({
+  ...review9(f, { rail: true }),
+  shared: [file],
+  sharedData: { [file.id]: { 1: data } },
+  items: { [ids.tableChat]: [jBrief(J(43)), jSay('j-sh', J(49, 10), 'Here is what I shared.'), { kind: 'shared', id: 'sh-i0', ts: J(50), sharedId: file.id, version: 1 }, jResult(J(50, 10), 150_000)] },
+  settings: { ...DEFAULT_SETTINGS('/Users/you'), experimental: { ...DEFAULT_SETTINGS('/Users/you').experimental, sharing: true } }
+})
+const R9_NOTE = ['# Clean-account journey, KERNEL-31', '', 'All six steps pass on a fresh Mac account. Step 6 needed a fixture for the release candidate’s review screen.', '', 'One issue filed: KERNEL-1084, the review screen is 2px taller at 1280 wide.'].join('\n')
+/** The files the rail lists: a page, three images, a note and a PDF, shared by Teng. */
+const r9Files = (): SharedFile[] => [
+  sharedFile('sh-page', 'teng', ids.table, 'review-compare.html', 'html', 'shots/review-compare.html', [sharedVersion(3, 14, 10, 'text/html', { outside: 1 })], 2 * MIN),
+  sharedFile('sh-imgs', 'teng', ids.table, 'Review screen, clean account and release candidate', 'image', 'shots/review.png', [sharedVersion(2, 14, 2, 'image/png', { width: 616, height: 385 })], 8 * MIN),
+  sharedFile('sh-note', 'teng', ids.table, 'Clean-account journey results', 'markdown', 'docs/qa/results.md', [sharedVersion(1, 13, 58, 'text/markdown', { thumb: false })], 12 * MIN),
+  sharedFile('sh-list', 'teng', ids.table, 'Release checklist', 'pdf', 'docs/release/checklist.pdf', [sharedVersion(1, 13, 41, 'application/pdf')], 30 * MIN)
+]
+/** Files and Changes states of Pen 9.21. */
+const r9Changed: ChangedFile[] = [{ path: 'src/renderer/src/screens/workspace/Transcript.tsx', status: 'M', added: 6, removed: 2 }, { path: 'test/setup.test.ts', status: 'A', added: 24, removed: 0 }, { path: 'src/legacy.ts', status: 'D', added: 0, removed: 31 }]
+/** A chat message that links to `path`, so the workspace screen can show what the link does (Pen 9.22). */
+const r9Link = (f: Fixture, text: string, mentions: Record<string, unknown>): Partial<Fixture> => ({
+  ...review9(f, { rail: true }),
+  items: { [ids.tableChat]: [jBrief(J(43)), { kind: 'text', id: 'fl-r', ts: J(49), text }, jResult(J(49, 12), 372_000)] },
+  mentions: { [ids.table]: mentions as NonNullable<Fixture['mentions']>[string] }
+})
 export const workspaceFixtures: Record<string, Fixture> = {
   /** 7.1: the workspace at rest. Teng finished a turn and its fold is closed, with the Session rail beside the chat while the panel is shut (KERNEL-1094). */
   Workspace: scene((f) => works(f, jRest())),
@@ -2565,11 +2637,6 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { 'chat-new': [] },
     ui: { ...tabsView('chat-new'), menu: 'newTab' }
   })),
-  WorkspaceTabMenu: scene((f) => ({
-    chats: [...f.chats, extraChat('chat-copy', 'Empty state copy')],
-    items: { 'chat-copy': [userMsg('c1', 'Shorten the empty state copy.'), tool('c-t1', 'Read the empty state', 'cat src/app/invoices/empty-state.tsx', { name: 'Read' }), tool('c-t2', 'Edit the copy', 'sed -i empty-state.tsx'), { kind: 'text', id: 'c-reply:0', ts: at(10, 31), text: 'Changed it to "No invoices yet. Create your first one."' }, { kind: 'result', id: 'c-res', ts: at(10, 31), durationMs: 20_000, ok: true }] },
-    ui: { ...tabsView('chat-copy'), menu: 'tab' }
-  })),
   // The "..." menu under Christian's summary, open: both forks (KERNEL-346). The time and the actions share the summary's last line.
   WorkspaceReplyMenu: scene(() => ({ ui: { ...open, menu: 'reply:x1' } })),
   // KERNEL-766: revert from the turn. Christian's summary has Revert files to here in its "..." menu, since a later turn is the current checkpoint. Choosing it opens the confirm with the files that change,
@@ -2599,40 +2666,115 @@ export const workspaceFixtures: Record<string, Fixture> = {
     tfEnd(4, 12, [10, 31], [TF_INBOX, TF_POLL, TF_SHARED, TF_STALE])
   ], [TF_NOTES, TF_DECISION, TF_DB, TF_INBOX, TF_APPROVALS, TF_POLL, TF_NOTIFY, TF_SHARED, TF_STALE, TF_NOTIFY_TEST]),
   TurnFilesHover: turnFilesLong(),
-  // No PNG draws a tab's state icon (D-098). One chat waits on a question, one runs and one is idle, all with titles long enough to truncate.
-  WorkspaceTabStates: scene((f) => ({
-    chats: [
-      ...f.chats,
-      extraChat('chat-ask', 'Should the download keep the invoice number in the file name'),
-      extraChat('chat-run', 'Snapshot tests for the invoice PDF renderer'),
-      extraChat('chat-term', 'Terminal (claude)', 'terminal')
-    ],
-    approvals: [{ ...pending('question', 'christian', { title: 'Keep the invoice number in the file name?', options: ['Yes', 'No'] }), chatId: 'chat-ask' }, ...f.approvals],
-    push: [...f.push, { type: 'chat.running', chatId: 'chat-run', running: true }],
-    ui: open
+  // ---- Redesign 09, Review the work (KERNEL-1096). 9.1 to 9.14 follow the flow, and the sheets 9.15 to 9.22 hold the smaller states, each next to the frame it belongs to.
+  // 9.1: the title bar's tabs and view toggles. One chat waits on an answer, one works and one is a terminal.
+  WorkspaceTabStates: scene((f) => { const w = works(f, jRest()); return { ...w, ...r9Tabs(f, w) } }),
+  // 9.2: Focus mode. The sidebar, the rail and the panel are hidden and the title bar says how to come back.
+  WorkspaceFocus: scene((f) => { const w = works(f, jRest()); return { ...w, ...r9Tabs(f, w), ui: { ...open, sidebar: false, rail: false, rightPanel: false, workspace: { right: 'changes', bottom: 'run' } } } }),
+  // Focus mode with an update ready: the Update pill takes the title bar's right end, and the view toggles stay clear of it (Redesign 17 noted it could cover them).
+  WorkspaceFocusUpdate: scene((f) => { const w = works(f, jRest()); return { ...w, ...r9Tabs(f, w), update: { status: 'ready', current: '0.42.0', version: '0.43.0', notes: [{ title: 'Improved', body: 'The right panel has Files, Changes, Review and Pull request tabs.' }] }, ui: { ...open, sidebar: false, rail: false, rightPanel: true, workspace: { right: 'changes', bottom: 'run' } } } }),
+  // 9.3 to 9.6: Files and Changes in the panel, then the same file and diff in a tab of their own, with the Session rail beside them.
+  WorkspaceFilesTree: scene((f) => review9(f, { right: 'files' })),
+  WorkspaceFile: scene((f) => review9(f, { rail: true, tab: 'file:test/journey.test.ts', files: ['test/journey.test.ts'] })),
+  WorkspaceChangesList: scene((f) => review9(f, { right: 'changes' })),
+  WorkspaceDiffTab: scene((f) => review9(f, { rail: true, tab: 'diff:test/journey.test.ts', diffs: ['test/journey.test.ts'] })),
+  // 9.7 and 9.8: Review and Pull request, each a screen of the panel.
+  WorkspaceReview: scene((f) => review9(f, { right: 'review', reviewed: true })),
+  WorkspacePullRequest: scene((f) => review9(f, { right: 'pr', reviewed: true, ws: { reviews: [{ ...R9_REVIEW[0], verdict: 'approved', summary: 'Looks right.', blockers: undefined, ts: Date.now() - 4 * MIN }] } })),
+  // 9.9 and 9.10: the panel over its bottom pane, on the Terminal tab and on the Run tab with `shots` running.
+  PanelSplit: scene((f) => { const s = review9(f, { right: 'changes', bottom: 'run', pane: true }); return { ...s, push: [...s.push!, ...['$ git status --short', ' M test/journey.test.ts', '?? fixtures/journey.ts', '$ pnpm test test/journey.test.ts', '✓ test/journey.test.ts (3 tests) 9.8s', '  Tests  3 passed (3)'].map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', name: 'app', lines: [{ line, stream: 'stdout' }] }))] } }),
+  WorkspaceRunScripts: scene((f) => {
+    const run = review9(f, { right: 'changes', bottom: 'run', pane: true })
+    const lines = ['$ pnpm shots --all --no-build', 'Reusing the last build from 13:46', 'Rendering 782 fixtures at 1440x900', '✓ Workspace  0.4s', '✓ WorkspaceTurnRunning  0.5s', '✓ WorkspaceToolCalls  0.6s', '✓ Review  0.5s', '✓ ReviewRc  0.5s', '… WorkspaceQuestion', '214 of 782 saved to shots/']
+    return { ...run, push: [...run.push!, ...lines.map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', name: 'shots', lines: [{ line, stream: 'stdout' }] }))] }
+  }),
+  // 9.12: shared files. A file an agent shares is a plain card in the chat, its images laid out by count: one fills the card, two sit side by side, three put one large beside two, four make a grid and more show +N.
+  WorkspaceSharedCard: scene((f) => r9Images(f, 2)),
+  // 9.15: tabs and the title bar.
+  WorkspaceTabMenu: scene((f) => { const w = works(f, jRest()); return { ...w, ...r9Tabs(f, w), ui: { ...open, rightPanel: false, menu: 'tab', workspace: { right: 'changes', bottom: 'run' } } } }),
+  NewTabMenu: scene((f) => { const w = works(f, jRest()); return { ...w, ...r9Tabs(f, w), ui: { ...open, rightPanel: false, menu: 'newTab', workspace: { right: 'changes', bottom: 'run' } } } }),
+  HeaderBranchTooltip: scene((f) => works(f, jRest())),
+  WorkspaceHistoryButtons: scene((f) => ({ ...works(f, jRest()), ui: { ...open, rightPanel: false, nav: { canBack: true, canForward: false }, workspace: { right: 'changes', bottom: 'run' } } })),
+  WorkspaceHistoryButtonsHidden: scene((f) => { const w = works(f, jRest()); return { ...w, ...r9Tabs(f, w), ui: { ...open, rightPanel: false, sidebar: false, nav: { canBack: true, canForward: true }, workspace: { right: 'changes', bottom: 'run' } } } }),
+  // 9.16 and 9.17: the Files and Changes toolbars, the file tree while it loads, the changes as a tree, the filter and the compare menu, and an image in a diff.
+  WorkspaceFilesLoading: { ...scene((f) => review9(f, { right: 'files' })), lag: { 'workspaces.tree': 600_000 } },
+  PanelToolbarFiles: scene((f) => review9(f, { right: 'files' })),
+  WorkspaceChangesTree: scene((f) => review9(f, { right: 'changes', view: { changesView: 'tree' } })),
+  PanelToolbarChanges: scene((f) => review9(f, { right: 'changes', view: { changesView: 'list' } })),
+  PanelFilter: scene((f) => review9(f, { right: 'changes' })),
+  PanelCompare: scene((f) => review9(f, { right: 'changes' })),
+  WorkspaceDiffImageAdded: scene((f) => r9ImageDiff(f, 'A')),
+  WorkspaceDiffImageModified: scene((f) => r9ImageDiff(f, 'M')),
+  PanelToolbarChecks: scene((f) => review9(f, { right: 'pr', reviewed: true })),
+  // 9.18: the panel over its bottom pane. It starts folded in Kernel's chat, folds to its tab bar and still says when something runs, and Setup, Run and Terminal each have their states.
+  PanelSplitLead: scene((f) => {
+    const { approvals: _none, ...lead } = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Round half away from zero', [userMsg('pl-u', 'Make the total round half away from zero, like money.ts does.')], {}, { model: 'claude-opus-5-5', plan: false })
+    return { ...lead, changes: { [ids.lead]: [{ path: 'src/lib/money.ts', status: 'M' as const, added: 12, removed: 3 }, { path: 'src/lib/money.test.ts', status: 'M' as const, added: 9, removed: 0 }] }, ui: { ...lead.ui!, rightPanel: true, workspace: { right: 'changes', bottom: 'run' }, bottomCollapsed: { lead: true, teammate: false } } }
+  }),
+  PanelCollapsed: scene((f) => review9(f, { right: 'changes' })),
+  PanelCollapsedRunning: scene((f) => {
+    const s = review9(f, { right: 'changes' })
+    return { ...s, push: [...s.push!, { type: 'script.output', workspaceId: ids.table, kind: 'run', name: 'app', lines: [{ line: '$ pnpm dev', stream: 'stdout' }] }] }
+  }),
+  PanelSetup: scene((f) => { const s = review9(f, { right: 'changes', bottom: 'setup', pane: true }); return { ...s, push: [...s.push!, ...r9SetupDone] } }),
+  BottomPanelSetupRunning: scene((f) => review9(f, { right: 'changes', bottom: 'setup', pane: true, setting: true })),
+  BottomPanelSetupDone: scene((f) => { const s = review9(f, { right: 'changes', bottom: 'setup', pane: true }); return { ...s, push: [...s.push!, ...r9SetupDone] } }),
+  BottomPanelNoRun: scene((f) => { const s = review9(f, { right: 'changes', bottom: 'run', pane: true }); return { ...s, projectSettings: { [ids.projectA]: { scripts: { setup: 'pnpm install' }, runScripts: [], files: { copy: [] }, workspace: {} } } } }),
+  WorkspaceRunEmpty: scene((f) => { const s = review9(f, { right: 'changes', bottom: 'run', pane: true }); return { ...s, projectSettings: { [ids.projectA]: { scripts: { run: 'pnpm dev', runMode: 'concurrent' }, runScripts: [{ name: 'frontend', command: 'pnpm dev' }], files: { copy: [] }, workspace: {} } } } }),
+  BottomPanelRunSplit: scene((f) => { const s = review9(f, { right: 'changes', bottom: 'run', pane: true }); return { ...s, projectSettings: { [ids.projectA]: { scripts: { run: 'pnpm dev', runMode: 'concurrent' }, runScripts: [{ name: 'frontend', command: 'pnpm dev' }, { name: 'shots', command: 'pnpm shots --all' }, { name: 'tests', command: 'pnpm test' }], files: { copy: [] }, workspace: {} } }, push: [...s.push!, ...['$ pnpm dev', 'VITE v6.2.0  ready in 412 ms', '➜  Local:   http://localhost:5173/', '➜  press h + enter to show help'].map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', name: 'frontend', lines: [{ line, stream: 'stdout' }] }))] } }),
+  BottomPanelRunMenu: scene((f) => { const s = review9(f, { right: 'changes', bottom: 'run', pane: true }); return { ...s, push: [...s.push!, { type: 'script.output', workspaceId: ids.table, kind: 'run', name: 'app', lines: [{ line: '$ pnpm dev', stream: 'stdout' }] }] } }),
+  SharedCardOne: scene((f) => r9Images(f, 1)),
+  SharedCardTwo: scene((f) => r9Images(f, 2)),
+  SharedCardThree: scene((f) => r9Images(f, 3)),
+  SharedCardFour: scene((f) => r9Images(f, 4)),
+  SharedCardMore: scene((f) => r9Images(f, 7)),
+  SharedCardPage: scene((f) => r9Shared(f, r9Files()[0], { thumb: pricingStill, still: pricingStill } as { thumb: string })),
+  SharedCardNote: scene((f) => r9Shared(f, r9Files()[2], { text: R9_NOTE })),
+  SharedCardPdf: scene((f) => r9Shared(f, r9Files()[3], { dataUrl: invoicePdfStill, thumb: invoicePdfStill })),
+  WorkspaceSharedPanel: scene((f) => ({ ...review9(f, { rail: true }), shared: r9Files(), sharedData: { 'sh-page': { 3: { thumb: pricingStill } }, 'sh-imgs': { 2: { dataUrl: fontsCheckImage, thumb: fontsCheckImage } }, 'sh-note': { 1: { text: R9_NOTE } }, 'sh-list': { 1: { dataUrl: invoicePdfStill, thumb: invoicePdfStill } } }, settings: { ...DEFAULT_SETTINGS('/Users/you'), experimental: { ...DEFAULT_SETTINGS('/Users/you').experimental, sharing: true } } })),
+  WorkspaceSharedPanelEmpty: scene((f) => ({ ...review9(f, { rail: true }), shared: [], settings: { ...DEFAULT_SETTINGS('/Users/you'), experimental: { ...DEFAULT_SETTINGS('/Users/you').experimental, sharing: true } } })),
+  // 9.21: the panel's toolbars and the states they lead to. The filters, compare menu and picks are local to the tab, so scripts/shots.ts opens them as a person would.
+  FilesToolbar: scene((f) => review9(f, { right: 'files' })),
+  FilesFilterNoMatch: scene((f) => review9(f, { right: 'files' })),
+  ChangesBaselineHidden: scene((f) => ({ ...review9(f, { right: 'changes', ws: { mode: 'current', prState: 'none' }, pr: 'none' }), changes: { [ids.table]: r9Changed } })),
+  ChangesFilterNoMatch: scene((f) => review9(f, { right: 'changes' })),
+  ChecksNone: scene((f) => ({ ...review9(f, { right: 'pr' }), prs: r9Pr({ checks: [], comments: [] }) })),
+  ChecksBeforePr: scene((f) => review9(f, { right: 'pr', pr: 'none' })),
+  SetupNoScript: scene((f) => { const s = review9(f, { right: 'changes', bottom: 'setup', pane: true }); return { ...s, push: s.push!.filter((e) => e.type !== 'script.output' && e.type !== 'script.exit'), projectSettings: { [ids.projectA]: { scripts: { run: 'pnpm dev', runMode: 'concurrent' }, runScripts: [{ name: 'app', command: 'pnpm dev' }], files: { copy: [] }, workspace: {} } }, scriptSuggestions: { [ids.projectA]: [{ source: 'detected', file: 'package.json', patch: { scripts: { setup: 'pnpm install' } }, notes: [] }] } } }),
+  SetupOutputEmpty: scene((f) => { const s = review9(f, { right: 'changes', bottom: 'setup', pane: true, ws: { setupRun: undefined } }); return { ...s, push: s.push!.filter((e) => e.type !== 'script.output' && e.type !== 'script.exit') } }),
+  RunAllConfigure: scene((f) => { const s = review9(f, { right: 'changes', bottom: 'run', pane: true }); return { ...s, projectSettings: { [ids.projectA]: { scripts: { run: 'pnpm dev', runMode: 'concurrent' }, runScripts: [{ name: 'app', command: 'pnpm dev --port 4400' }, { name: 'storybook', command: 'pnpm storybook' }], files: { copy: [] }, workspace: {} } }, push: [...s.push!, ...['$ pnpm dev --port 4400', 'VITE ready in 412 ms', 'Local: http://localhost:4400/'].map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', name: 'app', lines: [{ line, stream: 'stdout' }] }))] } }),
+  CompareMenu: scene((f) => review9(f, { right: 'changes' })),
+  CompareBranches: scene((f) => review9(f, { right: 'changes' })),
+  CompareCommits: scene((f) => review9(f, { right: 'changes' })),
+  CompareNothingUncommitted: scene((f) => ({ ...review9(f, { right: 'changes' }), changesAgainst: { [ids.table]: { uncommitted: [] } } })),
+  CompareCommitNoFiles: scene((f) => ({ ...review9(f, { right: 'changes' }), changesAgainst: { [ids.table]: { commit: [] } } })),
+  DiffNoChanges: scene((f) => ({ ...review9(f, { rail: true, tab: 'diff:test/journey.test.ts', diffs: ['test/journey.test.ts'] }), diffs: { [ids.table]: '' } })),
+  // 9.22: a file Kernel can't show, lines sent to the agent, links to a secret and to a file that is gone, renaming a tab, a new tab's welcome, the big terminal's notice and the viewer's toolbar.
+  FileViewCantShow: scene((f) => { const s = review9(f, { rail: true, tab: 'file:fixtures/big.sqlite', files: ['fixtures/big.sqlite'] }); return { ...s, fileErrors: { [ids.table]: { 'fixtures/big.sqlite': 'It is binary or too large to show here.' } } } }),
+  FileViewSendToAgent: scene((f) => { const path = 'src/renderer/src/screens/workspace/Transcript.tsx'; const s = review9(f, { rail: true, tab: `file:${path}`, files: [path] }); return { ...s, fileText: { [ids.table]: { [path]: `${'\n'.repeat(1099)}<ChatWelcome\n  title={\`New tab with \${agentName}\`}\n  suggestions={isLead ? LEAD : SUGGESTIONS}\n/>\n` } } } }),
+  FileLinkSecret: scene((f) => r9Link(f, 'The token is read from `.env.local`, so I left it out of the commit.', { '.env.local': { kind: 'file', path: '.env.local', sensitive: true } })),
+  FileLinkMissing: scene((f) => ({ ...r9Link(f, 'I moved the fixtures out of `src/fixtures.ts`.', { 'src/fixtures.ts': { kind: 'file', path: 'src/fixtures.ts' } }), mentionsGone: { [ids.table]: ['src/fixtures.ts'] } })),
+  TabRename: scene((f) => { const w = works(f, jRest()); return { ...w, ...r9Tabs(f, w), ui: { ...open, rightPanel: false, workspace: { right: 'changes', bottom: 'run' } } } }),
+  ChatWelcomeAgent: scene((f) => ({ ...works(f, []), ui: { ...open, rightPanel: false, workspace: { right: 'changes', bottom: 'run' } } })),
+  ChatWelcomeLead: scene((f) => { const { approvals: _none, ...lead } = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'New tab', [], {}, { model: 'claude-opus-5-5', plan: false }); return { ...lead, ui: { ...lead.ui!, rightPanel: false, workspace: { right: 'prs', bottom: 'run' } } } }),
+  BigTerminalSkipNotice: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { mode: 'current', branch: 'main' }),
+    chats: [...f.chats, { ...extraChat('chat-term', 'Terminal (claude)', 'terminal'), terminal: { preset: 'claude-skip', command: 'claude' } }],
+    push: [...f.push, { type: 'terminal.data', chatId: 'chat-term', data: termScreen }],
+    settings: DEFAULT_SETTINGS('/Users/you'),
+    ui: { ...tabsView('chat-term'), rightPanel: false }
   })),
+  SharedViewerToolbar: scene((f) => { const s = sharedTabScene(f, 'sh-html'); return { ...s, ui: { ...s.ui!, rightPanel: false } } }),
+  // 9.11: the app's preview. The rail's Preview row opens the app in the browser and lists the project's URLs.
+  WorkspacePreview: scene((f) => {
+    const s = review9(f, { rail: true })
+    return { ...s, projectSettings: { [ids.projectA]: { ...R9_SCRIPTS[ids.projectA], preview: { urls: [{ name: 'Web app', url: 'http://localhost:$KERNEL_PORT/review' }, { name: 'API docs', url: 'http://localhost:$((KERNEL_PORT + 1))/docs' }] } } }, ui: { ...s.ui!, menu: 'preview' } }
+  }),
   WorkspaceTerminal: scene((f) => ({
     chats: [...f.chats, extraChat('chat-term', 'Terminal (claude)', 'terminal')],
     push: [...f.push, { type: 'terminal.data', chatId: 'chat-term', data: termScreen }],
     ui: tabsView('chat-term')
   })),
-  WorkspaceFile: scene(() => ({
-    ui: { ...open, workspace: { right: 'files', bottom: 'run' }, tabs: { [ids.table]: { tab: 'file:src/app/invoices/table.tsx', files: ['src/app/invoices/table.tsx'], diffs: [] } } }
-  })),
-  // All files drawn like VS Code's explorer (KERNEL-399): Material icons, compact folders, indent guides, git colors, the open file selected.
-  WorkspaceFilesTree: treeScene('files', 'file:src/app/invoices/table.tsx'),
-  // KERNEL-893: the tree read is slow and nothing is cached, so skeleton rows stand in for the files.
-  WorkspaceFilesLoading: { ...treeScene('files', 'file:src/app/invoices/table.tsx'), lag: { 'workspaces.tree': 60000 } },
-  // The Changes tab as VS Code's Source Control draws it, as a list and as a tree (KERNEL-399).
-  WorkspaceChangesList: treeScene('changes', 'diff:src/app/invoices/page.tsx', 'list'),
-  WorkspaceChangesTree: treeScene('changes', 'diff:', 'tree'),
-  // No PNG draws a diff tab (KERNEL-144). The diff opens in a tab of its own next to the chat, with the composer below it.
-  WorkspaceDiffTab: scene(() => ({
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.table]: { tab: 'diff:src/app/invoices/page.tsx', files: [], diffs: ['src/app/invoices/page.tsx'] } } }
-  })),
-  // No PNG draws an image in a diff tab (KERNEL-410). Git only says a binary file differs, so the tab shows the pictures: an added one as it is in the worktree, a changed one as Before and After.
-  WorkspaceDiffImageAdded: imageDiffScene('A'),
-  WorkspaceDiffImageModified: imageDiffScene('M'),
   // KERNEL-739: an image in the All changes diff opens in its own tab, like a chat chip. scripts/shots.ts clicks the picture.
   WorkspaceDiffImageInlineOpen: scene((f) => ({
     changes: { ...f.changes, [ids.table]: [{ path: 'public/logo.png', status: 'A', added: 0, removed: 0 }] },
@@ -2640,23 +2782,12 @@ export const workspaceFixtures: Record<string, Fixture> = {
     images: { [ids.table]: { 'worktree:public/logo.png': { dataUrl: imageAfter } } },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.table]: { tab: 'diff:', files: [], diffs: [''] } } }
   })),
-  // Focus mode hides both sides (D-063), so this shot has no rail where the PNG draws one.
-  WorkspaceFocus: scene(() => ({
-    ui: { ...open, sidebar: false, rightPanel: false, workspace: { right: 'changes', bottom: 'run' } }
-  })),
   // The sidebar toggle as motion: one element at one spot while the sidebar hides, so the frames show the icon staying put.
   WorkspaceSidebarToggle: { ...scene(() => ({
     ui: { ...open, nav: { canBack: true, canForward: true }, workspace: { right: 'changes', bottom: 'run' } }
   })), motion: { action: { click: 'Hide sidebar' }, ms: 600, area: '.app' } },
-  // No PNG draws Back and Forward (KERNEL-643). The sidebar is open with Back lit and Forward disabled, and the hidden twin shows the pair after Show sidebar.
-  WorkspaceHistoryButtons: scene(() => ({
-    ui: { ...open, nav: { canBack: true, canForward: false }, workspace: { right: 'changes', bottom: 'run' } }
-  })),
   WorkspaceHistoryButtonsNarrow: scene(() => ({
     ui: { ...open, nav: { canBack: true, canForward: true }, workspace: { right: 'changes', bottom: 'run' } }
-  })),
-  WorkspaceHistoryButtonsHidden: scene(() => ({
-    ui: { ...open, sidebar: false, nav: { canBack: true, canForward: true }, workspace: { right: 'changes', bottom: 'run' } }
   })),
   // Clickable file mentions: paths in the reply link when the workspace has them. `src/gone.ts` and `1.2.3` stay plain text. The motion clicks a link with a range, so the file tab opens on it.
   WorkspaceFileLinks: scene((f) => fileLinks(f, { click: 'Open src/app/invoices/table.tsx at line 12' })),
@@ -2976,13 +3107,6 @@ export const workspaceFixtures: Record<string, Fixture> = {
   LeadOpenItemsOpen: scene((f) => leadOpenItems(f)),
   // The Lead's PRs tab: two ready PRs with Merge, six that wait, and the same panel with nothing open (KERNEL-354).
   LeadPrs: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', LEAD_PRS_REPLY)),
-  // The right panel's two panes (KERNEL-513): 2/3 over 1/3 in a teammate's workspace, which starts with the bottom open, and Kernel's chat, which starts with it
-  // folded to its tab bar. A teammate's can fold too, and its handle lights like the sidebar's edge. A new chat waiting on setup opens the bottom on Setup even when it was folded.
-  PanelSplit: idleRun(headerScene('ready', [], { panel: true })),
-  PanelSplitLead: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', LEAD_PRS_REPLY)),
-  PanelCollapsed: bottomFolded(idleRun(headerScene('ready', [], { panel: true }))),
-  // Folded while the run script runs: the bar says Running, so you can tell the app is up without opening it (KERNEL-529).
-  PanelCollapsedRunning: bottomFolded(headerScene('ready', [], { panel: true })),
   PanelResize: idleRun(headerScene('ready', [], { panel: true })),
   // The panel at its narrowest, 320px, where the strips scroll sideways (KERNEL-514). The top strip sits beside the PRs toolbar's refresh.
   // The bottom's two terminals past Run are stand-ins the shot adds.
@@ -2990,22 +3114,12 @@ export const workspaceFixtures: Record<string, Fixture> = {
     const s = leadPrsScene(f, [MERGE_A, MERGE_B], 'What can I merge?', LEAD_PRS_REPLY, LEAD_RUN)
     return { ...s, ui: { ...s.ui, bottomCollapsed: { lead: false, teammate: false } } }
   }),
-  PanelSetup: scene((f) => along(f, { setup: 'running', steps: 3, pane: true, right: 'files', collapsed: true })),
   // The right panel's strip carries the tab on show's own actions (KERNEL-515): PRs has refresh, All files a filter and collapse, Changes Review all, a filter and the tree toggle, Checks refresh and
   // open on GitHub. The filter's field opens under the strip from the search button, the way PanelFilter draws it with "inbox" typed.
   PanelToolbarPrs: scene((f) => {
     const s = leadPrsScene(f, [MERGE_A, MERGE_B, MERGE_C], 'What can I merge?', LEAD_PRS_REPLY)
     return { ...s, workspaces: s.workspaces!.map((w) => (w.id === ids.lead ? { ...w, port: 4303 } : w)), ui: { ...s.ui, bottomCollapsed: { lead: false, teammate: false } } }
   }),
-  PanelToolbarFiles: panelScene('files'),
-  PanelToolbarChanges: panelScene('changes', { tree: true }),
-  PanelToolbarChecks: panelScene('checks', { open: true, running: true }),
-  PanelFilter: panelScene('changes', { open: true }),
-  // The Changes ⋯ menu lists the target branch, All changes, Uncommitted changes and the branch's commits. The shot presses the ⋯ to open it (PanelCompare.png, KERNEL-517).
-  PanelCompare: (() => {
-    const f = panelScene('changes', { open: true })
-    return { ...f, commits: { [ids.table]: PANEL_COMMITS }, branches: ['origin/main', 'origin/develop', 'origin/kernel-154-inbox-rows'] }
-  })(),
   LeadPrsEmpty: scene((f) => leadPrsScene(f, [], 'What can I merge?', 'Nothing is open right now. Every PR your agents opened has merged.')),
   LeadPrsReviewPlanned: scene((f) => leadPrsScene(f, [LEAD_PRS[0], { id: 'ws-705', agentId: 'christian', key: 'KERNEL-705', n: 170, title: 'Toasts rise from the bottom', state: 'ready', stat: [63, 42], review: 'planned' }, LEAD_PRS[3]], 'What can I merge?', "#162 from Christian is ready. #170 passed its checks and its code review is running, so it waits for that approval. #166 is still running checks.")),
   // A PR with blockers on its latest commit isn't ready: it sits under Needs attention, says Blockers found and offers Merge anyway (KERNEL-501, KERNEL-757).
@@ -3195,9 +3309,6 @@ export const workspaceFixtures: Record<string, Fixture> = {
     return { ...g, ui: { ...g.ui!, workspace: { right: 'changes', bottom: 'run', composer: { parts: [issue, { type: 'text', text: ' ' }], draft: '' } } }, motion: { action: { hold: 'Open issue T-17, Email an invoice to the client from the row actions' }, ms: 500 } }
   }),
   ChatComposer: scene(() => ({ ui: open })),
-  // Shared files (KERNEL-305). The canvas draws them in Sean's invoice-pdf-renderer and in Kernel's chat. Which file a shot opens, and the
-  // width, version menu or crash, is the shot's: WorkspaceSharedPhone, WorkspaceSharedVersions and WorkspaceSharedCrashed need a step (scripts/shots.ts).
-  WorkspaceSharedCard: sharedTab(undefined, 2),
   WorkspaceSharedMissing: scene((f) => ({ ...renderer(f), shared: sharedFiles(2).filter((x) => x.workspaceId === ids.table && x.id !== 'sh-html'), ui: { ...open, workspace: { right: 'changes', bottom: 'run' } } })), // the chat's HTML card with its file gone from the store (KERNEL-870)
   WorkspaceSharedHtml: sharedTab('sh-html'),
   WorkspaceSharedPhone: sharedTab('sh-html'),
@@ -3220,12 +3331,6 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceSharedCommentSent: commentSent,
   WorkspaceSharedCommentArchived: scene((f) => commentArchived(f)),
   WorkspaceSharedCommentOlder: commentTab('sh-pricing', 3, 2),
-  WorkspaceSharedPanel: scene((f) => sharedPanel(f)),
-  WorkspaceSharedPanelEmpty: scene((f) => ({
-    settings: { ...DEFAULT_SETTINGS('/Users/you'), experimental: { ...DEFAULT_SETTINGS('/Users/you').experimental, sharing: true } },
-    ui: { ...open, workspace: { right: 'shared', bottom: 'run' } },
-    shared: sharedFiles().filter((x) => x.workspaceId !== ids.table), sharedData: sharedStills
-  })),
   TeamUpdateShared: scene((f) => teamUpdateShared(f)),
   WorkspaceHire: hireScene(['tools: Read, Grep, Glob, Bash(pnpm screenshot:*)']),
   // KERNEL-502: the hire card says where the agent goes. No scope on the approval means just the user, so WorkspaceHire shows that line.
@@ -3255,7 +3360,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
         { id: 'rc2', author: 'Artkin', body: 'Shorten empty state copy', resolved: false }
       ]
     })
-  }, 'checks'),
+  }, 'pr'),
   WorkspaceCriteria: criteriaScene(['passed', 'reviewerMet', 'failed', 'unverified', 'stale'], { provider: 'codex' }),
   WorkspaceCriteriaPassed: criteriaScene(['passed'], { provider: 'codex' }),
   WorkspaceCriteriaFailed: criteriaScene(['failed'], { provider: 'codex' }),
@@ -3290,26 +3395,6 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspacePRNone: prScene('none', []),
   WorkspacePRCreating: prScene('creating', []),
   WorkspacePROpen: prScene('open', [], { prs: prInfo('open') }),
-  WorkspaceRunScripts: runScripts(),
-  // The Run tab before the script has run: the empty state's Run is the only button, and the strip's steps aside (KERNEL-423, KERNEL-512).
-  WorkspaceRunEmpty: scene((f) => ({
-    projectSettings: { [ids.projectA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
-    push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
-  })),
-  // KERNEL-915: the split Run button at the right of the bottom panel's tab strip. `frontend` runs, so the play part is a stop square.
-  BottomPanelRunSplit: scene(() => ({ ...runScripts(), ui: { ...open, rightPanel: true, workspace: { right: 'changes', bottom: 'run' } } })),
-  BottomPanelRunMenu: { ...scene(() => ({ ...runScripts(), ui: { ...open, rightPanel: true, workspace: { right: 'changes', bottom: 'run' } } })), motion: { action: { click: 'Run scripts' }, ms: 600, area: '.bottom-panel' } },
-  BottomPanelSetupRunning: scene((f) => ({ ...setupWait(f, 'setup', []), projectSettings: withSetup })),
-  BottomPanelSetupDone: scene((f) => {
-    const w = setupWait(f, 'setup', [])
-    return { ...w, projectSettings: withSetup, push: [...(w.push ?? []), { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: 0 }] }
-  }),
-  BottomPanelNoRun: scene((f) => ({
-    projectSettings: { [ids.projectA]: { scripts: { setup: 'pnpm install' }, runScripts: [], files: { copy: [] }, workspace: {} } },
-    push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
-  })),
   // KERNEL-685: a project with no setup script. The Setup tab offers Kernel's suggestion, Ask Kernel and Add manually.
   WorkspaceSetupAddConductor: scene((f) => ({
     projectSettings: { [ids.projectA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
@@ -3323,13 +3408,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'setup'),
     ui: { ...open, workspace: { right: 'changes', bottom: 'setup' } }
   })),
-  NewTabMenu: newTabMenu(),
-  WorkspacePreview: preview(),
   WorkspacePRChecks: prScene('checks', [], { prs: prInfo('checks') }),
   // A ready PR whose repo requires only Release note: Test failed and Vercel still runs, both optional (KERNEL-388).
   WorkspacePRChecksOptional: prScene('ready', [], {
     prs: prInfo('ready', { checks: [{ name: 'Release note', state: 'pass', meta: '28s' }, { name: 'Test', state: 'fail', optional: true }, { name: 'Vercel', state: 'running', optional: true }] })
-  }, 'checks'),
+  }, 'pr'),
   WorkspacePRConflict: prScene('conflict', [], { prs: prInfo('conflict') }),
   WorkspacePRResolving: prScene('resolving', [], { prs: prInfo('resolving') }),
   WorkspacePRReady: prScene('ready', [], { prs: prInfo('ready') }),
@@ -3360,7 +3443,6 @@ export const workspaceFixtures: Record<string, Fixture> = {
   PrNoPrHidden: headerScene('none', []),
   PrClosedHidden: headerScene('closed', [prNote('h-note', 'PR #147 was closed without merging.', 'closed')]),
   PrMergedHiddenLong: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')], { title: 'KERNEL-155 Home and Inbox keep asking about requests and the PRs, and show the team when a merge is waiting' }),
-  HeaderBranchTooltip: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')]),
   WorkspaceToast: prScene('merged', [], {
     prs: prInfo('merged'),
     ui: { toasts: [

@@ -306,9 +306,9 @@ async function focusListRow(page: Page) {
   await page.waitForTimeout(300)
 }
 
-// HeaderBranchTooltip is the header with the title hovered, long enough for the tooltip to open (KERNEL-413).
+// HeaderBranchTooltip is the header with the open chat tab hovered, long enough for the tooltip to open, which names the branch (KERNEL-413, Redesign 09).
 async function hoverTitle(page: Page) {
-  await page.locator('.ws-title-btn').hover()
+  await page.getByRole('tab', { selected: true }).first().hover()
   await page.locator('.tooltip').waitFor()
   await page.waitForTimeout(300)
 }
@@ -345,21 +345,84 @@ async function panelAtNarrowest(page: Page) {
   await page.waitForTimeout(400)
 }
 
-// PanelFilter is Changes with the filter open and "inbox" typed. Both are local to the tab, so open the field from the search button and type, as a person would (KERNEL-515).
-async function filterChanges(page: Page) {
-  await page.getByRole('button', { name: 'Filter changed files' }).click()
-  await page.getByRole('textbox', { name: 'Filter changed files' }).fill('inbox')
+// PanelFilter is Changes with the filter open and "journey" typed. Both are local to the tab, so open the field from the search button and type, as a person would (KERNEL-515).
+async function filterIn(page: Page, button: string, text: string) {
+  await page.getByRole('button', { name: button }).click()
+  if (text) await page.getByRole('textbox', { name: button }).fill(text)
+  await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
+const filterChanges = (page: Page) => filterIn(page, 'Filter changed files', 'journey')
 
-// PanelCompare is Changes with the ⋯ menu open. Whether it is open is local to the tab, so press the button and wait for the commit rows, which the menu reads when it opens (KERNEL-517).
-async function openCompare(page: Page) {
+// The compare menu (Pen 9.17, 9.21): open from the toolbar's "Against main", then one of its pages or picks. Whether it is open is local to the tab.
+async function openCompare(page: Page, then?: (page: Page) => Promise<void>) {
   await page.getByRole('button', { name: 'Compare changes' }).click()
-  await page.getByRole('menuitemradio', { name: /Drop Inbox rows/ }).waitFor()
+  await page.getByRole('menu', { name: 'Compare changes' }).waitFor()
+  await then?.(page)
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(400)
+}
+const compareBranches = (page: Page) => openCompare(page, async (p) => { await p.getByRole('menuitem', { name: /^Target branch/ }).click(); await p.getByRole('menu', { name: 'Target branch' }).waitFor() })
+const compareCommits = (page: Page) => openCompare(page, async (p) => { await p.getByRole('menuitem', { name: 'Commits' }).click(); await p.getByRole('menuitemradio').first().waitFor() })
+const compareUncommitted = (page: Page) => openCompare(page, (p) => p.getByRole('menuitemradio', { name: /^Uncommitted changes/ }).click())
+const compareOneCommit = (page: Page) => openCompare(page, async (p) => { await p.getByRole('menuitem', { name: 'Commits' }).click(); await p.getByRole('menuitemradio').first().click() })
+
+// The panel's own states that take a click (Pen 9.21): the Files filter with its scope, and what a filter with no match says.
+const filesFilter = (page: Page) => filterIn(page, 'Filter files', '')
+const filesNoMatch = (page: Page) => filterIn(page, 'Filter files', 'zebra')
+const changesNoMatch = (page: Page) => filterIn(page, 'Filter changed files', 'zebra')
+
+// WorkspaceSharedPanel is the Session rail with its Shared files row opened, which lists every file Teng shared. The row is local to the rail.
+async function openSharedList(page: Page) {
+  await page.getByRole('button', { name: /^Shared files/ }).click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
 
+// BottomPanelRunMenu is the Run split's menu, below its chevron.
+async function openRunMenu(page: Page) {
+  await page.getByRole('button', { name: 'Run scripts', exact: true }).click()
+  await page.getByRole('menu', { name: 'Run scripts' }).waitFor()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
+// TabRename is the open chat tab turned into its field by a double click.
+async function renameTab(page: Page) {
+  await page.getByRole('tab', { selected: true }).first().dblclick()
+  const field = page.getByRole('textbox', { name: 'Tab name' })
+  await field.fill('Review fixes')
+  await page.waitForTimeout(300)
+}
+
+// FileViewSendToAgent is a file with its last lines selected, which brings up Send to agent. The selection is the page's own, so make it as a drag would.
+async function selectLines(page: Page) {
+  const view = page.getByRole('region', { name: /^Contents of / })
+  await view.evaluate((el) => { el.scrollTop = el.scrollHeight })
+  await page.waitForTimeout(200)
+  await page.evaluate(() => {
+    const rows = [...document.querySelectorAll('.code-line .src')]
+    const from = rows[rows.length - 4]
+    const to = rows[rows.length - 2]
+    const range = document.createRange()
+    range.setStart(from.firstChild ?? from, 0)
+    range.setEnd(to.firstChild ?? to, (to.textContent ?? '').length)
+    const sel = document.getSelection()!
+    sel.removeAllRanges()
+    sel.addRange(range)
+  })
+  await page.getByRole('button', { name: 'Send to agent' }).waitFor()
+  await page.waitForTimeout(300)
+}
+
+// FileLinkSecret and FileLinkMissing are a link in the reply pressed: a file that may hold secrets asks first, and one that is gone says so in a toast.
+const pressLink = (name: string, wait: 'dialog' | 'toast') => async (page: Page) => {
+  await page.getByRole('button', { name }).click()
+  if (wait === 'dialog') await page.getByRole('alertdialog').or(page.getByRole('dialog')).first().waitFor()
+  else await page.waitForTimeout(600)
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
 
 // NewChatProjectPicker, NewChatMode, NewChatBranch and NewChatPlus are New chat with the project menu, the + menu or one of its Run in and Branch pickers open (KERNEL-786).
 // NewChatLocal has Local picked, which shows the chip beside +. NewChatBranchChip picks a branch from the + menu and shows its chip.
@@ -713,7 +776,21 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   UsageFooter: hoverUsage,
   AuditSidebarWide: async (page) => { const h = page.getByRole('separator', { name: 'Resize sidebar' }); await h.focus(); await page.keyboard.press('End'); await h.blur(); await page.waitForTimeout(300) },
   GroupedRowStatus: (page) => hoverRow(page, 'Client portal login'),
-  PanelCompare: openCompare,
+  PanelCompare: (page) => openCompare(page),
+  CompareMenu: (page) => openCompare(page),
+  CompareBranches: compareBranches,
+  CompareCommits: compareCommits,
+  CompareNothingUncommitted: compareUncommitted,
+  CompareCommitNoFiles: compareOneCommit,
+  FilesToolbar: filesFilter,
+  FilesFilterNoMatch: filesNoMatch,
+  ChangesFilterNoMatch: changesNoMatch,
+  WorkspaceSharedPanel: openSharedList,
+  BottomPanelRunMenu: openRunMenu,
+  TabRename: renameTab,
+  FileViewSendToAgent: selectLines,
+  FileLinkSecret: pressLink('Open .env.local', 'dialog'),
+  FileLinkMissing: pressLink('Open src/fixtures.ts', 'toast'),
   LeadNoChatsBranch: openBaseBranch,
   NewChatProjectPicker: (page) => openWhere(page, /^Project:/, /Client B/),
   NewChatMode: (page) => openPlusPicker(page, /^Run in/, /Local/).then(() => page.mouse.move(0, 0)).then(() => page.waitForTimeout(300)),
