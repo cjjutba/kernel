@@ -12,4 +12,4 @@
 | Teammate (5 tools) | 243 | 234 | 364 | 351 | 911 | 786 | 786 |
 | Reviewer (3 tools) | 428 | 418 | 624 | 611 | 797 | 740 | 740 |
 
-`LEAD_RULE` alone went from 699 to 548 words. A Lead session's fixed Kernel text went from about 6,280 tokens to about 3,180 up front, and about 5,370 once every deferred tool has loaded. The Claude Code preset is not counted and does not change. `set_project_scripts` keeps its full Conductor and Superset mapping, which is now deferred, so it costs nothing until the Lead imports a config. Not measured: the live token count of a real session, which needs `KERNEL_LIVE=1`.
+`LEAD_RULE` alone went from 699 to 548 words. A Lead session's fixed Kernel text went from about 6,280 tokens to about 3,180 up front, and about 5,370 once every deferred tool has loaded. The Claude Code preset is not counted and does not change. `set_project_scripts` keeps its full variable mapping for imported configs, which is now deferred, so it costs nothing until the Lead imports one. Not measured: the live token count of a real session, which needs `KERNEL_LIVE=1`.
