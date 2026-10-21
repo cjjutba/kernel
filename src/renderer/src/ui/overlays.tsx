@@ -226,10 +226,10 @@ const WHEEL_END_MS = 120
 
 /** A toast's button. `primary` fills it, for the action that fixes what went wrong. `kbd` is the shortcut that presses it, shown in its tooltip. */
 export interface ToastButton { label: string; onClick?: () => void; primary?: boolean; kbd?: string }
-export type ToastGlyph = 'done' | 'error' | 'merged' | 'plug'
-const glyphIcon: Record<ToastGlyph, IconName> = { done: 'check', error: 'alertCircle', merged: 'merged', plug: 'plug' }
+export type ToastGlyph = 'done' | 'error' | 'merged' | 'plug' | 'download'
+const glyphIcon: Record<ToastGlyph, IconName> = { done: 'check', error: 'alertCircle', merged: 'merged', plug: 'plug', download: 'download' }
 
-export interface ToastProps { title: string; sub?: string; /** A third, quieter line: what the toast is about. */ detail?: string; glyph?: ToastGlyph; /** Up to two, drawn left to right with the last at the edge. */ actions?: ToastButton[]; /** Leave now, the way a timeout does. */ closing?: boolean; onDismiss?: () => void }
+export interface ToastProps { title: string; sub?: string; /** A third, quieter line: what the toast is about. */ detail?: string; glyph?: ToastGlyph; /** Up to two, drawn left to right with the last at the edge. */ actions?: ToastButton[]; /** Leave now, the way a timeout does. */ closing?: boolean; /** Stay until closed or an action is pressed, with no 5s timeout: a toast about something waiting on the person, such as a downloaded update. Needs `onDismiss`. */ stay?: boolean; onDismiss?: () => void }
 
 /** A sub that is a path breaks at its slashes, not in the middle of a name. */
 function breakAtSlashes(text: string): ReactNode[] {
@@ -248,7 +248,7 @@ type Swipe = { from?: { x: number; y: number }; rx: number; ry: number; axis?: '
  * two-finger swipe right or down on a trackpad, or pressing its action dismisses it sooner. A swipe leaves in its own direction.
  * A toast without `onDismiss` stays put.
  */
-export function Toast({ title, sub, detail, glyph = 'done', actions, closing, onDismiss }: ToastProps) {
+export function Toast({ title, sub, detail, glyph = 'done', actions, closing, stay, onDismiss }: ToastProps) {
   const [held, setHeld] = useState(false)
   const [leaving, setLeaving] = useState<Leave | null>(null)
   const box = useRef<HTMLDivElement>(null)
@@ -258,10 +258,10 @@ export function Toast({ title, sub, detail, glyph = 'done', actions, closing, on
   dismiss.current = onDismiss
   const timed = !!onDismiss
   useEffect(() => {
-    if (held || !timed || leaving) return
+    if (held || !timed || stay || leaving) return
     const t = setTimeout(() => setLeaving('sink'), TOAST_MS)
     return () => clearTimeout(t)
-  }, [held, timed, leaving])
+  }, [held, timed, stay, leaving])
   useEffect(() => {
     if (closing && timed) setLeaving((l) => l ?? 'sink')
   }, [closing, timed])
