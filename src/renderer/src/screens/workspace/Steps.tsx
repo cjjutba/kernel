@@ -323,7 +323,7 @@ function McpBody({ item }: { item: Tool }) {
       )}
       {output && short && (
         <p className="step-result">
-          {url ? <button type="button" className="step-link" onClick={() => void call('system.openExternal', { url })}>{first}<Icon name="ext" size={12} /></button> : first}
+          {url ? <button type="button" className="step-link" onClick={() => void call('system.openExternal', { url })}>{output.replace(URL_IN, '').trim() || url}<Icon name="ext" size={12} /></button> : first}
         </p>
       )}
       {output && !short && <OutputBox output={output} failed={item.status === 'failed'} from="start" />}

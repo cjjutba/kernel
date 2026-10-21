@@ -111,6 +111,10 @@ button.ws-issue:hover { background: var(--surface-3); }
 .msg-user[data-queued] .bubble { background: var(--surface); color: var(--muted); }
 /* A message git couldn't send reads as sent, with Not sent under it (KERNEL-1093). */
 .msg-user[data-queued][data-failed] .bubble { background: var(--card-bg); color: var(--ink-2); }
+.bubble-images { display: flex; flex-wrap: wrap; gap: 6px; max-width: 424px; }
+.bubble-images:not(:last-child) { margin-bottom: 10px; }
+.bubble-images .thumb { width: 80px; height: 56px; padding: 0; overflow: hidden; border: 1px solid var(--line-2); border-radius: var(--r-xs); background: var(--surface-3); cursor: pointer; }
+.bubble-images .thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .queued-meta { display: flex; align-items: center; gap: 14px; font-size: var(--fs-meta); color: var(--muted); }
 /* A message waiting for setup keeps its Edit and Cancel out of sight until it is pointed at or tabbed into (KERNEL-951). */
 .msg-user[data-queued] .queued-edit { display: inline-flex; gap: 14px; opacity: 0; }
@@ -137,12 +141,6 @@ button.msg-chip:hover { border-color: var(--line-3); }
 /* The end of a finished turn (KERNEL-346): its time, always shown, then the reply's actions on the same line. */
 .msg-foot { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
 .msg-foot .msg-acts { margin-left: 0; }
-.msg-foot .meta { transition: opacity var(--dur-fast); }
-/* Every turn but the last keeps its time and actions out of sight until the reader hovers it or tabs into it (KERNEL-1025). */
-.msg-foot[data-quiet] .meta { opacity: 0; }
-.msg:hover .msg-foot[data-quiet] .meta, .msg-foot[data-quiet]:hover .meta, .msg-foot[data-quiet]:focus-within .meta { opacity: 1; }
-.thread > .meta[data-quiet] { opacity: 0; transition: opacity var(--dur-fast); }
-.thread > .meta[data-quiet]:hover { opacity: 1; }
 .msg-more { position: relative; display: inline-flex; }
 .msg-more .icon-btn[aria-expanded='true'] { background: var(--surface-3); color: var(--ink); }
 .msg-reply .tf { margin-top: 8px; }

@@ -28,12 +28,12 @@ export type ThreadBlock =
   | { kind: 'group'; id: string; items: ChatItem[]; entries: Entry[]; summary: Summary; turn: FoldTurn; current?: true; ends?: true }
   | { kind: 'files'; id: string; files: ChangedFile[] }
   /** A turn's time. `actions` is on a finished turn that doesn't end on text: the time line then carries Copy, Retry and the "..." menu, with `copy` the turn's last message when it has one (KERNEL-828). */
-  | { kind: 'meta'; id: string; text: string; actions?: { copy?: string; files: boolean; checkpointId?: string }; quiet?: true }
+  | { kind: 'meta'; id: string; text: string; actions?: { copy?: string; files: boolean; checkpointId?: string } }
   /**
    * A finished turn's reply with the end of its turn under it: the changed files, then one line with how long the turn took
    * and when, and the reply's actions (KERNEL-346).
    */
-  | { kind: 'reply'; id: string; item: Extract<ChatItem, { kind: 'text' }>; files?: ChangedFile[]; meta: string; checkpointId?: string; quiet?: true }
+  | { kind: 'reply'; id: string; item: Extract<ChatItem, { kind: 'text' }>; files?: ChangedFile[]; meta: string; checkpointId?: string }
   /** Two or more grey notes in a row, as one line: the latest and "and N more", which opens to all of them. A PR state note never joins one, and neither does an error. */
   | { kind: 'notes'; id: string; items: NoteItem[] }
   /** Kernel's message right after a quit or crash note, folded into that note's line: the line says what happened, opening it shows the message. */
@@ -285,7 +285,12 @@ function foldTurn(turn: ChatItem[], blocks: ThreadBlock[], info: FoldTurn) {
   let steps: ChatItem[] = []
   const inFold = info.live && turn.some((i) => i.kind === 'tool')
   const flush = () => {
-    if (steps.length) foldBlocks(steps, blocks, inFold, info)
+    if (!steps.length) return
+    // A running turn's newest message reads under its fold as it is written, and so does the one just before a card, so the reader sees what the agent says without opening the fold (KERNEL-1094).
+    // A step that follows takes it into the fold.
+    const tail = info.live && steps.length > 1 && steps[steps.length - 1].kind === 'text' ? steps.pop() : undefined
+    foldBlocks(steps, blocks, inFold, info)
+    if (tail) blocks.push({ kind: 'item', item: tail })
     steps = []
   }
   for (const item of turn) {
@@ -309,12 +314,8 @@ export function buildThread(items: ChatItem[], running = false): ThreadBlock[] {
   const blocks: ThreadBlock[] = []
   let turn: ChatItem[] = []
   let startedAt: number | undefined
-  // Only the last turn keeps its time and actions in view (KERNEL-1025), so each footer remembers its turn until the last one is known.
-  let turns = 0
-  const feet: { block: Extract<ThreadBlock, { kind: 'meta' | 'reply' }>; turn: number }[] = []
-  const foot = (block: Extract<ThreadBlock, { kind: 'meta' | 'reply' }>) => { blocks.push(block); feet.push({ block, turn: turns }) }
+  const foot = (block: Extract<ThreadBlock, { kind: 'meta' | 'reply' }>) => { blocks.push(block) }
   const finish = (open = false) => {
-    turns++
     const result = turn.find((i): i is Extract<ChatItem, { kind: 'result' }> => i.kind === 'result')
     const stop = turn.find((i) => i.kind === 'interrupted')
     const live = open && !result && !stop
@@ -349,7 +350,7 @@ export function buildThread(items: ChatItem[], running = false): ThreadBlock[] {
       const folded = blocks[blocks.length - 1]
       if (folded?.kind === 'group') folded.ends = true
       const why = stop ? 'stopped' : result ? (result.limit ? 'limit' : 'failed') : 'cut'
-      if (result || stop || (body.some(isStep) && !body.some(isQuitNote))) blocks.push({ kind: 'end', id: `end-${(result ?? stop ?? last).id}`, why, ...(durationMs !== undefined ? { ms: durationMs } : {}) })
+      if (result || stop || (body.some((i) => i.kind === 'tool') && !body.some(isQuitNote))) blocks.push({ kind: 'end', id: `end-${(result ?? stop ?? last).id}`, why, ...(durationMs !== undefined ? { ms: durationMs } : {}) })
       if (result) {
         const copy = tail >= 0 ? (body[tail] as Extract<ChatItem, { kind: 'text' }>).text : undefined
         foot({ kind: 'meta', id: result.id, text: `${fmtDuration(result.durationMs)} · ${fmtClock(result.ts)}`, actions: { ...(copy ? { copy } : {}), files: false, ...(result.checkpointId ? { checkpointId: result.checkpointId } : {}) } })
@@ -398,7 +399,6 @@ export function buildThread(items: ChatItem[], running = false): ThreadBlock[] {
     } else turn.push(item)
   }
   finish(running)
-  for (const f of feet) if (f.turn < turns) f.block.quiet = true
   return foldNotes(blocks)
 }
 

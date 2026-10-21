@@ -188,12 +188,15 @@ describe('a turn that is still running folds its finished steps (KERNEL-784)', (
     expect(idOf([q, filled, r, bash('x', 'running')])).toBe(idOf([q, empty, r]))
   })
 
-  it('keeps a message in flight inside the fold once the turn has a call', () => {
+  it('reads the newest message of a running turn under its fold, and takes it into the fold once a step follows (KERNEL-1094)', () => {
     const blocks = buildThread([ask(), read('a'), say('Now the tests.')], true)
-    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group'])
+    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group', 'item'])
     const group = blocks[1]
-    expect(group.kind === 'group' && group.entries.map((e) => e.kind === 'item' && e.item.kind)).toEqual(['tool', 'text'])
+    expect(group.kind === 'group' && group.entries.map((e) => e.kind === 'item' && e.item.kind)).toEqual(['tool'])
     expect(group.kind === 'group' && group.summary.text).toBe('Read a file')
+    const further = buildThread([ask(), read('a'), say('Now the tests.'), bash('x')], true)
+    expect(further.map((b) => b.kind)).toEqual(['item', 'group'])
+    expect(further[1].kind === 'group' && further[1].entries.map((e) => e.kind === 'item' && e.item.kind)).toEqual(['tool', 'text', 'tool'])
     // After a note or approval, text alone is a fold too, so none of it shows.
     const note: ChatItem = { kind: 'note', id: 'nt2', ts: at, text: 'PR #1 opened.' }
     const after = buildThread([ask(), read('a'), note, say('Waiting on checks.')], true)
@@ -230,11 +233,12 @@ describe('a turn that is still running folds its finished steps (KERNEL-784)', (
     const approval: ChatItem = { kind: 'approval', id: 'ap', ts: at, approvalId: 'a1' } as ChatItem
     const items = [ask(), read('a'), bash('x'), say('Filing now.'), note, linear('A'), linear('B'), approval]
     const blocks = buildThread(items, true)
-    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group', 'item', 'group', 'item'])
+    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group', 'item', 'item', 'group', 'item'])
     const group = blocks[1]
-    expect(group.kind === 'group' && group.entries.map((e) => e.kind === 'item' && e.item.kind)).toEqual(['tool', 'tool', 'text'])
+    expect(group.kind === 'group' && group.entries.map((e) => e.kind === 'item' && e.item.kind)).toEqual(['tool', 'tool'])
     expect(group.kind === 'group' && group.summary.text).toBe('Read 1 file, ran 1 command')
-    expect(blocks.filter((b) => b.kind === 'item').map((b) => b.kind === 'item' && b.item.kind)).toEqual(['user', 'note', 'approval'])
+    // The message just before the note stays out of the fold, so it reads without opening it.
+    expect(blocks.filter((b) => b.kind === 'item').map((b) => b.kind === 'item' && b.item.kind)).toEqual(['user', 'text', 'note', 'approval'])
   })
 
   it('streams the first message of a turn in full until the turn has a call (KERNEL-840)', () => {
@@ -498,8 +502,9 @@ describe('a fold shows its steps while the turn works and folds them when it end
   it('moves the streaming reply from the list to the reply block, never both', () => {
     const reply = say('All done.')
     const running = buildThread([ask(), read('a'), bash('x'), reply], true)
-    expect(running.map((b) => b.kind)).toEqual(['item', 'group'])
-    expect(group(running).items).toContain(reply)
+    expect(running.map((b) => b.kind)).toEqual(['item', 'group', 'item'])
+    expect(group(running).items).not.toContain(reply)
+    expect(running[2]).toMatchObject({ kind: 'item', item: reply })
     const ended = buildThread([ask(), read('a'), bash('x'), reply, ok(30_000)], false)
     expect(ended.map((b) => b.kind)).toEqual(['item', 'group', 'reply'])
     expect(group(ended).items).not.toContain(reply)
@@ -519,7 +524,7 @@ describe('a fold shows its steps while the turn works and folds them when it end
   })
 })
 
-describe('quieter transcript (KERNEL-1025)', () => {
+describe('a quieter transcript (KERNEL-1025, KERNEL-1094)', () => {
   const at = (n: number) => 1_700_000_000_000 + n * 1000
   const user = (id: string, n: number): ChatItem => ({ kind: 'user', id, ts: at(n), parts: [{ type: 'text', text: 'Go' }] })
   const bash = (id: string, status: 'done' | 'denied' | 'failed', n: number): ChatItem => ({ kind: 'tool', id, ts: at(n), toolUseId: `tu-${id}`, name: 'Bash', label: 'Run', detail: 'pnpm test', status: status === 'denied' ? 'failed' : status, ...(status === 'denied' ? { output: "The user doesn't want to proceed with this tool use. The tool use was rejected." } : {}), input: { command: 'pnpm test' } })
@@ -544,17 +549,11 @@ describe('quieter transcript (KERNEL-1025)', () => {
     expect(s.bad).toBe('1 failed')
   })
 
-  it('quiets the time line of an earlier stopped turn', () => {
+  it('keeps the time line of every turn in view, the last one and the ones before it (KERNEL-1094)', () => {
     const stopped: ChatItem[] = [user('u1', 0), { kind: 'text', id: 'x1', ts: at(1), text: 'Working' }, { kind: 'interrupted', id: 'i1', ts: at(2) }, { kind: 'result', id: 'r1', ts: at(3), durationMs: 3000, ok: false }]
-    const metas = buildThread([...stopped, ...turn('2', 10)]).filter((b) => b.kind === 'meta' || b.kind === 'reply')
-    expect(metas.map((b) => b.quiet)).toEqual([true, undefined])
-  })
-
-  it('marks every footer but the last turn quiet', () => {
-    const blocks = buildThread([...turn('1', 0), ...turn('2', 10), ...turn('3', 20)])
-    const foots = blocks.filter((b) => b.kind === 'reply' || b.kind === 'meta')
-    expect(foots.map((b) => b.quiet)).toEqual([true, true, undefined])
-    expect(buildThread(turn('1', 0))[1]).not.toHaveProperty('quiet')
+    const metas = buildThread([...stopped, ...turn('2', 10), ...turn('3', 20)]).filter((b) => b.kind === 'meta' || b.kind === 'reply')
+    expect(metas).toHaveLength(3)
+    for (const b of metas) expect(b).not.toHaveProperty('quiet')
   })
 
   it('folds two or more grey notes in a row, and never a PR note or an error', () => {

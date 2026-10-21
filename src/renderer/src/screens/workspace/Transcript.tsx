@@ -1,5 +1,5 @@
 import { memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import type { Approval, ChangedFile, Chat, ChatItem, ChatPart, LeadMode } from '@shared/types'
+import type { Approval, ChangedFile, Chat, ChatItem, ChatPart, LeadMode, MoveNotice } from '@shared/types'
 import { leadModeName, leadModeOf, leadModeSwitched } from '@shared/leadMode'
 import { call } from '../../api'
 import { FileIcon } from '../../components/FileIcon'
@@ -13,7 +13,7 @@ import { ApprovalCard } from './cards/ApprovalCard'
 import { waitingPlan } from './cards/steps'
 import { Markdown } from './markdown'
 import { attempt, CopyOverlay, MessageActions, type MessageAction } from './MessageActions'
-import { ChipIcon, chipFileKind, fileView, ImageButton, IssueButton, isPastedText, TextButton, usePrState } from './composer/Chip'
+import { ChipIcon, chipFileKind, fileView, ImageButton, IssueButton, isPastedText, TextButton, usePrState, type ImagePart } from './composer/Chip'
 import { buildThread, countsLabel, fmtDuration, turnFiles, type NoteItem, type ThreadBlock } from './thread'
 import { ThoughtLine, ToolGroup, ToolRow, TranscriptAway, TranscriptWorkspace, TurnClock, TurnLine, type TurnClockValue } from './Steps'
 import { InstructionCard } from './pr/InstructionCard'
@@ -28,6 +28,7 @@ import { ReviewCard } from './pr/ReviewCard'
 import { LEAD_MODE_ICON } from './composer/modes'
 import { retryMessage, sendMessage, sentAt } from './composer/sendMessage'
 import { ChatWelcome, LEAD_SUGGESTIONS, SUGGESTIONS } from './ChatWelcome'
+import { ChatMoveNotice } from './banners/ChatMoveNotice'
 import { ChatRail } from './ChatRail'
 import { countNew, keepOpen, leftAtEnd, markRevealed, opensAtEnd, placeTop, readPlace, savePlace, shouldReveal, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
 import { RAIL_MIN, railEntries, sameEntries } from './railEntries'
@@ -115,11 +116,14 @@ function UserMessage({ item, workspaceId, onEdit }: { item: Extract<ChatItem, { 
   const revertable = useRevertable(workspaceId, item.checkpointId)
   const archived = useStore((s) => s.workspaces.find((w) => w.id === workspaceId)?.status === 'archived')
   const more: MessageAction[] = revertable && item.checkpointId ? [revertAction(workspaceId, item.checkpointId, 'Revert files to start of chat', true)] : []
+  const thumbs = item.parts.filter((p): p is ImagePart => p.type === 'image' && !!p.dataUrl)
   if (listed) return null
   return (
     <div className="msg msg-user" data-jump={item.id}>
       <div className="bubble">
-        {item.parts.map((p, i) => (p.type === 'text' ? <span key={i}>{p.text} </span> : <PartChip key={i} part={p} gone={archived && p.type === 'file' && !!p.path?.startsWith('.kernel/attachments/')} />))}
+        {/* Images the window holds are thumbnails, five to a row, above what was said. One it doesn't hold is a chip. */}
+        {thumbs.length > 0 && <div className="bubble-images">{thumbs.map((p, i) => <ImageButton key={i} image={p} className="thumb"><img src={p.dataUrl} alt="" /></ImageButton>)}</div>}
+        {item.parts.map((p, i) => (p.type === 'text' ? <span key={i}>{p.text} </span> : thumbs.includes(p as ImagePart) ? null : <PartChip key={i} part={p} gone={archived && p.type === 'file' && !!p.path?.startsWith('.kernel/attachments/')} />))}
       </div>
       {/* An answer to a card (KERNEL-838) is not a prompt the reader can edit, so it keeps Copy only. */}
       <MessageActions align="end" label="Message actions" copy={partsText(item.parts)} items={item.approvalId ? [] : [{ icon: 'pen', label: 'Edit', onClick: () => onEdit(partsText(item.parts)) }]}
@@ -186,35 +190,35 @@ function TurnFilesCard({ rowId, files, onOpenDiff }: { rowId: string; files: Cha
   )
 }
 
-interface FootProps { id: string; chatId: string; workspaceId: string; copy?: string; checkpointId?: string; hasFiles: boolean; meta?: string; quiet?: boolean; onFork: (itemId: string) => Promise<unknown>; onForkWorkspace?: (itemId: string) => Promise<unknown> }
+interface FootProps { id: string; chatId: string; workspaceId: string; copy?: string; checkpointId?: string; hasFiles: boolean; meta?: string; onFork: (itemId: string) => Promise<unknown>; onForkWorkspace?: (itemId: string) => Promise<unknown> }
 
 /** Copy, Retry and the "..." menu that forks and, where a finished turn changed files, reverts them to that turn (KERNEL-766). `id` is the row Retry and the forks start from. Fork into new workspace only shows where the workspace has its own worktree. */
-function ReplyFoot({ id, chatId, workspaceId, copy, checkpointId, hasFiles, meta, quiet, onFork, onForkWorkspace }: FootProps) {
+function ReplyFoot({ id, chatId, workspaceId, copy, checkpointId, hasFiles, meta, onFork, onForkWorkspace }: FootProps) {
   const revertable = useRevertable(workspaceId, hasFiles ? checkpointId : undefined)
   const forks: MessageAction[] = [{ icon: 'fork', label: 'Fork into new tab', busyLabel: 'Forking', onClick: () => onFork(id) }]
   if (onForkWorkspace) forks.push({ icon: 'branch', label: 'Fork into new workspace', busyLabel: 'Forking', onClick: () => onForkWorkspace(id) })
   if (revertable && checkpointId) forks.push(revertAction(workspaceId, checkpointId, 'Revert files to here'))
   return (
-    <MessageActions label="Message actions" copy={copy} meta={meta} quiet={quiet}
+    <MessageActions label="Message actions" copy={copy} meta={meta}
       items={[{ icon: 'refresh', label: 'Retry', busyLabel: 'Retrying', onClick: () => attempt('Could not retry', () => call('chats.retry', { chatId, itemId: id })) }]}
       more={{ menu: `reply:${id}`, items: forks }} />
   )
 }
 
-interface ReplyProps { item: Extract<ChatItem, { kind: 'text' }>; chatId: string; workspaceId: string; checkpointId?: string; onFork: (itemId: string) => Promise<unknown>; onForkWorkspace?: (itemId: string) => Promise<unknown>; files?: ChangedFile[]; meta?: string; quiet?: boolean; full?: boolean; onOpenDiff: (path: string) => void }
+interface ReplyProps { item: Extract<ChatItem, { kind: 'text' }>; chatId: string; workspaceId: string; checkpointId?: string; onFork: (itemId: string) => Promise<unknown>; onForkWorkspace?: (itemId: string) => Promise<unknown>; files?: ChangedFile[]; meta?: string; full?: boolean; onOpenDiff: (path: string) => void }
 
 /**
  * An agent line. Most only offer Copy, as an overlay that takes no height. The reply that ends a finished turn (`meta`) and the last line of a
  * stopped or cut-off turn (`full`) carry Copy, Retry and the "..." menu (KERNEL-828). The reply that ends a finished turn also carries the turn's files and
  * its time, which leads the actions' row (KERNEL-346).
  */
-function ReplyMessage({ item, chatId, workspaceId, checkpointId, onFork, onForkWorkspace, files, meta, quiet, full, onOpenDiff }: ReplyProps) {
+function ReplyMessage({ item, chatId, workspaceId, checkpointId, onFork, onForkWorkspace, files, meta, full, onOpenDiff }: ReplyProps) {
   return (
     <div className="msg msg-reply" data-copy={!full && meta === undefined ? '' : undefined}>
       <Markdown text={item.text} />
       {files && <TurnFilesCard rowId={item.id} files={files} onOpenDiff={onOpenDiff} />}
       {full || meta !== undefined
-        ? <ReplyFoot id={item.id} chatId={chatId} workspaceId={workspaceId} copy={item.text} checkpointId={checkpointId} hasFiles={!!files?.length} meta={meta} quiet={quiet} onFork={onFork} onForkWorkspace={onForkWorkspace} />
+        ? <ReplyFoot id={item.id} chatId={chatId} workspaceId={workspaceId} copy={item.text} checkpointId={checkpointId} hasFiles={!!files?.length} meta={meta} onFork={onFork} onForkWorkspace={onForkWorkspace} />
         : <CopyOverlay text={item.text} />}
     </div>
   )
@@ -223,7 +227,7 @@ function ReplyMessage({ item, chatId, workspaceId, checkpointId, onFork, onForkW
 /** The end of a finished turn that doesn't end on a message: its time, then the actions the reply would have carried (KERNEL-828). */
 function TurnEnd({ block, chatId, workspaceId, onFork, onForkWorkspace }: { block: Extract<ThreadBlock, { kind: 'meta' }> } & Pick<BlockProps, 'chatId' | 'workspaceId' | 'onFork' | 'onForkWorkspace'>) {
   const a = block.actions!
-  return <ReplyFoot id={block.id} chatId={chatId} workspaceId={workspaceId} copy={a.copy} checkpointId={a.checkpointId} hasFiles={a.files} meta={block.text} quiet={block.quiet} onFork={onFork} onForkWorkspace={onForkWorkspace} />
+  return <ReplyFoot id={block.id} chatId={chatId} workspaceId={workspaceId} copy={a.copy} checkpointId={a.checkpointId} hasFiles={a.files} meta={block.text} onFork={onFork} onForkWorkspace={onForkWorkspace} />
 }
 
 const END_ICON = { stopped: 'stop', failed: 'ban', limit: 'ban', cut: 'power' } as const
@@ -326,9 +330,9 @@ function sameBlock(a: ThreadBlock, b: ThreadBlock): boolean {
     case 'item': return b.kind === 'item' && a.item === b.item && a.actions === b.actions
     case 'group': return b.kind === 'group' && a.id === b.id && sameList(a.items, b.items) && a.turn.live === b.turn.live && a.turn.timer === b.turn.timer && a.turn.startedAt === b.turn.startedAt && a.turn.durationMs === b.turn.durationMs && a.turn.short === b.turn.short && a.current === b.current && a.ends === b.ends
     case 'files': return b.kind === 'files' && a.id === b.id && sameList(a.files, b.files)
-    case 'meta': return b.kind === 'meta' && a.id === b.id && a.quiet === b.quiet && a.text === b.text && a.actions?.copy === b.actions?.copy && a.actions?.files === b.actions?.files && a.actions?.checkpointId === b.actions?.checkpointId && !a.actions === !b.actions
+    case 'meta': return b.kind === 'meta' && a.id === b.id && a.text === b.text && a.actions?.copy === b.actions?.copy && a.actions?.files === b.actions?.files && a.actions?.checkpointId === b.actions?.checkpointId && !a.actions === !b.actions
     case 'notes': return b.kind === 'notes' && a.id === b.id && sameList(a.items, b.items)
-    case 'reply': return b.kind === 'reply' && a.item === b.item && a.quiet === b.quiet && a.meta === b.meta && a.checkpointId === b.checkpointId && sameList(a.files ?? [], b.files ?? [])
+    case 'reply': return b.kind === 'reply' && a.item === b.item && a.meta === b.meta && a.checkpointId === b.checkpointId && sameList(a.files ?? [], b.files ?? [])
     case 'relaunch': return b.kind === 'relaunch' && a.note === b.note && a.message === b.message
     case 'end': return b.kind === 'end' && a.id === b.id && a.why === b.why && a.ms === b.ms
   }
@@ -346,9 +350,9 @@ const Block = memo(function Block({ block, chatId, workspaceId, changes, agentNa
   if (block.kind === 'group') return <ToolGroup block={block} changes={changes} />
   if (block.kind === 'notes') return <NoteFold block={block} />
   if (block.kind === 'relaunch') return <KernelNote item={block.message} agentName={agentName} lead={`Kernel quit and relaunched. ${agentName} picked up where it stopped.`} />
-  if (block.kind === 'meta') return block.actions ? <TurnEnd block={block} chatId={chatId} workspaceId={workspaceId} onFork={onFork} onForkWorkspace={onForkWorkspace} /> : <span className="meta" data-quiet={block.quiet || undefined}>{block.text}</span>
+  if (block.kind === 'meta') return block.actions ? <TurnEnd block={block} chatId={chatId} workspaceId={workspaceId} onFork={onFork} onForkWorkspace={onForkWorkspace} /> : <span className="meta">{block.text}</span>
   if (block.kind === 'files') return <TurnFilesCard rowId={block.id} files={block.files} onOpenDiff={onOpenDiff} />
-  if (block.kind === 'reply') return <ReplyMessage item={block.item} chatId={chatId} workspaceId={workspaceId} checkpointId={block.checkpointId} onFork={onFork} onForkWorkspace={onForkWorkspace} files={block.files} meta={block.meta} quiet={block.quiet} onOpenDiff={onOpenDiff} />
+  if (block.kind === 'reply') return <ReplyMessage item={block.item} chatId={chatId} workspaceId={workspaceId} checkpointId={block.checkpointId} onFork={onFork} onForkWorkspace={onForkWorkspace} files={block.files} meta={block.meta} onOpenDiff={onOpenDiff} />
   const item = block.item
   switch (item.kind) {
     case 'user': {
@@ -373,7 +377,7 @@ const Block = memo(function Block({ block, chatId, workspaceId, changes, agentNa
   }
 }, sameProps)
 
-interface TranscriptProps { chat: Chat; workspaceId: string; changes: ChangedFile[]; onEdit: (text: string) => void; onOpenDiff: (path: string) => void; onForked: (chatId: string) => void }
+interface TranscriptProps { chat: Chat; workspaceId: string; changes: ChangedFile[]; onEdit: (text: string) => void; onOpenDiff: (path: string) => void; onForked: (chatId: string) => void; /** What a long chat waits on before it moves to another account: Kernel's choice, drawn as a card at the end of the thread (KERNEL-1094). */ moveNotice?: MoveNotice | null }
 
 /** Each chat is its own view, so its scroll and open rows never carry over from the one before, and leaving it saves where the reader was (KERNEL-765). */
 export const Transcript = memo(function Transcript(props: TranscriptProps) {
@@ -393,7 +397,7 @@ function TranscriptSkeleton() {
 
 const blockKey = (b: ThreadBlock) => (b.kind === 'item' ? b.item.id : b.id)
 
-function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onForked }: TranscriptProps) {
+function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onForked, moveNotice }: TranscriptProps) {
   const items = useStore((s) => s.items[chat.id] ?? EMPTY)
   const running = useStore((s) => !!s.running[chat.id])
   const loaded = useStore((s) => !!s.itemsLoaded[chat.id])
@@ -648,6 +652,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
         <div ref={thread} className="thread" style={empty || failed ? { display: 'none' } : undefined}>
           {blocks.map((b) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chatId={chatId} workspaceId={workspaceId} changes={changes} agentName={agentName} onEdit={editMessage} onOpenDiff={openDiff} onFork={fork} onForkWorkspace={worktree ? forkWorkspace : undefined} />)}
           {loose.map((a) => <ApprovalCard key={a.id} approval={a} inChat />)}
+          {moveNotice && <ChatMoveNotice chat={chat} notice={moveNotice} agentName={agentName} />}
           {ws?.prState === 'changes' && pr && <ReviewCard ws={ws} pr={pr} agentName={agentName} />}
           {ws && <LocalMergeRow ws={ws} />}
           {running && !hasFold && <TurnLine since={since} />}

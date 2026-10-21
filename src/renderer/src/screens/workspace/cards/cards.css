@@ -65,6 +65,12 @@
 .qlabel { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .qtag { display: inline-flex; align-items: center; height: 18px; box-sizing: border-box; padding: 0 6px; border: 0; border-radius: var(--r-2xs); background: var(--surface-3); color: var(--ink-3); font-size: var(--fs-badge); font-weight: var(--fw-medium); line-height: var(--lh-none); }
 .qdesc { color: var(--muted); font-size: var(--fs-code); line-height: var(--lh); }
+.sc-sec { display: flex; flex-direction: column; gap: 6px; }
+.sc-head { display: flex; align-items: baseline; gap: 10px; margin: 0; }
+.sc-label { color: var(--ink); font-size: var(--fs-ui); font-weight: var(--fw-medium); }
+.sc-hint { color: var(--muted); font-size: var(--fs-meta); }
+.sc-mode { margin: 0; color: var(--ink-2); font-size: var(--fs-ui); }
+.tcard pre.code { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--mono); }
 .qdone { gap: 14px; }
 .qdone-row { display: flex; flex-direction: column; gap: 4px; }
 .qdone-q { color: var(--ink-2); font-size: var(--fs-chat); line-height: var(--lh); overflow-wrap: anywhere; }

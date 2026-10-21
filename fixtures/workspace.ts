@@ -243,23 +243,6 @@ const EXIT_PLAN = [
   'Add "Download PDF" to the row actions menu', 'Call /api/invoices/:id/pdf and stream the file', 'Show progress on the item while it downloads', 'Toast on failure with a retry action', 'Playwright test for the download'
 ].map((t, i) => `${i + 1}. ${t}`).join('\n')
 
-/** Three questions in one AskUserQuestion call: a single-select, a multi-select and a single-select. */
-const DOWNLOAD_QUESTIONS: AskedQuestion[] = [
-  { question: 'Should the download keep the invoice number in the file name?', header: 'File name', options: [{ label: 'Yes, invoice-009.pdf' }, { label: 'Add the client name, acme-invoice-009.pdf' }] },
-  {
-    question: 'Where should the Download PDF action appear?', header: 'Placement', multiSelect: true,
-    options: [
-      { label: 'Row actions menu', description: 'Next to Duplicate and Void on every invoice row.' },
-      { label: 'Invoice detail header', description: 'Beside the status badge when an invoice is open.' },
-      { label: 'Bulk actions bar', description: 'Download the selected invoices as one zip.' }
-    ]
-  },
-  {
-    question: 'What should happen when the download fails?', header: 'On failure',
-    options: [{ label: 'Show a toast with a retry action' }, { label: 'Fail quietly and write it to the log' }]
-  }
-]
-
 const pending = (kind: 'tool' | 'plan' | 'question' | 'agent', agentId: string, extra: object): Approval =>
   ({ id: `ap-${kind}-${agentId}`, kind, source: 'sdk', projectId: ids.projectA, workspaceId: ids.table, agentId, status: 'pending', createdAt: at(10, 30), title: '', ...extra })
 
@@ -351,40 +334,6 @@ const runningLongCommandItems = (): ChatItem[] => {
     tool('rt4', 'Run a command', command, { ts: Date.now() - 20_000, status: 'running', durationMs: undefined, input: { command } })
   ]
 }
-
-/** A turn in progress with a long thinking row, a Bash call that printed output, an Edit and a Bash call still running. */
-const rowsOpenItems: ChatItem[] = [
-  userMsg('ro-u', 'Add a sort to the invoice table and run the tests.'),
-  { kind: 'thinking', id: 'ro-th', ts: at(10, 28), text: 'The table already has a sortable header for the amount column, so the date and client columns can reuse it.\n\nThe sort state lives in the URL, which keeps a reload on the same order. I will keep that and only add the two keys.' },
-  tool('ro-t1', 'Run unit tests', 'pnpm vitest run invoices', { durationMs: 8400, input: { command: 'pnpm vitest run invoices --reporter=verbose', description: 'Run unit tests' }, output: ' ✓ src/app/invoices/table.test.tsx (9)\n ✓ src/app/invoices/empty-state.test.tsx (4)\n ✓ src/app/invoices/page.test.tsx (8)\n\nTest Files  3 passed (3)\nTests  21 passed (21)', outputCut: true }),
-  tool('ro-t2', 'Edit table.tsx', 'src/app/invoices/table.tsx', { name: 'Edit', durationMs: 120, input: { file_path: 'src/app/invoices/table.tsx', old_string: "const rows = sortBy(invoices, 'amount')\nreturn <Table rows={rows} />", new_string: "const rows = sortBy(invoices, sort.key, sort.dir)\nreturn <Table rows={rows} sort={sort} />" } }),
-  tool('ro-t3', 'Run Playwright', 'pnpm playwright test invoices', { status: 'running', durationMs: undefined, input: { command: 'pnpm playwright test invoices --project=chromium' } })
-]
-
-/** The folded list (WorkspaceToolCalls) with a thinking row, a message and inputs on Edit and Write, for the rows a shot opens inside it. */
-const foldedRowsItems: ChatItem[] = [
-  tableItems[0],
-  { kind: 'thinking', id: 'fr-th', ts: at(10, 28), text: 'The table needs a sort key and a direction.\n\nI will read the plan, find where the table renders, then edit it.' },
-  tool('fr1', 'Read the plan', 'cat plans/t-14-invoice-table.md', { name: 'Read', durationMs: 100, input: { file_path: 'plans/t-14-invoice-table.md', offset: 1, limit: 80 } }),
-  tool('fr2', 'Find the invoices page', 'rg -n "InvoiceTable" src', { durationMs: 200, input: { command: 'rg -n "InvoiceTable" src' }, output: 'src/app/invoices/page.tsx:12:  <InvoiceTable invoices={rows} />' }),
-  { kind: 'text', id: 'fr-x', ts: at(10, 28), text: 'I will build the table first, then the empty state and the tests.' },
-  tool('fr3', 'Edit table.tsx', 'src/app/invoices/table.tsx', { name: 'Edit', durationMs: 120, input: { file_path: 'src/app/invoices/table.tsx', old_string: "const rows = sortBy(invoices, 'amount')", new_string: 'const rows = sortBy(invoices, sort.key, sort.dir)' } }),
-  tool('fr4', 'Create empty-state.tsx', 'src/app/invoices/empty-state.tsx', { name: 'Write', durationMs: 90, input: { file_path: 'src/app/invoices/empty-state.tsx', content: "export function EmptyState() {\n  return <p>No invoices yet</p>\n}" } }),
-  tool('fr5', 'Run unit tests', 'pnpm vitest run invoices', { durationMs: 8400, input: { command: 'pnpm vitest run invoices' }, output: 'Test Files  3 passed (3)\nTests  21 passed (21)' }),
-  ...tableItems.slice(-2)
-]
-
-/** A finished turn and a turn in progress that each read screenshots from .kernel/attachments, next to a Read of a source file (KERNEL-546). */
-const readImageItems: ChatItem[] = [
-  { kind: 'user', id: 'ri-u1', ts: at(10, 27), parts: [{ type: 'text', text: 'Match the empty state to this mock.' }, { type: 'image', name: 'image.png' }] },
-  tool('ri-t1', 'Read image.png', '.kernel/attachments/image.png', { name: 'Read', durationMs: 90, input: { file_path: '.kernel/attachments/image.png' } }),
-  tool('ri-t2', 'Read empty-state.tsx', 'src/app/invoices/empty-state.tsx', { name: 'Read', durationMs: 60, input: { file_path: 'src/app/invoices/empty-state.tsx' } }),
-  { kind: 'text', id: 'ri-x1', ts: at(10, 28), text: 'The mock centres the message and puts the button under it. I will change the empty state to match.' },
-  { kind: 'user', id: 'ri-u2', ts: at(10, 30), parts: [{ type: 'text', text: 'Now the loading state, with these two.' }, { type: 'image', name: 'image.png' }, { type: 'image', name: 'image-2.png' }] },
-  tool('ri-t3', 'Read image.png', '/Users/you/kernel/worktrees/client-a/invoice-table/.kernel/attachments/image.png', { name: 'Read', durationMs: 90, input: { file_path: '/Users/you/kernel/worktrees/client-a/invoice-table/.kernel/attachments/image.png' } }),
-  tool('ri-t4', 'Read image-2.png', '.kernel/attachments/image-2.png', { name: 'Read', durationMs: 80, input: { file_path: '.kernel/attachments/image-2.png' } }),
-  tool('ri-t5', 'Read skeleton.tsx', 'src/app/invoices/skeleton.tsx', { name: 'Read', durationMs: 60, input: { file_path: 'src/app/invoices/skeleton.tsx' } })
-]
 
 /** The invoice table chat followed by six more rounds, so the transcript runs well past the window (WorkspaceScrolledUp, KERNEL-532). */
 const longChat: ChatItem[] = [
@@ -493,15 +442,6 @@ const longSteps = (): ChatItem[] => [
   tool('sl-live', 'Run the shots', 'pnpm shots --all', { status: 'running', durationMs: undefined, input: { command: 'pnpm shots --all' } })
 ]
 
-/** One turn of Christian's invoice work in each state (KERNEL-828): narration between calls, then how the turn ended. */
-const narrated = (id: string, end: ChatItem[]): ChatItem[] => [
-  tableItems[0],
-  tool(`${id}-t1`, 'Read the plan', 'cat plans/t-14-invoice-table.md', { name: 'Read', ts: at(10, 28) }),
-  { kind: 'text', id: `${id}-x1`, ts: at(10, 28), text: 'I will build the table first, then the empty state and the tests.' },
-  tool(`${id}-t2`, 'Edit table.tsx', 'src/app/invoices/table.tsx', { name: 'Edit', ts: at(10, 29) }),
-  { kind: 'text', id: `${id}-x2`, ts: at(10, 29), text: 'The table sorts now. Moving on to the empty state.' },
-  ...end
-]
 const invoiceFiles: ChangedFile[] = [{ path: 'src/app/invoices/table.tsx', status: 'M', added: 212, removed: 20 }, { path: 'src/app/invoices/empty-state.tsx', status: 'A', added: 64, removed: 0 }]
 /** A finished turn with two in-between messages and real thinking between its calls (KERNEL-840): one fold, then the reply. */
 const foldedMessages: ChatItem[] = [
@@ -516,13 +456,6 @@ const foldedMessages: ChatItem[] = [
   { kind: 'text', id: 'fm-x3', ts: at(10, 31), text: 'Done. The table sorts and each state has its own component.' },
   { kind: 'result', id: 'fm-r', ts: at(10, 31), durationMs: 252_000, ok: true, files: invoiceFiles }
 ]
-const runningNarrated = (): ChatItem[] => narrated('rn', [tool('rn-t3', 'Run unit tests', 'pnpm vitest run invoices', { ts: Date.now() - 20_000, status: 'running', durationMs: undefined, input: { command: 'pnpm vitest run invoices' } })]).map((i) => (i.kind === 'user' ? { ...i, ts: Date.now() - 74_000 } : i))
-const endsOnText = narrated('et', [{ kind: 'text', id: 'et-x3', ts: at(10, 31), text: 'Done. The table sorts and each state has its own component.' }, { kind: 'result', id: 'et-r', ts: at(10, 31), durationMs: 252_000, ok: true, files: invoiceFiles }])
-const endsOnTool = narrated('eo', [tool('eo-t3', 'Run unit tests', 'pnpm vitest run invoices', { ts: at(10, 30) }), { kind: 'result', id: 'eo-r', ts: at(10, 31), durationMs: 252_000, ok: true, files: invoiceFiles }])
-const stoppedNarrated = narrated('st', [tool('st-t3', 'Run unit tests', 'pnpm vitest run invoices', { ts: at(10, 30), status: 'failed' }), { kind: 'interrupted', id: 'st-i', ts: at(10, 30) }, { kind: 'result', id: 'st-r', ts: at(10, 30), durationMs: 95_000, ok: false }])
-const failedNarrated = narrated('fl', [tool('fl-t3', 'Run unit tests', 'pnpm vitest run invoices', { ts: at(10, 30), status: 'failed', output: '2 failed (21)' }), { kind: 'result', id: 'fl-r', ts: at(10, 30), durationMs: 95_000, ok: false, error: 'The turn failed' }])
-const orphanedNarrated = narrated('or', [tool('or-t3', 'Run unit tests', 'pnpm vitest run invoices', { ts: at(10, 30) })])
-
 /** The Lead's chat with `items`, and the turn running unless it is told otherwise. */
 const leadRunning = (f: Fixture, items: ChatItem[], running = true): Partial<Fixture> => {
   // scene2 sets approvals only when it is given some; an undefined one would hide the seed's.
@@ -530,100 +463,8 @@ const leadRunning = (f: Fixture, items: ChatItem[], running = true): Partial<Fix
   return { ...rest, push: running ? [...f.push, { type: 'chat.running', chatId: ids.leadChat, running: true }] : f.push }
 }
 
-const stepStates: ChatItem[] = (() => {
-  const bash = (id: string, input: Record<string, unknown>, status: ToolItem['status'], output?: string) =>
-    tool(id, 'Run', String(input.command), { input, status, output, durationMs: status === 'running' ? undefined : 900 })
-  const edit = (id: string, status: ToolItem['status'], output?: string) =>
-    tool(id, 'Edit', 'src/app/invoices/table.tsx', { name: 'Edit', status, output, input: { file_path: '/Users/you/kernel/worktrees/client-a/invoice-table/src/app/invoices/table.tsx', old_string: 'sortBy(rows)', new_string: 'sortBy(rows, sort.key)' } })
-  const read = (id: string, status: ToolItem['status'], output?: string) =>
-    tool(id, 'Read', 'src/app/invoices/page.tsx', { name: 'Read', status, output, input: { file_path: 'src/app/invoices/page.tsx' } })
-  const mcp = (id: string, status: ToolItem['status'], output?: string) =>
-    mcpCall(id, 'context7', 'query_docs', { libraryId: '/vercel/next.js', query: 'route handlers' }, { status, output })
-  const described = { command: 'pnpm vitest run invoices', description: 'Run the invoice tests' }
-  const bare = { command: 'cd /Users/you/kernel/worktrees/client-a/invoice-table && pnpm tsc --noEmit' }
-  const sync = { command: 'cd /Users/you/kernel/worktrees/client-a/invoice-table && LINEAR_API_KEY=lin_api_Xk3fQ9dLm2Vb7TnRz4 GH_TOKEN=ghp_a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8 node scripts/sync-issues.mjs' }
-  const FAIL = 'error TS2322: Type string is not assignable to type number.\n  src/app/invoices/table.tsx:41'
-  return [
-    bash('ss-b1', described, 'running'), bash('ss-b2', described, 'done', 'Tests  21 passed (21)'), bash('ss-b3', described, 'failed', 'FAIL  src/app/invoices/table.test.tsx\nTests  1 failed | 20 passed'), bash('ss-b4', described, 'failed', DENIED_OUTPUT),
-    bash('ss-c1', bare, 'running'), bash('ss-c2', sync, 'done', 'Synced 12 issues'), bash('ss-c3', bare, 'failed', FAIL), bash('ss-c4', bare, 'failed', DENIED_OUTPUT),
-    edit('ss-e1', 'running'), edit('ss-e2', 'done'), edit('ss-e3', 'failed', 'The old_string was not found in the file.'), edit('ss-e4', 'failed', DENIED_OUTPUT),
-    read('ss-r1', 'running'), read('ss-r2', 'done', "export default function Page() {\n  return <InvoiceTable />\n}"), read('ss-r3', 'failed', 'File does not exist.'), read('ss-r4', 'failed', DENIED_OUTPUT),
-    mcp('ss-m1', 'running'), mcp('ss-m2', 'done', 'Route handlers live in app/**/route.ts.'), mcp('ss-m3', 'failed', 'Library not found'), mcp('ss-m4', 'failed', DENIED_OUTPUT)
-  ]
-})()
-
-const toolCalls: ChatItem[] = [
-  tableItems[0],
-  tool('c1', 'Read the plan', 'plans/t-14-invoice-table.md', { name: 'Read', durationMs: 100, input: { file_path: 'plans/t-14-invoice-table.md' } }),
-  tool('c1b', 'Read DESIGN.md', 'DESIGN.md', { name: 'Read', durationMs: 60, input: { file_path: 'DESIGN.md' } }),
-  tool('c2', 'Find the invoices page', 'rg -n "InvoiceTable" src', { durationMs: 200, output: 'src/app/invoices/page.tsx:12:  <InvoiceTable invoices={rows} />' }),
-  tool('c3', 'Edit table.tsx', 'src/app/invoices/table.tsx', { name: 'Edit', durationMs: 120 }),
-  tool('c4', 'Create empty-state.tsx', 'src/app/invoices/empty-state.tsx', { name: 'Write', durationMs: 90 }),
-  tool('c5', 'Run unit tests', 'pnpm vitest run invoices', { durationMs: 8400, output: 'Test Files  3 passed (3)\nTests  21 passed (21)' }),
-  tool('c6', 'Run Playwright', 'pnpm playwright test invoices', { durationMs: 41_000, output: '4 passed (38.2s)' }),
-  tool('c7', 'Check types', 'pnpm tsc --noEmit', { durationMs: 6100, status: 'failed', output: 'src/app/invoices/table.tsx(41,7): error TS2322: Type string is not assignable to type number.' }),
-  ...tableItems.slice(-2)
-]
-
-/** Opened Bash rows: a short command and a scan whose output runs past the 260px cap, so its section fades at the bottom (KERNEL-802). */
-const stepCardBashItems: ChatItem[] = [
-  userMsg('sb-u', 'Find what is using the disk.'),
-  tool('sb2', 'List the biggest folders', 'du -xk -d 3 ~ | sort -rn | head -40', {
-    durationMs: 3200, input: { command: 'du -xk -d 3 ~ | sort -rn | head -40', description: 'List the biggest folders' },
-    output: Array.from({ length: 40 }, (_, i) => `${String(48_000_000 - i * 1_150_000).padStart(9)}\t/Users/sam/${['Library', 'Projects', 'Downloads', 'Movies', 'Documents'][i % 5]}/folder-${i + 1}`).join('\n')
-  }),
-  { kind: 'text', id: 'sb-x', ts: at(10, 28), text: 'Next step.' },
-  tool('sb1', 'Wait while the scan runs', 'sleep 120; echo waited', { durationMs: 120_400, input: { command: 'sleep 120; echo waited', description: 'Wait while the scan runs' }, output: 'waited' }),
-  ...tableItems.slice(-2)
-]
-
-/** Opened MCP rows: a JSON response that is pretty-printed, one that is plain text, and a request with no response yet to show (KERNEL-802). */
-const stepCardMcpItems: ChatItem[] = [
-  userMsg('sm-u', 'Check the Settings issues.'),
-  mcpCall('sm1', 'linear', 'list_issues', { team: 'Kernel', query: 'Settings', updatedAt: '-P30D' }, {
-    output: JSON.stringify({ issues: [{ id: 'KERNEL-716', title: 'Project settings title misaligned', state: 'In Review', labels: ['Bug', 'Workspace'] }, { id: 'KERNEL-721', title: 'Settings say Saving and Saved next to the control', state: 'In Progress', labels: ['Workspace'] }], total: 2 })
-  }),
-  mcpCall('sm2', 'kernel', 'list_workspaces', {}, { output: 'ws-716 Project settings title misaligned (in review)\nws-714 Replace the ring spinner (ready to merge)' }),
-  ...tableItems.slice(-2)
-]
-
 const codexPatch = (path: string, old: string[], next: string[], context = ['export function InvoiceTable() {']) =>
   [`diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`, `@@ -10,${old.length + 1} +10,${next.length + 1} @@`, ` ${context[0]}`, ...old.map((l) => `-${l}`), ...next.map((l) => `+${l}`)].join('\n')
-
-/** What Codex's file changes and a MultiEdit open to: red and green diff lines, as an Edit shows (KERNEL-802). A fileChange has no old and new text, so its output, a unified diff, is what is drawn. */
-const stepCardCodexItems: ChatItem[] = [
-  userMsg('sc-u', 'Sort the invoice table.'),
-  tool('sc1', 'Edit table.tsx', 'src/app/invoices/table.tsx', { name: 'Edit', durationMs: 120, input: { file_path: 'src/app/invoices/table.tsx' }, output: codexPatch('src/app/invoices/table.tsx', ["  const rows = sortBy(invoices, 'amount')", '  return <Table rows={rows} />'], ['  const rows = sortBy(invoices, sort.key, sort.dir)', '  return <Table rows={rows} sort={sort} />']) }),
-  { kind: 'text', id: 'sc-x1', ts: at(10, 28), text: 'Next step.' },
-  tool('sc2', 'Edit page.tsx', 'src/app/invoices/page.tsx', { name: 'MultiEdit', durationMs: 150, input: { file_path: 'src/app/invoices/page.tsx', edits: [
-    { old_string: "import { Table } from './table'", new_string: "import { Table, useSort } from './table'" },
-    { old_string: 'const rows = invoices', new_string: 'const sort = useSort()\nconst rows = invoices' }
-  ] } }),
-  ...tableItems.slice(-2)
-]
-
-const emptyStateSource = [
-  "import { Button } from '../../ui'",
-  '',
-  'export function EmptyState({ onCreate }: { onCreate: () => void }) {',
-  '  return (',
-  '    <div className="empty">',
-  '      <h2>No invoices yet</h2>',
-  '      <p>Invoices you send show up here, newest first.</p>',
-  '      <Button onClick={onCreate}>Create invoice</Button>',
-  '    </div>',
-  '  )',
-  '}',
-  '',
-  ...Array.from({ length: 30 }, (_, i) => `export const EMPTY_COPY_${i + 1} = 'No invoices in view ${i + 1}'`)
-].join('\n')
-
-/** A Write opens capped, with its line count in the heading (KERNEL-802). */
-const stepCardWriteItems: ChatItem[] = [
-  userMsg('sw-u', 'Add the empty state.'),
-  tool('sw1', 'Create empty-state.tsx', 'src/app/invoices/empty-state.tsx', { name: 'Write', durationMs: 90, input: { file_path: 'src/app/invoices/empty-state.tsx', content: emptyStateSource }}),
-  ...tableItems.slice(-2)
-]
 
 /** The brief and the follow-up in the setup shots (KERNEL-430, KERNEL-1093): a teammate's task from the Lead's plan. */
 const JOURNEY = 'Run every step of KERNEL-31 on a fresh Mac account. File each failure as its own issue, then post one comment on KERNEL-232 with the results and shots.'
@@ -1071,14 +912,6 @@ const planExit = (f: Fixture): Partial<Fixture> => scene2(f, { name: 'invoice-pd
 
 /** A scene that passes no approvals keeps the seed's: scene2 would otherwise set them to undefined. */
 const noApprovals = ({ approvals: _none, ...patch }: Partial<Fixture>): Partial<Fixture> => patch
-
-/** Kernel's own message in Christian's chat after a limit switch: one note line. */
-const kernelNote = scene((f) => noApprovals(scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Download button', [
-    userMsg('kn1', 'Build T-15b from the approved plan.', true),
-    { kind: 'text', id: 'kn-tx', ts: at(10, 28), text: 'Starting with the row actions menu.' },
-    { kind: 'result', id: 'kn-res', ts: at(10, 29), durationMs: 60_000, ok: true },
-    { kind: 'user', id: 'kn-msg', ts: at(10, 30), from: 'kernel', parts: [{ type: 'text', text: 'You hit your usage limit and Kernel moved this chat to your other account. Carry on from where you stopped, and check git status first, since some edits may be unsaved.' }] }
-  ], {})))
 
 /** The same chat in plan mode with nothing waiting: Christian answered and the box waits for the next message. */
 const planMode = (f: Fixture): Partial<Fixture> => {
@@ -1531,14 +1364,6 @@ const moveAccounts = (): AccountProfile[] => [
   { id: 'key', provider: 'claude', label: 'API key', cli: false, auth: 'apiKey', active: false, signedIn: true },
   { id: 'cli', provider: 'codex', label: 'cj@example.com', email: 'cj@example.com', plan: 'ChatGPT Plus', cli: true, auth: 'subscription', active: true, signedIn: true }
 ]
-// KERNEL-841: the notice above the composer. The chat last ran on Main account and its next turn runs on the 3rd account.
-const moveNoticeScene = (notice: Partial<MoveNotice>, chat: Partial<Chat> = {}) => scene((f) => ({
-  accounts: moveAccounts(),
-  chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, ranOn: 'cli', ...chat } : c)),
-  moveNotices: { [ids.tableChat]: { kind: 'move', reason: 'account', from: 'cli', to: 'third', tokens: 310_000, keep: true, ...notice } },
-  ui: open
-}))
-
 const revertScene = (ui: Partial<Fixture['ui']>, prState?: Workspace['prState']) => scene((f) => ({
   ...(prState && { workspaces: withWorkspace(f, ids.table, { ...pr, prTitle, prState }) }),
   items: { [ids.tableChat]: revertItems },
@@ -2182,24 +2007,137 @@ function startedFromNewChat(f: Fixture, opened: boolean): Partial<Fixture> {
   return { ...g, workspaces: own, chats: g.chats!.filter((c) => kept.has(c.workspaceId)), ...(opened ? {} : { prs: {} }), ui: { ...g.ui!, rightPanel: true, panelHeld: opened ? [] : [ids.lead] } }
 }
 
-/** The Bash permission card for pnpm drizzle-kit push in the PDF renderer chat (WorkspacePerm, KERNEL-834). */
-const permWaiting = (f: Fixture) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'sean' }, 'PDF renderer', [
-    userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
-    ...folded('p', 11, 2),
-    { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works and the fonts are embedded. The schema needs a pdf_url column, so I need to push it to the dev database.' },
-    { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
-  ], {
-    approvals: [pending('tool', 'sean', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), ...f.approvals]
-  })
-
 /** scene2 puts the chat and workspace on its first approval only. A queue needs them on every one, as real approvals have. */
 const queued = (s: Partial<Fixture>): Partial<Fixture> => {
   const [first, ...rest] = s.approvals ?? []
   return { ...s, approvals: first && [first, ...rest.map((a) => (a.status === 'pending' && a.toolName === 'Bash' ? { ...a, workspaceId: first.workspaceId, chatId: first.chatId } : a))] }
 }
 
+// ---- KERNEL-1094, The agent works (Pen Part 7): Teng's clean-account journey in each moment of a turn. ----
+
+/** A time on the journey's day, 13:41 to 13:52 (the clocks the canvas shows). */
+const J = (m: number, s = 0) => at(13, m, s)
+/** A time counted back from now, for a turn that is still running, so its clock reads what the shot says. */
+const ago = (secs: number) => Date.now() - secs * 1000
+
+/** The workspace Teng works in: made at 13:41, set up in 1:12, a task of the Lead's plan, with the rail's stages to read. */
+const JOURNEY_WS: Partial<Workspace> = {
+  name: 'kernel-232a', branch: 'test/kernel-232a-clean-account', agentId: 'teng', title: JOURNEY_TITLE, taskId: 'T-31', status: 'ready', port: 4312, createdAt: J(41),
+  setupRun: { startedAt: J(41, 20), endedAt: J(42, 32), end: 0 }, stat: { files: 2, added: 67, removed: 1 }
+}
+const JOURNEY_PROJECT: NonNullable<Fixture['projectSettings']> = { [ids.projectA]: { scripts: { setup: 'pnpm install' }, runScripts: [], files: { copy: [] }, workspace: {} } }
+
+const jBrief = (ts = J(43)): ChatItem => ({ kind: 'user', id: 'j-u', ts, parts: [{ type: 'text', text: JOURNEY }] })
+const jTool = (id: string, ts: number, command: string, description: string, extra: Partial<ToolItem> = {}): ChatItem =>
+  tool(id, description, command, { ts, input: { command, description }, ...extra })
+const jRead = (ts = J(43, 5)): ChatItem => tool('j-read', 'Read', 'docs/qa/kernel-31.md', { name: 'Read', ts, durationMs: 80, input: { file_path: 'docs/qa/kernel-31.md' } })
+const jIssue = (ts = J(43, 12)): ChatItem => mcpCall('j-issue', 'linear', 'get_issue', { id: 'KERNEL-232' }, { ts, durationMs: 900, output: 'KERNEL-232  Clean-account journey on a fresh Mac user' })
+const JOURNEY_PASS = ['✓ 1  installs from the DMG', '✓ 2  opens on New chat', '✓ 3  adds a project from GitHub', '✓ 4  sends the first brief', '✓ 5  approves the plan']
+const jRun15 = (ts = J(43, 20), extra: Partial<ToolItem> = {}): ChatItem => jTool('j-run15', ts, 'pnpm test:journey --steps 1-5', 'Run steps 1 to 5', { durationMs: 42_000, output: JOURNEY_PASS.join('\n'), ...extra })
+const jShots = (ts = J(44, 10), extra: Partial<ToolItem> = {}): ChatItem => jTool('j-shots', ts, 'pnpm shots --all', 'Capture every screen', { durationMs: 38_000, output: 'Captured 214 screens', ...extra })
+const jEdit = (ts = J(46)): ChatItem => tool('j-edit', 'Edit journey.test.ts', 'test/journey.test.ts', {
+  name: 'Edit', ts, durationMs: 120,
+  input: { file_path: 'test/journey.test.ts', old_string: "  await shots(['Review'])", new_string: "  await shots(['Review', 'ReviewRc'])\n  expect(diff('Review', 'ReviewRc')).toBeLessThan(0.01)\n  expect(missing()).toEqual([])" }
+})
+const jWrite = (ts = J(46, 30)): ChatItem => tool('j-write', 'Create journey.ts', 'fixtures/journey.ts', {
+  name: 'Write', ts, durationMs: 90,
+  input: { file_path: 'fixtures/journey.ts', content: ['export const ReviewRc: Fixture = {', "  screen: 'Review',", "  build: 'release-candidate',", '  account: freshAccount(),', '  chats: [cleanAccountChat],', ...Array.from({ length: 58 }, (_, i) => `  // frame ${i + 1} of the release candidate`), '}'].join('\n') }
+})
+const jTypes = (ts = J(47, 10)): ChatItem => jTool('j-types', ts, 'pnpm typecheck', 'Check types', { status: 'failed', durationMs: 6100, output: "Exit code 2\ntest/journey.test.ts(41,7): error TS2322: Type 'string' is not assignable to type 'number'." })
+const jRun6 = (ts = J(48), extra: Partial<ToolItem> = {}): ChatItem => jTool('j-run6', ts, 'pnpm test:journey --steps 6', 'Run step 6', { durationMs: 21_000, output: '✓ 6  compares the review screen', ...extra })
+const jSay = (id: string, ts: number, text: string): ChatItem => ({ kind: 'text', id, ts, text })
+const jThink = (id: string, ts: number, text: string): ChatItem => ({ kind: 'thinking', id, ts, text })
+const jResult = (ts: number, ms: number, extra: Partial<Extract<ChatItem, { kind: 'result' }>> = {}): ChatItem => ({ kind: 'result', id: 'j-res', ts, durationMs: ms, ok: true, ...extra })
+const jFiles: ChangedFile[] = [{ path: 'test/journey.test.ts', status: 'M', added: 3, removed: 1 }, { path: 'fixtures/journey.ts', status: 'A', added: 64, removed: 0 }]
+const jReply = 'All six steps pass on a clean account. Step 6 needed a fixture for the release candidate\'s review screen, so I added one and a test that compares the two.'
+
+/** The turn at rest: Teng read the checklist and the issue, ran steps 1 to 5 and told you where it stands (7.1). */
+const jRest = (): ChatItem[] => [
+  jBrief(), jRead(), jIssue(), jRun15(),
+  jSay('j-reply', J(49, 10), 'Steps 1 to 5 pass on a clean account. Step 6 compares the review screen with the release candidate, so it needs the full screenshot run before I can call it.'),
+  jResult(J(49, 12), 372_000)
+]
+
+/** The whole turn, finished: every kind of step, a failed one, thinking and the messages between (7.3 and 7.4). */
+const jDay = (): ChatItem[] => [
+  jBrief(), jThink('j-th1', J(43, 2), "Step 6 needs the release candidate's review screen, and the fixtures don't have one yet."), jRead(), jIssue(), jRun15(),
+  jSay('j-s1', J(44, 5), 'Steps 1 to 5 pass. Capturing every screen next.'), jShots(), jEdit(), jWrite(),
+  jThink('j-th2', J(47), 'The typecheck failure is in my own test. The threshold takes a number.'), jTypes(),
+  jSay('j-s2', J(47, 40), 'Fixed the threshold type in journey.test.ts. Running step 6 again against the release candidate, then I\'ll post the results on KERNEL-232.'), jRun6(),
+  jSay('j-reply', J(49, 10), jReply), jResult(J(49, 12), 372_000, { files: jFiles })
+]
+
+interface Works { running?: boolean; approvals?: Approval[]; placed?: Approval[]; ws?: Partial<Workspace>; chat?: Partial<Chat>; view?: Record<string, unknown>; panel?: boolean; toasts?: import('@shared/types').Toast[] }
+
+/**
+ * Teng's chat on the journey, with the Session rail beside it (the panel closed). `approvals` wait in the chat after `items`, `placed` are ones the items already hold,
+ * and `running` is a turn still going.
+ */
+function works(f: Fixture, items: ChatItem[], o: Works = {}): Partial<Fixture> {
+  const s = scene2(f, { ...JOURNEY_WS, ...o.ws }, JOURNEY_TITLE, items, o.approvals ? { approvals: o.approvals } : {}, o.chat)
+  const base = o.approvals ? s : noApprovals(s)
+  return {
+    ...base,
+    ...(o.placed ? { approvals: [...o.placed.map((a) => ({ ...a, workspaceId: ids.table, chatId: ids.tableChat })), ...f.approvals] } : {}),
+    projectSettings: JOURNEY_PROJECT,
+    push: o.running ? [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }] : f.push,
+    ui: { ...open, rightPanel: o.panel ?? false, ...(o.toasts ? { toasts: o.toasts } : {}), workspace: { right: 'changes', bottom: 'run', ...o.view } }
+  }
+}
+
+/** A tool approval Teng waits on, the way Kernel words it: what it wants to do, and why it asked. */
+const jPerm = (extra: object = {}): Approval => pending('tool', 'teng', {
+  toolName: 'Bash', input: { command: 'rm -rf ~/Library/Application\\ Support/Kernel-qa' }, title: 'Run rm -rf ~/Library/Application\\ Support/Kernel-qa',
+  detail: "Clears the test account's Kernel data, so step 1 starts from a fresh install.", reason: 'Accept edits asks before commands no rule allows.', createdAt: Date.now() - 4_000, ...extra
+})
+
+/** The turn up to the question or approval, running, with the clock stopped where the agent asked. */
+const jAsked = (secs = 90, say = "Step 1 needs a fresh install, so the test account's Kernel data has to go first."): ChatItem[] => [
+  jBrief(ago(secs)), jRead(ago(secs - 5)), jIssue(ago(secs - 12)), jSay('j-asked', ago(secs - 30), say)
+]
+
+const JOURNEY_QUESTIONS: AskedQuestion[] = [
+  {
+    question: "The review screen on a clean account is 2px taller than the release candidate's, from the banner's top margin. Should I file it?", header: 'The 2px difference',
+    options: [{ label: 'File it as its own issue' }, { label: "Leave it, it's under the 4px threshold" }]
+  },
+  {
+    question: 'Which build should step 6 use?', header: 'Build',
+    options: [{ label: 'The release candidate from Friday', recommended: true, description: 'Matches what ships on Monday. The review screen shot is already in shots/rc.' }, { label: "Today's main", description: "Newer, but it includes the banner change that isn't in the release yet." }]
+  },
+  {
+    question: 'Should the comment on KERNEL-232 include every shot, or only the ones that moved?', header: 'The comment',
+    options: [{ label: 'Every shot' }, { label: 'Only the ones that moved' }]
+  }
+]
+const jQuestion = (qs: AskedQuestion[] = [JOURNEY_QUESTIONS[0]], extra: object = {}): Approval =>
+  pending('question', 'teng', { title: qs[0].question, options: qs[0].options.map((o) => o.label), questions: qs, createdAt: Date.now() - 4_000, ...extra })
+const jAnswered = (qs: AskedQuestion[], answers: string[]): Approval => ({
+  ...jQuestion(qs, { createdAt: J(47, 40) }), status: 'answered', answer: answers.join(' · '), answers: Object.fromEntries(qs.map((q, i) => [q.question, answers[i]]))
+})
+/** The turn once its question has an answer: the card, then the reply that follows. */
+const jAfterAnswer = (a: Approval, withItem = false): Partial<Fixture> => {
+  const f = scene(() => ({}))
+  const placed: ChatItem = { kind: 'approval', id: `approval-${a.id}`, ts: J(47, 40), approvalId: a.id }
+  const answer: ChatItem = { kind: 'user', id: `answer-${a.id}`, ts: J(47, 50), parts: [{ type: 'text', text: a.answer ?? '' }], approvalId: a.id }
+  return works(f, [jBrief(J(43)), jRead(), jIssue(), jRun15(), jSay('j-asked', J(47, 30), 'Steps 1 to 5 pass on a clean account. Step 6 found one difference from the release candidate.'), placed, ...(withItem ? [answer] : []), jSay('j-after', J(48), 'Filed KERNEL-1090 for the 2px difference and posted the moved shots on KERNEL-232.'), jResult(J(48, 10), 310_000)], { placed: [a] })
+}
+
+const jPermScene = (f: Fixture, o: { approvals?: Approval[]; reason?: string; mode?: Chat['mode']; ws?: Partial<Workspace>; chat?: Partial<Chat>; say?: string; models?: boolean } = {}): Partial<Fixture> => ({
+  ...works(f, jAsked(90, o.say), { running: true, approvals: o.approvals ?? [jPerm({ reason: o.reason ?? 'Accept edits asks before commands no rule allows.' })], ws: o.ws, chat: { mode: o.mode ?? 'acceptEdits', ...o.chat } }),
+  ...(o.models ? { models: { codex: codexModels } } : {})
+})
+
+/** Two turns with Kernel's own message between them (7.8): one line, with what Kernel told Teng a click away. */
+const jKernelNote = (): ChatItem[] => [
+  jBrief(), jRead(), jIssue(), jRun15(), jSay('j-n1', J(47), 'Steps 1 to 5 pass on a clean account. Capturing every screen next.'), jResult(J(47, 50), 230_000),
+  { kind: 'user', id: 'j-kn', ts: J(48), from: 'kernel', parts: [{ type: 'text', text: 'You hit your usage limit, so Kernel moved this chat to Work account. You are continuing on a different account. Carry on from where you stopped: you were capturing every screen for step 6. Check git status first. Nothing should be lost.' }] },
+  jShots(J(49)), jSay('j-n2', J(51, 10), 'Picked up from the screenshot run. git status was clean, so nothing was lost. All six steps pass on a clean account.'), jResult(J(51, 12), 125_000)
+]
+
 export const workspaceFixtures: Record<string, Fixture> = {
-  Workspace: scene(() => ({ ui: open })),
+  /** 7.1: the workspace at rest. Teng finished a turn and its fold is closed, with the Session rail beside the chat while the panel is shut (KERNEL-1094). */
+  Workspace: scene((f) => works(f, jRest())),
   // Chat header mocks: today's two rows on a new Lead chat, then the one-row header with one tab and with three.
   // The one-row header (Lead chats and New chat): New chat with its one tab, three tabs, and a tab's hover card naming what the chat follows.
   NewChatOneRow: scene((f) => ({ ...noPlan(leadNoChats(f)), projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Kernel' } : r)) })),
@@ -2301,115 +2239,91 @@ export const workspaceFixtures: Record<string, Fixture> = {
   /** Running, done, failed and denied steps of Bash with and without a description, Edit, Read and an MCP tool the app has no mark for, and a command with tokens in it (KERNEL-782). */
   WorkspaceLeadStepOpen: scene((f) => { const { approvals: _none, ...rest } = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Settings save feedback', leadSteps, {}, { model: 'claude-opus-5-5' }); return rest }),
   WorkspaceLeadStepsOpen: scene((f) => { const { approvals: _none, ...rest } = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Settings save feedback', leadSteps, {}, { model: 'claude-opus-5-5' }); return rest }),
-  WorkspaceStepStates: scene(() => ({
-    items: { [ids.tableChat]: stepStates },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false } }
+  /** 11.1: running, done, failed and denied. The failed step's title and icon are red, a denied one says Denied, and the one in flight has the loader. */
+  WorkspaceStepStates: scene((f) => works(f, [
+    jBrief(ago(60)), jRun6(ago(50)), jTypes(ago(40)),
+    tool('j-denied', 'Run', 'rm -rf ~/Library/Application\\ Support/Kernel-qa', { name: 'Bash', ts: ago(30), status: 'failed', durationMs: 100, output: DENIED_OUTPUT, input: { command: 'rm -rf ~/Library/Application\\ Support/Kernel-qa' } }),
+    jShots(ago(12), { status: 'running', durationMs: undefined, output: undefined })
+  ], { running: true, view: { toolCalls: 'open' } })),
+  /** 7.2: a turn running. The Working header with the loader and the clock, the steps under it with the finished ones in place, and the step in flight with its own loader. The shot opens the command's result. */
+  WorkspaceTurnRunning: scene((f) => works(f, [
+    jBrief(ago(74)), jRead(ago(70)), jIssue(ago(64)), jRun15(ago(60)),
+    jSay('j-s1', ago(16), 'Steps 1 to 5 pass on a clean account. Capturing every screen now, so step 6 can compare the review screen with the release candidate.'),
+    jShots(ago(12), { status: 'running', durationMs: undefined, output: undefined })
+  ], { running: true })),
+  /** 7.4: a turn ends. The fold open on its steps with Teng's thinking in italics and what it said between them, then the reply, the files card and the time line. */
+  WorkspaceTurnFolded: scene((f) => works(f, jDay(), { view: { toolCalls: 'open' } })),
+  WorkspaceTurnFoldedOpen: scene((f) => works(f, jDay(), { view: { toolCalls: 'open' } })),
+  /** 12.1: a turn that ends on text: the closed fold, the reply and the time line. */
+  WorkspaceTurnEndsOnText: scene((f) => works(f, [jBrief(J(42, 50)), jRun15(J(43)), jSay('j-e', J(43, 50), 'Step 3 passes on the fresh account too. The flaky wait was the Dock bouncing, not Kernel.'), jResult(J(43, 52), 62_000)])),
+  /** 12.2: a turn that ends on a tool call: the last step stays in view under the closed fold. */
+  WorkspaceTurnEndsOnTool: scene((f) => works(f, [
+    jBrief(J(51, 40)), mcpCall('j-cmt', 'linear', 'save_comment', { id: 'KERNEL-232', body: 'All six steps pass on a clean account.' }, { ts: J(52, 10), durationMs: 900, output: 'Comment posted' }), jResult(J(52, 24), 44_000)
+  ])),
+  /** 12.7: you stopped the turn: its fold, one quiet line, and the time with the actions. */
+  WorkspaceTurnStopped: scene((f) => works(f, [jBrief(J(29, 28)), jRead(J(29, 33)), jRun15(J(29, 40)), { kind: 'interrupted', id: 'j-stop', ts: J(30, 30) }, jResult(J(30, 30), 62_000, { ok: false, error: 'Interrupted' })])),
+  /** 12.8: a failed turn is a quiet line and a toast with Retry. */
+  WorkspaceTurnFailed: scene((f) => works(f, [jBrief(J(32, 45)), jRead(J(32, 50)), jRun15(J(32, 56)), jResult(J(33, 33), 48_000, { ok: false, error: "Anthropic's API is overloaded (529)." })], {
+    toasts: [{ id: 'turn-failed', title: "Teng's turn failed", sub: "Anthropic's API is overloaded (529).", detail: JOURNEY_TITLE, glyph: 'error', action: { label: 'Retry', retryNow: ids.tableChat, primary: true } }]
   })),
-  /** Reply actions per turn state (KERNEL-828): Copy alone under in-between lines, and Retry only once the turn is over. */
-  WorkspaceTurnRunning: scene((f) => ({
-    items: { [ids.tableChat]: runningNarrated() },
-    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
+  /** 12.9: the turn was cut off when Kernel quit: its last step stays in view, and Continue picks it up. */
+  WorkspaceTurnOrphaned: scene((f) => works(f, [jBrief(J(43)), jRead(), jRun15(), jShots(J(45, 40), { status: 'failed', durationMs: undefined, output: 'Stopped when Kernel quit' })])),
+  /** 7.3: steps and tool calls. A finished turn with its fold open: reads, commands, an edit and a new file, a failed check in red, and the reply with the files it changed. The shot opens the edit and the failure. */
+  WorkspaceToolCalls: scene((f) => works(f, jDay(), { view: { toolCalls: 'open' } })),
+  /** 11.2: an opened command: what it exited with and after how long, then its output. The shot opens the row. */
+  WorkspaceStepCardBash: scene((f) => works(f, [jBrief(), jRun15(), jSay('j-b', J(44), 'Steps 1 to 5 pass on a clean account.'), jResult(J(44, 5), 66_000)], { view: { toolCalls: 'open' } })),
+  /** 11.4: an opened MCP call reads as what it did: its fields, then what came back, with the link it made. */
+  WorkspaceStepCardMcp: scene((f) => works(f, [
+    jBrief(), mcpCall('j-mcp', 'linear', 'save_issue', { team: 'Kernel', title: 'Review screen is 2px taller on a clean account', labels: ['Bug', 'Workspace'] }, { ts: J(44), durationMs: 1200, output: 'Created KERNEL-1090 https://linear.app/cj-jutba/issue/KERNEL-1090' }),
+    jSay('j-m', J(44, 10), 'Filed the difference as KERNEL-1090.'), jResult(J(44, 12), 70_000)
+  ], { view: { toolCalls: 'open' } })),
+  /** 11.5: Codex's patch opens per file, each with its counts and its lines. */
+  WorkspaceStepCardCodexDiff: scene((f) => works(f, [
+    jBrief(),
+    tool('j-patch', 'Apply patch', '', { name: 'Edit', ts: J(44), durationMs: 150, input: {}, output: [
+      codexPatch('test/journey.test.ts', ["  await shots(['Review'])"], ["  await shots(['Review', 'ReviewRc'])", "  expect(diff('Review', 'ReviewRc')).toBeLessThan(0.01)"], ["import { shots, diff } from './support'"]),
+      codexPatch('fixtures/index.ts', [], ["export { ReviewRc } from './journey'"], ["export { Review } from './review'"])
+    ].join('\n') }),
+    jSay('j-p', J(44, 10), 'Added the release candidate fixture.'), jResult(J(44, 12), 70_000)
+  ], { view: { toolCalls: 'open' } })),
+  /** 11.3: an opened new file shows its first lines, all added, and how many more there are. The shot opens the row. */
+  WorkspaceStepCardWrite: scene((f) => works(f, [jBrief(), jWrite(J(44)), jSay('j-w', J(44, 10), 'Added the release candidate fixture.'), jResult(J(44, 12), 70_000)], { view: { toolCalls: 'open' } })),
+  /** 11.6: several steps opened at once, a passing one and a failing one with its output in red. The shot opens both. */
+  WorkspaceRowsOpen: scene((f) => works(f, [jBrief(), jRun6(J(44)), jTypes(J(44, 30)), jSay('j-ro', J(45), 'Step 6 passes, and the typecheck has one error in my test.'), jResult(J(45, 5), 120_000)], { view: { toolCalls: 'open' } })),
+  /** 11.7: every step folded, one line each. */
+  WorkspaceRowsFolded: scene((f) => works(f, [jBrief(), jRead(), jIssue(), jRun15(), jShots(), jEdit(), jSay('j-rf', J(47), jReply), jResult(J(47, 5), 240_000)], { view: { toolCalls: 'open' } })),
+  /** 11.8: reading an image. The step says Read and the path, like any other file. */
+  WorkspaceReadImage: scene((f) => ({
+    ...works(f, [
+      jBrief(), tool('j-img1', 'Read', 'shots/ReviewRc.png', { name: 'Read', ts: J(44), durationMs: 90, input: { file_path: 'shots/ReviewRc.png' } }), jRead(J(44, 20)),
+      jSay('j-ri', J(44, 40), 'The release candidate shot matches the checklist.'), jResult(J(44, 45), 90_000)
+    ], { view: { toolCalls: 'open' } }),
+    images: { [ids.table]: { 'worktree:shots/ReviewRc.png': { dataUrl: imageAfter } } }
   })),
-  /** A finished turn with in-between messages and thinking: one fold, then the reply (KERNEL-840). The second shot has the message and thinking rows opened. */
-  WorkspaceTurnFolded: scene(() => ({
-    items: { [ids.tableChat]: foldedMessages },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
+  /** 11.9: the image opened in a file tab: the step's Open in a tab link opens it, headed by its path (KERNEL-671). scripts/shots.ts does the clicks. */
+  WorkspaceReadImageTab: scene((f) => ({
+    ...works(f, [jBrief(), tool('j-img1', 'Read', 'shots/ReviewRc.png', { name: 'Read', ts: J(44), durationMs: 90, input: { file_path: 'shots/ReviewRc.png' } }), jSay('j-ri', J(44, 40), 'The release candidate shot matches the checklist.'), jResult(J(44, 45), 90_000)], { view: { toolCalls: 'open' } }),
+    images: { [ids.table]: { 'worktree:shots/ReviewRc.png': { dataUrl: imageAfter } } }
   })),
-  WorkspaceTurnFoldedOpen: scene(() => ({
-    items: { [ids.tableChat]: foldedMessages },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
+  /** 11.10: the image previews under its step, with its size and a link that opens it in a tab. */
+  WorkspaceReadImagePreview: scene((f) => ({
+    ...works(f, [jBrief(), tool('j-img1', 'Read', 'shots/ReviewRc.png', { name: 'Read', ts: J(44), durationMs: 90, input: { file_path: 'shots/ReviewRc.png' } }), jSay('j-ri', J(44, 40), 'The release candidate shot matches the checklist.'), jResult(J(44, 45), 90_000)], { view: { toolCalls: 'open' } }),
+    images: { [ids.table]: { 'worktree:shots/ReviewRc.png': { dataUrl: imageAfter } } }
   })),
-  /** The same fold read by keyboard: a message row opened with Enter and its Copy reached with Tab (KERNEL-840). */
-  WorkspaceTurnFoldedCopy: scene(() => ({
-    items: { [ids.tableChat]: foldedMessages },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
-  })),
-  WorkspaceTurnEndsOnText: scene(() => ({
-    items: { [ids.tableChat]: endsOnText },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
-  })),
-  WorkspaceTurnEndsOnTool: scene(() => ({
-    items: { [ids.tableChat]: endsOnTool },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
-  })),
-  WorkspaceTurnStopped: scene(() => ({
-    items: { [ids.tableChat]: stoppedNarrated },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
-  })),
-  WorkspaceTurnFailed: scene(() => ({
-    items: { [ids.tableChat]: failedNarrated },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
-  })),
-  WorkspaceTurnOrphaned: scene(() => ({
-    items: { [ids.tableChat]: orphanedNarrated },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
-  })),
-  WorkspaceToolCalls: scene(() => ({
-    items: { [ids.tableChat]: toolCalls },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
-  })),
-  /** The four opened cards (KERNEL-802), each with its rows opened by scripts/shots.ts: Bash, MCP, Codex diffs and a MultiEdit, and a Write. */
-  WorkspaceStepCardBash: scene(() => ({
-    items: { [ids.tableChat]: stepCardBashItems },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
-  })),
-  WorkspaceStepCardMcp: scene(() => ({
-    items: { [ids.tableChat]: stepCardMcpItems },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
-  })),
-  WorkspaceStepCardCodexDiff: scene(() => ({
-    items: { [ids.tableChat]: stepCardCodexItems },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
-  })),
-  WorkspaceStepCardWrite: scene(() => ({
-    items: { [ids.tableChat]: stepCardWriteItems },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
-  })),
-  /** Rows opened in place (KERNEL-198). Local open state can't be set from a fixture, so scripts/shots.ts clicks the rows named there. The turn's fold starts open, or the rows sit inside it closed. */
-  WorkspaceRowsOpen: scene(() => ({
-    items: { [ids.tableChat]: rowsOpenItems },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
-  })),
-  /** The folded list with a Thinking and an Edit row opened inside it (KERNEL-198). */
-  WorkspaceRowsFolded: scene(() => ({
-    items: { [ids.tableChat]: foldedRowsItems },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
-  })),
-  /** Read rows on image files say "Read image" with the image chip, in the folded list and in the turn in progress (KERNEL-546). */
-  WorkspaceReadImage: scene(() => ({
-    items: { [ids.tableChat]: readImageItems },
-    // image.png loads, so its row opens a tab. image-2.png was deleted, so its row opens to the path (KERNEL-671).
-    images: { [ids.table]: { 'worktree:.kernel/attachments/image.png': { dataUrl: imageAfter } } },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
-  })),
-  /** The same transcript after a click on the Read image row whose file loads (an image tab opens, headed by its path) and on the one whose file is gone (the row opens to the path). scripts/shots.ts does the click (KERNEL-671). */
-  WorkspaceReadImageTab: scene(() => ({
-    items: { [ids.tableChat]: readImageItems },
-    images: { [ids.table]: { 'worktree:.kernel/attachments/image.png': { dataUrl: imageAfter } } },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
-  })),
-  /** The hover preview frame (the landing page's bezel at its small size) on each kind: the transcript's image row, the composer's image and pasted text chips, and an issue chip. scripts/shots.ts hovers each. */
-  WorkspaceReadImagePreview: scene(() => ({
-    items: { [ids.tableChat]: readImageItems },
-    images: { [ids.table]: { 'worktree:.kernel/attachments/image.png': { dataUrl: imageAfter } } },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
-  })),
-  WorkspaceReadImageMissing: scene(() => ({
-    items: { [ids.tableChat]: readImageItems },
-    images: { [ids.table]: { 'worktree:.kernel/attachments/image.png': { dataUrl: imageAfter } } },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
-  })),
+  /** 11.11: the file is gone, so the step says so. */
+  WorkspaceReadImageMissing: scene((f) => works(f, [jBrief(), tool('j-img1', 'Read', 'shots/ReviewRc.png', { name: 'Read', ts: J(44), durationMs: 90, input: { file_path: 'shots/ReviewRc.png' } }), jSay('j-ri', J(44, 40), 'The release candidate shot is gone, so I ran the comparison from the saved copy.'), jResult(J(44, 45), 90_000)], { view: { toolCalls: 'open' } })),
   /** KERNEL-1025: a denied group that says it once, a one-call group with no parent row, footers only on the last turn, and a run of three notes folded to one line. */
   WorkspaceQuietTranscript: scene(() => ({
     items: { [ids.tableChat]: quietChat },
     ui: open
   })),
-  /** The same chat after a click on "and 2 more" (scripts/shots.ts). */
-  WorkspaceQuietTranscriptNotes: scene(() => ({
-    items: { [ids.tableChat]: quietChat },
-    ui: open
-  })),
+  /** 15.1: quiet turns with Kernel's notes between them, each one line that opens to what Kernel told the agent. */
+  WorkspaceQuietTranscriptNotes: scene((f) => works(f, [
+    { kind: 'user', id: 'qn-u1', ts: J(1, 0), parts: [{ type: 'text', text: 'Rerun step 3 on the fresh account.' }] }, jTool('qn-t1', J(1, 5), 'pnpm test:journey --steps 3', 'Run step 3', { durationMs: 30_000 }), jSay('qn-x1', J(1, 30), 'Step 3 passes on the fresh account too.'), { kind: 'result', id: 'qn-r1', ts: J(1, 38), durationMs: 38_000, ok: true },
+    { kind: 'user', id: 'qn-m1', ts: J(2), from: 'kernel', parts: [{ type: 'text', text: 'The Mac slept for 40 minutes, so Kernel resumed this chat when it woke. Carry on from where you stopped.' }] },
+    { kind: 'user', id: 'qn-u2', ts: J(3, 0), parts: [{ type: 'text', text: 'And step 4.' }] }, jTool('qn-t2', J(3, 5), 'pnpm test:journey --steps 4', 'Run step 4', { durationMs: 40_000 }), jSay('qn-x2', J(3, 40), 'Step 4 passes as well.'), { kind: 'result', id: 'qn-r2', ts: J(3, 51), durationMs: 51_000, ok: true },
+    { kind: 'user', id: 'qn-m2', ts: J(4), from: 'kernel', parts: [{ type: 'text', text: 'Kernel moved this chat to Work account after Main hit its limit. You are continuing on a different account, so check git status first.' }] }
+  ])),
   /** A long chat read from higher up, with the Scroll to bottom button over it (KERNEL-532). Scroll position is local to the transcript, so scripts/shots.ts scrolls it up before the shot. */
   WorkspaceScrolledUp: scene(() => ({
     items: { [ids.tableChat]: longChat },
@@ -2661,9 +2575,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // KERNEL-766: revert from the turn. Christian's summary has Revert files to here in its "..." menu, since a later turn is the current checkpoint. Choosing it opens the confirm with the files that change,
   // and the same confirm for an earlier checkpoint adds the line about the commits made since.
   WorkspaceRevertMenu: revertScene({ menu: 'reply:x1' }),
-  // KERNEL-841: the notice of a chat that waits for the user to choose how it moves, before its next turn re-reads 310k tokens on another account. The key variant adds the price.
-  ChatMoveNotice: moveNoticeScene({}),
-  ChatMoveNoticeApiKey: moveNoticeScene({ to: 'key', price: 1.74 }),
+  // KERNEL-841: the choice of a chat that waits to move, before its next turn re-reads 310k tokens on another account. A card in the chat with numbered rows (KERNEL-1094). The key variant adds the price.
+  ChatMoveNotice: scene((f) => ({ ...works(f, jRest(), { chat: { ranOn: 'cli' } }), accounts: moveAccounts(), moveNotices: { [ids.tableChat]: { kind: 'move', reason: 'account', from: 'cli', to: 'third', tokens: 310_000, keep: true } } })),
+  ChatMoveNoticeApiKey: scene((f) => ({ ...works(f, jRest(), { chat: { ranOn: 'cli' } }), accounts: moveAccounts(), moveNotices: { [ids.tableChat]: { kind: 'move', reason: 'account', from: 'cli', to: 'key', tokens: 310_000, price: 4.7, keep: true } } })),
   SettingsAccountsMoves: scene(() => ({ accounts: moveAccounts(), ui: { route: { name: 'settings', page: 'accounts' } } })),
   ConfirmRevert: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '3' } }),
   ConfirmRevertCommits: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '2' } }),
@@ -2760,14 +2674,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
   })),
-  /** A running turn with a command in flight: one summary line and the clock, and nothing from inside the fold (the fold-of-everything change). */
-  WorkspaceRunningFold: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'teng' }),
-    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
-    items: { [ids.tableChat]: runningItems() },
-    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
-  })),
+  /** 10.4: folded while it runs. Only the step in flight shows under the closed header. */
+  WorkspaceRunningFold: scene((f) => works(f, [jBrief(ago(74)), jRead(ago(70)), jIssue(ago(64)), jRun15(ago(60)), jShots(ago(12), { status: 'running', durationMs: undefined, output: undefined })], { running: true, view: { toolCalls: 'closed' } })),
   /** The same turn stepped through two more calls after Send: the summary grows, the command text never shows. */
   WorkspaceRunningFoldSteps: { ...scene((f) => ({
     ...withDraft({
@@ -2782,22 +2690,13 @@ export const workspaceFixtures: Record<string, Fixture> = {
       { afterMs: 500, events: [{ type: 'chat.item', chatId: ids.tableChat, item: tool('rt5', 'Lint the tests', 'pnpm lint tests', { status: 'done', durationMs: 900, input: { command: 'pnpm lint tests' } }) }, { type: 'chat.item', chatId: ids.tableChat, item: tool('rt6', 'Typecheck', 'pnpm typecheck', { status: 'running', durationMs: undefined, input: { command: 'pnpm typecheck' } }) }] }
     ]
   })), motion: { action: { click: 'Queue message' }, ms: 900, area: '.ws-main' } },
-  /** A running turn with its fold open and the live header: "Working · 2m 14s · ..." with every step listed, the newest at the bottom. */
-  WorkspaceFoldWorking: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'teng' }),
-    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
-    items: { [ids.tableChat]: runningItems() },
-    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
-  })),
-  /** A long running turn: the fold lists its last 8 steps, with "12 earlier steps" at the top. */
-  WorkspaceFoldWorkingLong: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'teng' }),
-    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
-    items: { [ids.tableChat]: longRunningItems() },
-    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
-  })),
+  /** 10.6: just started. The first step is running, and the header counts the seconds. */
+  WorkspaceFoldWorking: scene((f) => works(f, [jBrief(ago(3)), tool('j-first', 'Read', 'test/journey.test.ts', { name: 'Read', ts: ago(2), status: 'running', durationMs: undefined, input: { file_path: 'test/journey.test.ts' } })], { running: true })),
+  /** 10.7: after a long run the time counts hours. */
+  WorkspaceFoldWorkingLong: scene((f) => works(f, [
+    jBrief(ago(4320)), jTool('j-soak0', ago(4300), 'pnpm soak:prepare', 'Run the soak setup', { durationMs: 60_000 }),
+    jTool('j-soak', ago(3600), 'pnpm soak --hours 24', 'Soak for 24 hours', { status: 'running', durationMs: undefined })
+  ], { running: true })),
   /** KERNEL-912: back to a working chat from another tab. The chat is long, its turn has a live steps list, and the motion clicks its tab. The view must be at the end from the first frame. */
   WorkspaceChatSwitchWorkingMotion: { ...scene((f) => ({
     chats: [...f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)), extraChat('chat-other', 'Empty state copy')],
@@ -2818,23 +2717,23 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: f.push,
     ui: tabsView(ids.tableChat)
   })), motion: { action: { click: 'Invoice table' }, ms: 1000, area: '.ws-main' } },
-  /** A running turn with an open fold of very long commands: they end in "…" at the column edge, and the thread doesn't shift sideways. */
-  WorkspaceFoldLongCommands: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'teng' }),
-    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
-    items: { [ids.tableChat]: longCommandItems() },
-    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
-  })),
-  /** A running turn waiting on an approval: the line under the fold reads "Waiting for you", with no spinner and no clock. */
-  WorkspaceFoldWaiting: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'teng' }),
-    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
-    items: { [ids.tableChat]: runningItems().slice(0, -1) },
-    approvals: [{ ...pending('tool', 'teng', { toolName: 'Bash', input: { command: 'pnpm vitest run tests/invoice-pdf.spec.ts' }, title: 'Run pnpm vitest run tests/invoice-pdf.spec.ts' }), workspaceId: ids.table, chatId: ids.tableChat }, ...f.approvals],
-    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
-  })),
+  /** 10.8: long commands inside the fold end in an ellipsis. */
+  WorkspaceFoldLongCommands: scene((f) => works(f, [
+    jBrief(J(43)),
+    jTool('j-lc1', J(43, 10), "pnpm exec vitest run test/journey.test.ts --reporter=verbose --bail=1 -t 'clean-account journey on a fresh Mac user'", 'Run the journey', { durationMs: 190_000 }),
+    jTool('j-lc2', J(46, 20), 'pnpm shots Review ReviewRc --motion --no-build --out shots/rc/review-motion --theme dark', 'Capture the review screen', { durationMs: 120_000 }),
+    jTool('j-lc3', J(48, 30), 'node scripts/diff-shots.mjs shots/Review.png shots/rc/Review.png --threshold 0.01 --report shots/rc/diff.json', 'Compare the shots', { durationMs: 9_000 }),
+    jSay('j-lc-r', J(52, 40), 'The review screen matches the release candidate.'), jResult(J(52, 42), 580_000)
+  ], { view: { toolCalls: 'open' } })),
+  /** 10.9: waiting on you. The hourglass is the only amber, and the question Teng asked is the last step. */
+  WorkspaceFoldWaiting: scene((f) => {
+    const question = 'File the 2px difference?'
+    const options = [{ label: 'File it as its own issue' }, { label: "Leave it, it's under the 4px threshold" }]
+    return works(f, [
+      jBrief(ago(280)), jRead(ago(275)), jIssue(ago(268)), jRun15(ago(260)),
+      tool('j-ask', 'AskUserQuestion', '', { name: 'AskUserQuestion', ts: ago(5), status: 'running', durationMs: undefined, input: { questions: [{ question, options }] } })
+    ], { running: true, view: { toolCalls: 'open' }, approvals: [jQuestion([{ question, options }], { createdAt: ago(0) })] })
+  }),
   /** The same turn finished: one folded line with only its summary, and the reply right under it. */
   WorkspaceFoldDone: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'teng' }),
@@ -2857,22 +2756,13 @@ export const workspaceFixtures: Record<string, Fixture> = {
       { afterMs: 1100, events: [{ type: 'chat.item', chatId: ids.tableChat, item: { kind: 'result', id: 'rres', ts: Date.now(), durationMs: 134_000, ok: true } }, { type: 'chat.running', chatId: ids.tableChat, running: false }] }
     ]
   })), motion: { action: { click: 'Queue message' }, ms: 1900, area: '.ws-main' } },
-  /** A long command in flight: the step stays one row and the clock sits on its own row under it (KERNEL-823). */
-  WorkspaceRunningLongCommand: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'teng' }),
-    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
-    items: { [ids.tableChat]: runningLongCommandItems() },
-    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
-  })),
-  /** The moment between two steps: the last one is done and the next has not started, so only the clock row shows (KERNEL-823). */
-  WorkspaceRunningBetweenSteps: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'teng' }),
-    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
-    items: { [ids.tableChat]: runningItems().map((i) => (i.kind === 'tool' && i.status === 'running' ? { ...i, status: 'done' as const, durationMs: 6200 } : i)) },
-    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: { ...open, workspace: { right: 'files', bottom: 'run' } }
-  })),
+  /** 10.3: a long command in flight stays on one line, ending in an ellipsis at the column's edge. */
+  WorkspaceRunningLongCommand: scene((f) => works(f, [
+    jBrief(ago(123)),
+    tool('j-long', 'Run a command', 'pnpm exec vitest run', { ts: ago(20), status: 'running', durationMs: undefined, input: { command: "pnpm exec vitest run test/journey.test.ts --reporter=verbose -t 'step 6 compares the review screen with the release candidate on a clean account'" } })
+  ], { running: true })),
+  /** 10.2: the moment between two steps. The last one is done and the next has not started, so only the header's loader moves. */
+  WorkspaceRunningBetweenSteps: scene((f) => works(f, [jBrief(ago(46)), jRead(ago(42)), jIssue(ago(38)), jRun15(ago(34), { durationMs: 12_000 })], { running: true })),
   /** The Lead's turn from KERNEL-784: seven issues filed with one failure and five handoffs fold into rows, and the step in flight sits under them with the clock. */
   WorkspaceStepRuns: scene((f) => ({
     ...leadRunning(f, stepRunItems(false)),
@@ -2888,58 +2778,32 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ...leadRunning(f, longSteps()),
     ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false } }
   })),
-  WorkspacePerm: scene(permWaiting),
-  WorkspacePermAllowOnce: { ...scene(permWaiting), motion: { action: { click: 'Allow once' }, ms: 700, area: '.ws-main' } },
-  // KERNEL-834: the same card once the approval was allowed. The buttons have folded away and the result line stands in their place.
-  WorkspacePermAllowed: scene((f) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'sean' }, 'PDF renderer', [
-    userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
-    ...folded('p', 11, 2),
-    { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works and the fonts are embedded. The schema needs a pdf_url column, so I need to push it to the dev database.' },
-    { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
-  ], {
-    approvals: [{ ...pending('tool', 'sean', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), status: 'allowed' as const }, ...f.approvals]
-  })),
-  // KERNEL-459: an approval says why it asked, on one line under the command: the classifier's reason on Claude in Auto, the sandbox's on Codex.
-  WorkspacePermReason: scene((f) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'sean' }, 'PDF renderer', [
-    userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
-    ...folded('p', 11, 2),
-    { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works and the fonts are embedded. I want to save a few sample PDFs where you can open them.' },
-    { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
-  ], {
-    approvals: [pending('tool', 'sean', { toolName: 'Bash', input: { command: 'pnpm pdf:export --out ~/Documents/invoices' }, title: 'Run pnpm pdf:export --out ~/Documents/invoices', detail: 'Saves three sample invoices as PDF.', reason: 'The classifier wants you to decide: writes outside the workspace' }), ...f.approvals]
-  }, { mode: 'auto' })),
-  WorkspacePermReasonCodex: scene((f) => ({
-    ...scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'sean' }, 'PDF renderer', [
-      userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
-      ...folded('p', 11, 2),
-      { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works. The embedded font comes from a package I have not installed yet.' },
-      { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
-    ], {
-      approvals: [pending('tool', 'sean', { toolName: 'Bash', input: { command: 'pnpm add @fontsource/inter' }, title: 'Run pnpm add @fontsource/inter', detail: 'Installs the font package the renderer embeds.', reason: 'Codex runs it outside its sandbox' }), ...f.approvals]
-    }, { provider: 'codex', model: 'gpt-6-astra', effort: 'medium', mode: 'acceptEdits' }),
-    models: { codex: codexModels }
+  /** 7.7: a permission approval. The fold says Waiting on your approval, and the card says what Teng wants to run, why, and which rule asked. */
+  WorkspacePerm: scene((f) => jPermScene(f)),
+  /** 14.4: Allow once pressed. The decision goes at once and the card folds to its result (DESIGN.md, Motion: Approvals), so the motion is the evidence. */
+  WorkspacePermAllowOnce: { ...scene((f) => jPermScene(f)), motion: { action: { click: 'Allow once' }, ms: 700, area: '.ws-main' } },
+  /** 14.5: allowed. The card says what Teng wanted and that you allowed it, and the step it ran follows in the fold. */
+  WorkspacePermAllowed: scene((f) => {
+    const a = { ...jPerm({ createdAt: J(45) }), status: 'allowed' as const }
+    const placed: ChatItem = { kind: 'approval', id: `approval-${a.id}`, ts: J(45, 5), approvalId: a.id }
+    return works(f, [...jAsked(300).slice(0, 4).map((i, n) => (n === 0 ? jBrief(J(43)) : i)), placed, jTool('j-clear', J(45, 20), 'rm -rf ~/Library/Application\\ Support/Kernel-qa', "Clear the test account's data", { durationMs: 300 }), jSay('j-fresh', J(45, 40), 'Fresh install starts clean. Running steps 1 to 5.'), jRun15(J(46)), jResult(J(47), 240_000)], { placed: [a], view: { toolCalls: 'open' } })
+  }),
+  /** 14.1: an approval says why it asked, on one line under the command: the classifier's reason on Claude in Auto, the sandbox's on Codex (KERNEL-459). */
+  WorkspacePermReason: scene((f) => jPermScene(f, { mode: 'auto', reason: 'Auto mode asked because the command deletes files outside the worktree.' })),
+  WorkspacePermReasonCodex: scene((f) => jPermScene(f, {
+    ws: { agentId: 'sean' }, chat: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, mode: 'acceptEdits', models: true, say: 'Installs the release candidate so step 6 can open it.',
+    approvals: [jPerm({ agentId: 'sean', input: { command: 'hdiutil attach ~/Downloads/Kernel-1.4.0-rc.2.dmg' }, title: 'Run hdiutil attach ~/Downloads/Kernel-1.4.0-rc.2.dmg', detail: 'Installs the release candidate so step 6 can open it.', reason: "Codex's sandbox blocks commands that write outside the worktree." })]
   })),
   // KERNEL-785: an MCP call's approval card says what the chat's row says, not the server and tool names.
-  WorkspacePermMcp: scene((f) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'sean' }, 'PDF renderer', [
-    userMsg('p1', 'T-15a: PDF renderer with embedded fonts. File a follow-up for the export button.', true),
-    ...folded('p', 11, 2),
-    { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works. I am filing the follow-up for the export button in Linear.' },
-    { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
-  ], {
-    approvals: [pending('tool', 'sean', { toolName: 'mcp__claude_ai_Linear__save_issue', input: { title: 'Export invoices as PDF', team: 'Kernel' }, ...describeTool('mcp__claude_ai_Linear__save_issue', { title: 'Export invoices as PDF', team: 'Kernel' }) }), ...f.approvals]
+  WorkspacePermMcp: scene((f) => jPermScene(f, {
+    say: 'Step 6 found one difference, so I am filing it in Linear.',
+    approvals: [pending('tool', 'teng', { toolName: 'mcp__claude_ai_Linear__save_issue', input: { team: 'Kernel', title: 'Review screen is 2px taller on a clean account', labels: ['Bug', 'Workspace'] }, ...describeTool('mcp__claude_ai_Linear__save_issue', { team: 'Kernel', title: 'Review screen is 2px taller on a clean account', labels: ['Bug', 'Workspace'] }), reason: "Linear's save_issue has no rule yet.", createdAt: Date.now() - 4_000 })]
   })),
   // KERNEL-1114: two permissions waiting in one chat are one card that pages through them. Next pages to the second, and an answer takes one out of the queue.
-  WorkspacePermQueue: { ...scene((f) => queued(scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'sean' }, 'PDF renderer', [
-    userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
-    ...folded('p', 11, 2),
-    { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works and the fonts are embedded. I need to push the schema and then seed the dev database.' },
-    { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
-  ], {
-    approvals: [
-      { ...pending('tool', 'sean', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), id: 'ap-tool-sean-1' },
-      { ...pending('tool', 'sean', { toolName: 'Bash', input: { command: 'pnpm db:seed' }, title: 'Run pnpm db:seed', detail: 'Fills the dev database with three sample invoices.' }), id: 'ap-tool-sean-2', createdAt: at(10, 31) }
-    ]
-  }))), motion: { action: { click: 'Show permission 2' }, ms: 700, area: '.ws-main' } },
+  WorkspacePermQueue: { ...scene((f) => queued(jPermScene(f, { approvals: [
+    { ...jPerm(), id: 'ap-tool-teng-1' },
+    { ...jPerm({ input: { command: 'pnpm test:journey --steps 1-5' }, title: 'Run pnpm test:journey --steps 1-5', detail: 'Runs the first five steps on the clean account.', createdAt: Date.now() - 3_000 }), id: 'ap-tool-teng-2' }
+  ] }))), motion: { action: { click: 'Show permission 2' }, ms: 700, area: '.ws-main' } },
   WorkspacePlan: scene(planWaiting),
   /** KERNEL-950: back to a Lead chat with a plan waiting from another tab. The transcript must not move once the strip has opened. */
   WorkspacePlanRoundTrip: { ...scene((f) => { const s = planAfterHistory(planWaiting(f)); return { ...s, chats: [...(s.chats ?? f.chats), { ...extraChat('chat-other', 'Empty state copy'), workspaceId: ids.lead, threadId: 't-lead' }], items: { ...s.items, 'chat-other': [userMsg('o1', 'Shorten the empty state copy.')] }, ui: { ...s.ui, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.lead]: { tab: ids.leadChat, files: [], diffs: [] } } } } }), motion: { action: { press: ['click:Empty state copy', 'click:Export invoices as PDF'] }, ms: 600, area: '.ws-scroll' } },
@@ -2997,191 +2861,91 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspacePlanModeTyping: scene((f) => withDraft(planMode(f), 'Plan the Download PDF action for the row menu. Do not edit anything yet.')),
   WorkspacePlanTyping: scene((f) => withDraft(planWaiting(f), 'Split step 2 into its own PR, after step 1 merges.')),
   WorkspacePlanApproveDraft: { ...scene((f) => withDraft(planWaiting(f), 'Split step 2 into its own PR, after step 1 merges.')), motion: { action: { click: 'Approve' }, ms: 900, area: '.cmp' } },
-  WorkspaceQuestion: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Download button', [
-    userMsg('q1', 'Build T-15b from the approved plan.', true),
-    ...folded('q', 6, 0),
-    { kind: 'result', id: 'q-res', ts: at(10, 29), durationMs: 60_000, ok: true }
-  ], {
-    approvals: [pending('question', 'christian', { title: 'Should the download keep the invoice number in the file name?', options: ['Yes, invoice-009.pdf', 'Add the client name, acme-invoice-009.pdf'] }), ...f.approvals]
-  })),
-  // One option picked, the next hovered and the one after focused from the keyboard: the pick is the strongest of the three (KERNEL-676, scripts/shots.ts).
-  WorkspaceQuestionStates: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Download button', [
-    userMsg('qst1', 'Build T-15b from the approved plan.', true),
-    ...folded('qst', 6, 0),
-    { kind: 'result', id: 'qst-res', ts: at(10, 29), durationMs: 60_000, ok: true }
-  ], {
-    approvals: [pending('question', 'christian', { title: 'Should the download keep the invoice number in the file name?', options: ['Yes, invoice-009.pdf', 'Add the client name, acme-invoice-009.pdf', 'Use a random name'] }), ...f.approvals]
-  })),
-  // Long options read as an ink label with a muted description, and the recommended one carries a tag (KERNEL-414, KERNEL-416). Nothing is picked, so Send waits.
-  WorkspaceQuestionLong: scene((f) => {
-    const options = [
-      { label: 'Use a token', recommended: true, description: 'MCPs, plugins, skills and history are shared exactly. Added accounts show the name you give them, and you pick their plan once when adding. Usage refreshes only while agents work.' },
-      { label: 'Separate config folder per account', description: 'Full usage, plan and email, and the normal browser login. But Kernel has to keep MCP servers, plugins, skills and history in sync across folders, which is more code and can break when Claude Code updates.' }
-    ]
-    const question = 'Which way should extra Claude accounts work?'
-    return scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Extra Claude accounts', [
-      userMsg('ql1', 'Can I add a second Claude account to Kernel, for my team plan next to my Max one?'),
-      { kind: 'thinking', id: 'ql-th', ts: at(10, 28), text: 'Two ways to do it. They differ in what Kernel can show and how much it has to keep in sync.' },
-      tool('ql-t1', 'Read how sessions pick their account', 'rg -n "CLAUDE_CONFIG_DIR|oauthToken" src/main', { name: 'Read' })
-    ], {
-      approvals: [pending('question', 'kernel-lead', { workspaceId: ids.lead, title: question, options: options.map((o) => o.label), questions: [{ question, options }] }), ...f.approvals]
-    }, { model: 'claude-opus-5-5' })
-  }),
-  // A sign-in link in the question and in an option's description wraps inside the card, and the AskUserQuestion call has no row of its own above it (KERNEL-591).
+  /** 7.5: a question from the agent. The turn waits on you, so its fold says Waiting on your answer with the amber hourglass, and the question is a chat card under what Teng said. */
+  WorkspaceQuestion: scene((f) => works(f, jAsked(280, 'Steps 1 to 5 pass on a clean account. Step 6 found one difference from the release candidate.'), { running: true, approvals: [jQuestion([JOURNEY_QUESTIONS[0]], { createdAt: ago(0) })] })),
+  /** 13.1: one option picked, the next hovered and the one after focused from the keyboard: the pick is the strongest of the three (KERNEL-676, scripts/shots.ts). */
+  WorkspaceQuestionStates: scene((f) => works(f, jAsked(280, 'Steps 1 to 5 pass on a clean account. Step 6 found one difference from the release candidate.'), { running: true, approvals: [jQuestion([{ ...JOURNEY_QUESTIONS[0], options: [...JOURNEY_QUESTIONS[0].options, { label: 'Ask me again after the review' }] }], { createdAt: ago(0) })] })),
+  /** 13.3: long options read as an ink label with a muted description, and the recommended one carries a tag (KERNEL-414, KERNEL-416). Nothing is picked, so Send waits. */
+  WorkspaceQuestionLong: scene((f) => works(f, jAsked(280, 'Step 6 compares against the release candidate.'), { running: true, approvals: [jQuestion([{ question: 'Step 6 compares against the release candidate. Which build should it use?', options: [...JOURNEY_QUESTIONS[1].options, { label: 'Something else', description: 'Tell Teng which build to compare against.' }] }], { createdAt: ago(0) })] })),
+  /** 13.4: a sign-in link in the question wraps inside the card, and the AskUserQuestion call has a row of its own above it (KERNEL-591). */
   WorkspaceQuestionUrl: scene((f) => {
-    const url = 'https://claude.ai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redirect_uri=https%3A%2F%2Fconsole.anthropic.com%2Foauth%2Fcode%2Fcallback&scope=org%3Acreate_api_key+user%3Aprofile+user%3Ainference&code_challenge=Zk3n0r1a8Xw5pQ2sT7vB9cD4eF6gH1jK3lM5nP7qR9s&code_challenge_method=S256&state=Yb2cD4eF6gH8iJ0kL2mN4oP6qR8sT0uV'
-    const question = `Please sign in to Claude to continue. Open this link in your browser and paste the code it shows: ${url}`
-    const options = [
-      { label: 'I have signed in', description: `The code came from ${url}` },
-      { label: 'Use an API key instead' }
-    ]
-    return scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'sean' }, 'Download button', [
-      userMsg('qu1', 'Build T-15b from the approved plan.', true),
-      tool('qu-t1', 'Read the PDF renderer', 'cat src/pdf/render.ts', { name: 'Read' }),
-      tool('qu-ask', 'AskUserQuestion', JSON.stringify({ questions: [{ question, options }] }), { name: 'AskUserQuestion', status: 'running', input: { questions: [{ question, options }] } })
-    ], {
-      approvals: [pending('question', 'sean', { title: question, options: options.map((o) => o.label), questions: [{ question, options }] }), ...f.approvals]
-    })
+    const url = 'https://linear.app/oauth/authorize?client_id=kernel-desktop&scope=read,write&redirect_uri=kernel://linear'
+    const question = `Linear needs a fresh sign-in before I can file issues. Open ${url} and tell me when it's done.`
+    const options = [{ label: 'Done, I signed in' }, { label: 'Skip filing, just comment on KERNEL-232' }]
+    return works(f, [...jAsked(120, 'Step 6 found one difference, and I need Linear to file it.'), tool('j-ask', 'AskUserQuestion', '', { name: 'AskUserQuestion', status: 'running', durationMs: undefined, input: { questions: [{ question, options }] } })], { running: true, approvals: [jQuestion([{ question, options }], { createdAt: ago(0) })] })
   }),
-  // set_project_scripts' card: every script in full, as Save writes it, multi-line setup included (KERNEL-683).
+  /** 7.6: saving the project's scripts. Teng ran setup by hand, so the card lists each script in its own box, and nothing is written until you answer. */
   WorkspaceQuestionScripts: scene((f) => {
     const question = 'Save these scripts to .kernel/settings.local.toml?'
     const options = [{ label: 'Save', description: 'Write them to .kernel/settings.local.toml, on this Mac only' }, { label: 'Cancel', description: 'Write nothing' }]
-    const detail = 'Setup script\npnpm install\ncp "$KERNEL_ROOT_PATH/.env" .env\n\nRun script\npnpm dev --port $KERNEL_PORT\n\nRun script "storybook"\npnpm storybook -p $((KERNEL_PORT + 1))\n\nRun mode\nOne at a time'
-    return scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Project scripts', [
-      userMsg('qs1', 'Here is our conductor.json, set this project up the same way.'),
-      tool('qs-t1', 'Read package.json', 'cat package.json', { name: 'Read' })
-    ], {
-      approvals: [pending('question', 'kernel-lead', { workspaceId: ids.lead, title: question, detail, options: options.map((o) => o.label), questions: [{ question, options }] }), ...f.approvals]
-    }, { model: 'claude-opus-5-5' })
+    const detail = 'Setup script\npnpm install\npnpm rebuild better-sqlite3\ncp ../../.env.local .env.local\n\nRun script\npnpm dev\n\nArchive script\nrm -rf shots/'
+    return {
+      ...works(f, jAsked(138, "This project has no setup script, so every new worktree starts without node_modules. These are the commands I ran by hand to get step 1 going."), { running: true, ws: { setupRun: undefined }, approvals: [pending('question', 'teng', { title: question, detail, options: options.map((o) => o.label), questions: [{ question, options }], createdAt: ago(0) })] }),
+      projectSettings: { [ids.projectA]: { scripts: {}, runScripts: [], files: { copy: [] }, workspace: {} } }
+    }
   }),
-  WorkspaceQuestionSteps:scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Download button', [
-    userMsg('qs1', 'Build T-15b from the approved plan.', true),
-    ...folded('qs', 6, 0),
-    { kind: 'result', id: 'qs-res', ts: at(10, 29), durationMs: 60_000, ok: true }
-  ], {
-    approvals: [pending('question', 'christian', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: DOWNLOAD_QUESTIONS }), ...f.approvals]
-  })),
-  // Drawn on question 3 with the first two answered and Something else typed; the step and the typing are local to the card (scripts/shots.ts).
-  WorkspaceQuestionOther: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Download button', [
-    userMsg('qo1', 'Build T-15b from the approved plan.', true),
-    ...folded('qo', 6, 0),
-    { kind: 'result', id: 'qo-res', ts: at(10, 29), durationMs: 60_000, ok: true }
-  ], {
-    approvals: [pending('question', 'christian', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: DOWNLOAD_QUESTIONS }), ...f.approvals]
-  })),
-  // The card keeps its place in the transcript once answered, and the agent's reply comes after it.
-  WorkspaceQuestionAnswers: scene((f) => {
-    const s = scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Download button', [
-      userMsg('qa1', 'Build T-15b from the approved plan.', true),
-      ...folded('qa', 6, 0),
-      { kind: 'result', id: 'qa-res', ts: at(10, 29), durationMs: 60_000, ok: true }
-    ], {
-      approvals: [{
-        ...pending('question', 'christian', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: DOWNLOAD_QUESTIONS }),
-        status: 'answered',
-        answer: 'Yes, invoice-009.pdf · Row actions menu, Invoice detail header · Show a toast with a retry action',
-        answers: {
-          [DOWNLOAD_QUESTIONS[0].question]: 'Yes, invoice-009.pdf',
-          [DOWNLOAD_QUESTIONS[1].question]: 'Row actions menu, Invoice detail header',
-          [DOWNLOAD_QUESTIONS[2].question]: 'Show a toast with a retry action'
-        }
-      }, ...f.approvals]
-    })
-    const reply: ChatItem[] = [
-      { kind: 'text', id: 'qa-reply', ts: at(10, 31), text: 'Got it. I will keep the invoice number in the file name, add Download PDF to the row menu and the invoice header, and show a toast with a retry if it fails.' }
-    ]
-    return { ...s, items: { [ids.tableChat]: [...(s.items?.[ids.tableChat] ?? []), ...reply] } }
+  /** 13.2: several questions page through with Next. The card shows question 1 of 3, with Skip and Next. */
+  WorkspaceQuestionSteps: scene((f) => works(f, jAsked(280, 'Steps 1 to 5 pass on a clean account. Step 6 found one difference from the release candidate.'), { running: true, approvals: [jQuestion(JOURNEY_QUESTIONS, { title: `Teng has 3 questions`, createdAt: ago(0) })] })),
+  /** 13.5: question 3 of 3 with Something else typed; the step and the typing are local to the card (scripts/shots.ts). */
+  WorkspaceQuestionOther: scene((f) => works(f, jAsked(280, 'Steps 1 to 5 pass on a clean account. Step 6 found one difference from the release candidate.'), { running: true, approvals: [jQuestion(JOURNEY_QUESTIONS, { createdAt: ago(0) })] })),
+  /** 13.7: the card keeps its place once answered, each question with your answer under it, and the agent's reply comes after it. */
+  WorkspaceQuestionAnswers: scene(() => jAfterAnswer(jAnswered(JOURNEY_QUESTIONS, ['File it as its own issue', 'The release candidate from Friday', 'Only the ones that moved']))),
+  /** 13.8: one question, answered: the card keeps the question and your answer is the bubble in it. */
+  WorkspaceQuestionAnswered: scene(() => jAfterAnswer(jAnswered([JOURNEY_QUESTIONS[0]], ['File it as its own issue']))),
+  /** 13.9: the same with your answer as the chat's own message (KERNEL-838): the card draws no bubble of its own, and the message sits under it. */
+  WorkspaceQuestionAnsweredItem: scene(() => jAfterAnswer(jAnswered([JOURNEY_QUESTIONS[0]], ['File it as its own issue']), true)),
+  /** 7.8: Kernel's note. Two turns with Kernel's own message between them as one line, with a toggle that opens what it told Teng. */
+  WorkspaceKernelNote: scene((f) => works(f, jKernelNote())),
+ // the same, opened by scripts/shots.ts
+  WorkspaceKernelNoteOpen: scene((f) => works(f, jKernelNote())), // the same, opened by scripts/shots.ts
+ // the same, opened by scripts/shots.ts
+  /** 15.5: after a relaunch the quit folds into one line, and the message Kernel gave Teng is a click away. */
+  WorkspaceRelaunch: scene((f) => works(f, [
+    jBrief(), jRead(), jIssue(), jRun15(),
+    jShots(J(45, 40), { status: 'failed', durationMs: undefined, output: 'Stopped when Kernel quit' }),
+    { kind: 'note', id: 'j-quit', ts: J(46), text: 'Kernel quit while this agent was working.' },
+    { kind: 'user', id: 'j-back', ts: J(47), from: 'kernel', parts: [{ type: 'text', text: 'Kernel restarted while you were working on this chat. Check git status for edits that were not saved, then carry on from where you stopped.' }] },
+    jSay('j-picked', J(47, 40), 'git status was clean, so nothing was lost. All six steps pass on a clean account.'), jResult(J(47, 52), 125_000)
+  ])),
+  /** 15.4: Kernel quit mid-turn. The fold says Worked for, the step it was on stays in view, and Kernel's note names it with Continue. */
+  WorkspaceInterrupted: scene((f) => works(f, [
+    jBrief(), jRead(), jIssue(), jRun15(),
+    jShots(J(45, 40), { status: 'failed', durationMs: undefined, output: 'Stopped when Kernel quit' }),
+    { kind: 'note', id: 'j-quit', ts: J(46), text: 'Kernel quit while this agent was working.' }
+  ])),
+  /** 15.6: an error is a toast, and the chat stays as it was. */
+  WorkspaceError: scene((f) => works(f, [
+    jBrief(J(41, 40)), jRun15(J(41, 50)), jSay('j-e1', J(42, 30), 'Step 3 passes on the fresh account too.'), jResult(J(42, 42), 62_000)
+  ], { toasts: [{ id: 'save-failed', title: "Couldn't save this chat", sub: 'The database is locked. Kernel retries in a moment.', detail: JOURNEY_TITLE, glyph: 'error', action: { label: 'Retry', retryNow: ids.tableChat, primary: true } }] })),
+  /** 16.1: a transcript that can't load is a calm state with Try again, and a toast with the same. The load fails the way main's would. */
+  ChatLoadFailed: scene(() => ({ items: { [ids.tableChat]: tableItems }, fails: { 'chats.items': "The transcript file couldn't be read." }, ui: open })),
+  /** 16.2: a step's menu: Copy output and Copy raw call. */
+  StepMenu: scene((f) => {
+    const s = works(f, [jBrief(), jTool('j-test', J(44), 'pnpm test:changed', 'Run the changed tests', { durationMs: 8_000, output: 'Tests  21 passed (21)' }), jSay('j-sm', J(44, 20), 'The changed tests pass.'), jResult(J(44, 22), 80_000)], { view: { toolCalls: 'open' } })
+    return { ...s, ui: { ...s.ui!, menu: 'step:j-test' as const } }
   }),
-  // One question, answered: the card keeps the question and your answer is the bubble under it.
-  WorkspaceQuestionAnswered: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Download button', [
-    userMsg('q1a', 'Build T-15b from the approved plan.', true),
-    ...folded('q1', 6, 0),
-    { kind: 'result', id: 'q1-res', ts: at(10, 29), durationMs: 60_000, ok: true }
-  ], {
-    approvals: [{ ...pending('question', 'christian', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: [DOWNLOAD_QUESTIONS[0]] }), status: 'answered', answer: 'Yes, invoice-009.pdf' }, ...f.approvals]
-  })),
-  // The same with your answer as the chat's own message (KERNEL-838): the card draws no bubble of its own.
-  WorkspaceQuestionAnsweredItem: scene((f) => {
-    const s = scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Download button', [
-      userMsg('q1a', 'Build T-15b from the approved plan.', true),
-      ...folded('q1', 6, 0)
-    ], {
-      approvals: [{ ...pending('question', 'christian', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: [DOWNLOAD_QUESTIONS[0]] }), status: 'answered', answer: 'Yes, invoice-009.pdf' }, ...f.approvals]
-    })
-    const chatId = Object.keys(s.items ?? {})[0]
-    const id = s.approvals?.[0]?.id ?? ''
-    const answer: ChatItem = { kind: 'user', id: `answer-${id}`, ts: at(10, 30), parts: [{ type: 'text', text: 'Yes, invoice-009.pdf' }], approvalId: id }
-    return { ...s, items: { ...s.items, [chatId]: [...(s.items?.[chatId] ?? []), answer] } }
-  }),
-  // Kernel's own message is one note line that opens to its full text with Copy, and after a quit it folds into the quit note's line.
-  WorkspaceKernelNote: kernelNote,
-  WorkspaceKernelNoteOpen: kernelNote, // the same, opened by scripts/shots.ts
-  WorkspaceRelaunch: scene((f) => noApprovals(scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Download button', [
-    userMsg('rl1', 'Build T-15b from the approved plan.', true),
-    tool('rl-t1', 'Read the row actions', 'cat src/app/invoices/row-actions.tsx', { name: 'Read' }),
-    { kind: 'note', id: 'rl-note', ts: at(10, 29), text: 'Kernel quit while this agent was working.' },
-    { kind: 'user', id: 'rl-msg', ts: at(10, 31), from: 'kernel', parts: [{ type: 'text', text: 'Kernel restarted while you were working on this chat. Check git status for edits that were not saved, then carry on from where you stopped.' }] },
-    { kind: 'text', id: 'rl-tx', ts: at(10, 32), text: 'Checking git status, then back to the row actions.' },
-    { kind: 'result', id: 'rl-res', ts: at(10, 32), durationMs: 20_000, ok: true }
-  ], {}))),
-  WorkspaceInterrupted: scene(() => ({
-    items: { [ids.tableChat]: [
-      userMsg('i0', 'Refactor the invoice table to use the shared DataTable component.'),
-      { kind: 'thinking', id: 'i-th', ts: at(10, 28), text: 'DataTable expects column defs. The sorting hook will need to move.' },
-      tool('i-t1', 'Read the shared DataTable', 'cat src/components/data-table.tsx', { name: 'Read' }),
-      tool('i-t2', 'Rewrite the invoice columns', "python3 - <<'EOF' p='src/app/invoices/columns.ts'"),
-      { kind: 'interrupted', id: 'i1', ts: at(10, 44) },
-      { kind: 'result', id: 'i-res', ts: at(10, 44), durationMs: 28_000, ok: false, error: 'Interrupted' },
-      userMsg('i2', 'Stop, keep the current table. Only fix the empty state copy.')
-    ] },
-    ui: open
-  })),
-  WorkspaceError: scene(() => ({
-    items: { [ids.tableChat]: [
-      userMsg('e0', 'Run the full test suite before I open the PR.'),
-      tool('e-t1', 'Run unit tests', 'pnpm vitest run', { status: 'failed', durationMs: 19_800, output: 'FAIL tests/invoices.spec.ts > sorts by date\n  Expected: 2026-10-01  Received: 01/10/2026\nFAIL tests/invoices.spec.ts > empty state\n  Snapshot mismatch: 1 line changed' }),
-      { kind: 'result', id: 'e-res', ts: at(10, 30), durationMs: 184_000, ok: false, error: '2 tests failed' }
-    ] },
-    ui: open
-  })),
   // UX audit states (docs/audits/ux-chat-workspace.md). An existing chat whose items have not loaded yet: the answer to chats.items never comes.
   AuditItemsLoading: scene(() => ({ items: { [ids.tableChat]: tableItems }, hold: ['chats.items'], ui: open })),
-  // A command that printed 200 lines, with the tool calls open.
-  AuditLongOutput: scene(() => ({
-    items: { [ids.tableChat]: [
-      userMsg('lo0', 'Run the whole suite and show me what it prints.'),
-      tool('lo-t1', 'Run unit tests', 'pnpm vitest run --reporter=verbose', { durationMs: 41_000, input: { command: 'pnpm vitest run --reporter=verbose' }, output: Array.from({ length: 200 }, (_, i) => ` PASS  tests/invoices-${i + 1}.spec.ts > renders row ${i + 1} with a very long description that keeps going past the edge of the transcript column`).join('\n') }),
-      { kind: 'result', id: 'lo-res', ts: at(10, 30), durationMs: 44_000, ok: true }
-    ] },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolCalls: 'open' } }
-  })),
+  /** 11.13: a command that printed 200 lines shows the last few, with a row that says how many there are. The shot opens the row. */
+  AuditLongOutput: scene((f) => works(f, [
+    jBrief(), jTool('j-suite', J(44), 'pnpm test', 'Run the full suite', { durationMs: 96_000, output: [...Array.from({ length: 188 }, (_, i) => `✓ test/part-${i + 1}.test.ts (${i % 9 + 2} tests) ${(i % 7) + 1}.2s`), '', 'Test Files  42 passed (42)', '     Tests  611 passed (611)', '  Duration  96.4s'].join('\n') }),
+    jSay('j-lo', J(45, 40), 'The whole suite passes.'), jResult(J(45, 42), 102_000)
+  ], { view: { toolCalls: 'open' } })),
   // One message with ten images, whose data loads late in a real run.
   AuditTenImages: scene(() => ({
     items: { [ids.tableChat]: [
       { kind: 'user', id: 'ti0', ts: at(10, 27), parts: [{ type: 'text', text: 'These are the ten screens that still look wrong.' }, ...Array.from({ length: 10 }, (_, i) => ({ type: 'image' as const, name: i ? `image-${i + 1}.png` : 'image.png', dataUrl: imageAfter, width: 640, height: 400 }))] },
-      { kind: 'text', id: 'ti1', ts: at(10, 28), text: 'I looked at all ten. Seven share the same header spacing bug, the other three are separate.' }
+      { kind: 'text', id: 'ti1', ts: at(10, 28), text: 'I looked at all ten. Seven share the same header spacing bug, the other three are separate.' },
+      { kind: 'result', id: 'ti-res', ts: at(10, 28), durationMs: 41_000, ok: true }
     ] },
     ui: open
   })),
   // The same chat as WorkspaceScrolledUp, then a click on Scroll to bottom (scripts/shots.ts scrolls it up first).
   AuditScrollToBottomMotion: { ...scene(() => ({ items: { [ids.tableChat]: longChat }, ui: open })), motion: { action: { click: 'Scroll to bottom' }, ms: 1000, area: '.ws-main' } },
-  // Answering a question: the first option is picked by scripts/shots.ts, the answer is not sent.
-  AuditQuestionPicked: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Download button', [
-    userMsg('qa1', 'Build T-15b from the approved plan.', true),
-    ...folded('qa', 6, 0),
-    { kind: 'result', id: 'qa-res', ts: at(10, 29), durationMs: 60_000, ok: true }
-  ], {
-    approvals: [pending('question', 'christian', { title: 'Should the download keep the invoice number in the file name?', options: ['Yes, invoice-009.pdf', 'Add the client name, acme-invoice-009.pdf'] }), ...f.approvals]
-  })),
+  /** Answering a question: the first option is picked by scripts/shots.ts, the answer is not sent. */
+  AuditQuestionPicked: scene((f) => works(f, jAsked(280, 'Steps 1 to 5 pass on a clean account. Step 6 found one difference from the release candidate.'), { running: true, approvals: [jQuestion([JOURNEY_QUESTIONS[0]], { createdAt: ago(0) })] })),
   /** The answer sent as motion: the option is ticked first, then Send is pressed. The call is answered by the fixture, so the card folds the way a real answer does. */
-  AuditQuestionAnswerMotion: { ...scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'christian' }, 'Download button', [
-    userMsg('qm1', 'Build T-15b from the approved plan.', true),
-    ...folded('qm', 6, 0),
-    { kind: 'result', id: 'qm-res', ts: at(10, 29), durationMs: 60_000, ok: true }
-  ], {
-    approvals: [pending('question', 'christian', { title: 'Should the download keep the invoice number in the file name?', options: ['Yes, invoice-009.pdf', 'Add the client name, acme-invoice-009.pdf'] }), ...f.approvals]
-  })), motion: { action: { press: ['Enter'] }, ms: 1000, area: '.ws-main' } },
+  AuditQuestionAnswerMotion: { ...scene((f) => works(f, jAsked(280, 'Steps 1 to 5 pass on a clean account. Step 6 found one difference from the release candidate.'), { running: true, approvals: [jQuestion([JOURNEY_QUESTIONS[0]], { createdAt: ago(0) })] })), motion: { action: { press: ['Enter'] }, ms: 1000, area: '.ws-main' } },
   /** A jump from the chat rail as motion: the list is opened from the keyboard on the chat's end, Home picks the first message and Enter jumps to it. */
   AuditRailJumpMotion: { ...railScene(), motion: { action: { press: ['Home', 'Enter'] }, ms: 1400, area: '.ws-main' } },
   /** A rail jump interrupted by a send as motion: Home and Enter start the jump, then Send is pressed while it glides. The jumped-to message still rings (KERNEL-881). */
@@ -3969,7 +3733,18 @@ export const workspaceFixtures: Record<string, Fixture> = {
       ui: { route: { name: 'workspace', workspaceId: ids.schema } }
     }
   }),
-  WorkspaceHunks: scene((f) => ({
+  /** 11.12: an edit with two hunks: Codex's patch for one file, each hunk under its own header. The shot opens the row. */
+  WorkspaceHunks: scene((f) => works(f, [
+    jBrief(),
+    tool('j-hunks', 'Edit journey.test.ts', 'test/journey.test.ts', { name: 'Edit', ts: J(44), durationMs: 120, input: { file_path: 'test/journey.test.ts' }, output: [
+      'diff --git a/test/journey.test.ts b/test/journey.test.ts', '--- a/test/journey.test.ts', '+++ b/test/journey.test.ts',
+      '@@ -12,4 +12,5 @@', " import { shots, diff } from './support'", "+import { ReviewRc } from '../fixtures'",
+      '@@ -40,6 +41,7 @@', "-  await shots(['Review'])", '-  expect(missing()).toBe(0)', "+  await shots(['Review', 'ReviewRc'])", "+  expect(diff('Review', 'ReviewRc')).toBeLessThan(0.01)", '+  expect(missing()).toEqual([])'
+    ].join('\n') }),
+    jSay('j-h', J(44, 10), 'Added the release candidate comparison.'), jResult(J(44, 12), 70_000)
+  ], { view: { toolCalls: 'open' } })),
+  /** The card for a file that holds changes from before the workspace started as well as the agent's (commit hunks). */
+  WorkspaceHunkCommit: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { name: 'checkout-rounding', mode: 'current', branch: 'main', baseRef: 'main' }),
     items: { [ids.tableChat]: [
       { kind: 'user', id: 'h1', ts: at(10, 20), parts: [{ type: 'text', text: 'Fix the rounding bug in checkout totals.' }] },

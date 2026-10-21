@@ -13,6 +13,7 @@ import { decideInChat } from './optimisticAnswer'
 import { Criteria, PlanInline, PlanTasks, planCopyText, stepLine } from './plan'
 import { AnswerBubble } from './AnswerBubble'
 import { answerItemId, answeredList, questionAnswer } from '@shared/approvalAnswer'
+import { parseScriptsCard, SAVE_SCRIPTS_QUESTION } from '@shared/scriptsCard'
 import { activeRow, rowStep } from './questionRows'
 import { allAnswered, answerDecision, emptyPick, isPlanApproval, isStepList, nextUnanswered, outcome, isPermission, permissionQueue, permissionTitle, pickReady, queueTitle, planSteps, planText, type Picked } from './steps'
 import './cards.css'
@@ -312,8 +313,42 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
   )
 }
 
+/**
+ * What set_project_scripts shows before it writes anything (KERNEL-683, KERNEL-1094): each script in its own box, as Save will write it, with when it runs.
+ * Save scripts answers "Save" and Not now answers "Cancel", the two answers main reads. Nothing is written until you answer, and the agent waits.
+ */
+function ScriptsCard({ a, who }: { a: Approval; who: string }) {
+  const sections = useMemo(() => parseScriptsCard(a.detail ?? ''), [a.detail])
+  const [busy, run] = useBusy<'save' | 'cancel'>()
+  const answer = (key: 'save' | 'cancel') => {
+    if (busy !== null) return
+    const text = key === 'save' ? 'Save' : 'Cancel'
+    void run(key, () => decideInChat(a, { behavior: 'answer', text, answers: { [SAVE_SCRIPTS_QUESTION]: text } }))
+  }
+  const title = `${who} wants to save the project's scripts`
+  return (
+    <section aria-label={title} className="card tcard" onKeyDown={(e) => { if (e.metaKey && e.key === 'Enter') { e.preventDefault(); answer('save') } }}>
+      <CardHead who={who} title={title} />
+      <div className="tc-body">
+        <span className="sub">Kernel runs these for every chat in Kernel. You can change them later in Settings, Project setup.</span>
+        {sections.map((s) => (
+          <div key={s.label} className="sc-sec">
+            <p className="sc-head"><span className="sc-label">{s.label}</span>{s.hint && <span className="sc-hint">{s.hint}</span>}</p>
+            {s.kind === 'mode' ? <p className="sc-mode">{s.text}</p> : <pre className="code">{s.text}</pre>}
+          </div>
+        ))}
+      </div>
+      <div className="tc-foot">
+        <span className="tc-hint">{who} waits until you answer</span>
+        <Button disabled={busy !== null} onClick={() => answer('cancel')}>Not now</Button>
+        <Button variant="primary" aria-keyshortcuts="Meta+Enter" busy={busy === 'save'} busyPattern="ripple" busyLabel="Saving" disabled={busy !== null} onClick={() => answer('save')}>Save scripts<span className="tc-kbd" aria-hidden="true">⌘↵</span></Button>
+      </div>
+    </section>
+  )
+}
+
 function QuestionCard({ a, who, inChat, hasItem }: { a: Approval; who: string; inChat?: boolean; hasItem?: boolean }) {
-  if (a.status === 'pending') return <QuestionSteps a={a} who={who} />
+  if (a.status === 'pending') return a.title === SAVE_SCRIPTS_QUESTION && a.detail ? <ScriptsCard a={a} who={who} /> : <QuestionSteps a={a} who={who} />
   // The answer is the user's bubble in the card, or the chat's own message under it (KERNEL-838), which only a single question has. Several are listed in the card with their answers.
   // Outside a chat there is no bubble, so a line under the card says it.
   const text = questionAnswer(a)

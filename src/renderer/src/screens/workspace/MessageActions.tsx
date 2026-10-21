@@ -19,9 +19,9 @@ export interface MoreActions { menu: MenuId; items: MessageAction[] }
  * into a check for 1.5s instead of toasting, and an action that waits on the main process spins until it settles. Hidden
  * until the message is hovered or something in it has focus (DESIGN.md), but the row keeps its height so nothing shifts.
  * `more` ends the row with a "..." menu, whose button spins for the entry that is running. `meta` leads the row with a
- * finished turn's time, which stays when the icons hide (KERNEL-346). `quiet` hides the time too until hover or focus, on every turn but the last (KERNEL-1025).
+ * finished turn's time, which stays when the icons hide (KERNEL-346). Every turn keeps its time in view, as the Pen draws it (KERNEL-1094).
  */
-export function MessageActions({ copy, items = [], more, meta, quiet, align = 'start', label }: { copy?: string; items?: MessageAction[]; more?: MoreActions; meta?: string; quiet?: boolean; align?: 'start' | 'end'; label: string }) {
+export function MessageActions({ copy, items = [], more, meta, align = 'start', label }: { copy?: string; items?: MessageAction[]; more?: MoreActions; meta?: string; align?: 'start' | 'end'; label: string }) {
   const [busy, run] = useBusy()
   const acts = (
     <div className="msg-acts" data-align={align} data-busy={(more && more.items.some((a) => a.label === busy)) || undefined} role="group" aria-label={label}>
@@ -34,7 +34,7 @@ export function MessageActions({ copy, items = [], more, meta, quiet, align = 's
     </div>
   )
   if (meta === undefined) return acts
-  return <div className="msg-foot" data-quiet={quiet || undefined}><span className="meta">{meta}</span>{acts}</div>
+  return <div className="msg-foot"><span className="meta">{meta}</span>{acts}</div>
 }
 
 /**
