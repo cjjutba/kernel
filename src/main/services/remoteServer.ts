@@ -12,6 +12,8 @@ import { refusal } from './remoteChannels'
  *
  *   GET  /          a page for a browser. `assets` serves the web client when there is one, else a placeholder.
  *   POST /pair      { code, name? } -> 200 { token, deviceId, name, expiresAt } | 400 | 401 | 429. One request per code.
+ *   GET  /session   `Authorization: Bearer <token>` -> 204 when the token is paired and live, else 401. The web client asks it when
+ *                   its socket fails before it opens, since a browser can't see the status of a refused upgrade.
  *   GET  /ws        WebSocket upgrade. The token is, in the order the server looks, `Authorization: Bearer <token>`, the subprotocol
  *                   `kernel.token.<token>` next to `kernel.v1` in `Sec-WebSocket-Protocol` (a browser sets it with
  *                   `new WebSocket(url, ['kernel.v1', 'kernel.token.<token>'])`; the server answers `kernel.v1`), or `?token=<token>`.
@@ -55,7 +57,7 @@ export interface RemoteServerOptions {
   handlers: Record<string, Handler>
   /**
    * The seam for the web client: the file for a URL path, or undefined for none. The provider keeps the path inside its own
-   * folder. Nothing is served from disk until a later change passes one.
+   * folder (`services/remoteAssets.ts`).
    */
   assets?: (path: string) => Promise<Asset | undefined>
 }
@@ -64,6 +66,15 @@ interface Client { ws: WebSocket; device: RemoteDeviceRow; alive: boolean; inFli
 
 /** How long a dropped socket gets to flush its close frame before it is destroyed. */
 const DROP_GRACE_MS = 250
+
+/**
+ * What the web client's page may do: its own files, inline styles (the app sets some), data and blob images, and a socket to this
+ * server. `ws://` and `wss://` for the page's own host are named too, since an older Safari doesn't count them as 'self'.
+ */
+const appPolicy = (host: string | undefined) => {
+  const h = host && /^[\w.\-:[\]]+$/.test(host) ? ` ws://${host} wss://${host}` : ''
+  return `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self'${h}; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`
+}
 
 const PLACEHOLDER = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kernel</title>
 <style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0b0c;color:#e8e8ea;font:15px/1.5 -apple-system,system-ui,sans-serif}main{max-width:26rem;padding:2rem}h1{font-size:1.1rem;margin:0 0 .5rem}p{margin:0;color:#9a9aa0}</style>
@@ -183,9 +194,17 @@ export class RemoteServer {
     let path: string
     try { path = new URL(req.url ?? '/', 'http://kernel').pathname } catch { return text(res, 400, 'Bad request') }
     if (path === '/pair') return req.method === 'POST' ? this.pair(req, res) : text(res, 405, 'Use POST')
+    if (path === '/session') {
+      if (req.method !== 'GET') return text(res, 405, 'Use GET')
+      const bearer = /^Bearer (\S+)$/.exec(req.headers.authorization ?? '')?.[1]
+      if (!this.o.auth.verify(bearer ?? null)) return text(res, 401, 'Unauthorized')
+      res.writeHead(204)
+      return res.end()
+    }
     if (req.method !== 'GET' && req.method !== 'HEAD') return text(res, 405, 'Method not allowed')
     const asset = await this.o.assets?.(path)
     if (asset) {
+      res.setHeader('Content-Security-Policy', appPolicy(req.headers.host))
       res.writeHead(200, { 'Content-Type': asset.type })
       return res.end(req.method === 'HEAD' ? undefined : asset.body)
     }

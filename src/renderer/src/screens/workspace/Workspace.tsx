@@ -1,3 +1,4 @@
+import { isRemote } from '../../remote/isRemote'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { ChangedFile, NewChatPicks, Project, Workspace as WorkspaceModel, WorkspaceSource } from '@shared/types'
 import { call } from '../../api'
@@ -278,7 +279,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
         <IssueKey ws={ws} project={project} />
         {/* The pull request's own place is the Session rail and the Pull request tab. With neither on screen, its state moves here: an icon, its number, a few words and the one action (Pen 10.3). */}
         {ownPr && !rail && !(panels && !newChatShown) && <PrTitleBar ws={ws} />}
-        <OpenIn ws={ws} />
+        {!isRemote() && <OpenIn ws={ws} />}
         <ViewToggles kind={bottomKindOf(getState(), ws)} />
       </>}>
         {tabsRow}

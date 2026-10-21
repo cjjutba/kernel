@@ -1,3 +1,4 @@
+import { isRemote, ON_THE_MAC } from './remote/isRemote'
 import { useRef, useSyncExternalStore } from 'react'
 import type { AccountAddStep, AccountProfile, Provider,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, BottomKind, Chat, ChatItem, ChatRunMode, Checkpoint, ClaudeAccount,
@@ -451,6 +452,9 @@ async function performSwitch(provider: Provider, accountId: string, reason?: 'ba
 }
 
 /** Typed writes, one group per slice. Screens call these instead of reshaping state themselves. */
+/** Dialogs that pick a folder, clone to disk or change what the Mac runs, which the Mac refuses a paired browser. */
+const MAC_ONLY_MODALS: ReadonlySet<string> = new Set(['newProject', 'connectRepo', 'openFolder', 'checkHooks', 'newAgent', 'mcpSetUp', 'envVar'])
+
 export const actions = {
   ui: {
     /**
@@ -472,6 +476,8 @@ export const actions = {
     forward: () => step('forward'),
     /** ⌘, : the Settings page you were on last, or General when that page's project is gone. */
     openSettings: () => {
+      // Settings writes, accounts and hooks all live on the Mac, so a paired browser has no Settings (remote-web-client).
+      if (isRemote()) return void actions.ui.toast({ title: ON_THE_MAC })
       const last = lastSettings
       const route: Route = last && stillThere({ name: 'settings', ...last }, state) ? { name: 'settings', ...last } : { name: 'settings', page: 'general' }
       actions.ui.go(route)
@@ -487,7 +493,10 @@ export const actions = {
         actions.ui.go(there.name === 'settings' ? landing(state) : there, { history: 'replace' })
       }
     },
-    openModal: (modal: Exclude<Modal, null>) => setUi({ modal, menu: null }),
+    openModal: (modal: Exclude<Modal, null>) => {
+      if (isRemote() && MAC_ONLY_MODALS.has(modal.name)) return void actions.ui.toast({ title: ON_THE_MAC })
+      setUi({ modal, menu: null })
+    },
     closeModal: () => setUi({ modal: null }),
     /** Opens the menu, or closes it when it is already open. */
     toggleMenu: (menu: MenuId) => setState((s) => ({ ui: { ...s.ui, menu: s.ui.menu === menu ? null : menu } })),
@@ -1041,6 +1050,31 @@ async function start() {
   })
 }
 
+/**
+ * Loads again what the window shows, for a client that lost its connection and missed pushes (the browser over Remote access,
+ * remote-web-client). The route, tabs and drafts stay. The lists are replaced, then each project and each workspace whose chats
+ * were loaded is read again, so a transcript catches up with what ran while the client was away. A call that fails leaves what
+ * the window had: the next reconnect tries again.
+ */
+export async function resync() {
+  const [projects, workspaces, approvals, notifications, activity, usage, settings, shared, threads, live, pending] = await Promise.all([
+    call('projects.list', undefined), call('workspaces.list', {}), call('approvals.list', {}), call('notifications.list', undefined), call('activity.recent', { limit: 100 }), call('usage.get', undefined),
+    call('settings.get', undefined), call('shared.list', {}), call('threads.list', {}), call('chats.live', undefined), call('pr.pendingAll', {})
+  ])
+  setState({
+    projects, workspaces, approvals: byRecent(approvals), notifications: byRecent(notifications), activity, usage, settings,
+    shared: Object.fromEntries(shared.map((f) => [f.id, f])), threads: Object.fromEntries(threads.map((t) => [t.id, t])),
+    running: Object.fromEntries(live.running.map((id) => [id, true])), assumed: {}, retry: live.retry, prPending: pending
+  })
+  const route = getState().ui.route
+  const open = new Set(Object.keys(getState().chats))
+  if (route.name === 'workspace') open.add(route.workspaceId)
+  await Promise.all([
+    ...projects.map((r) => loadProject(r.id).catch(() => undefined)),
+    ...[...open].filter((id) => workspaces.some((w) => w.id === id)).map((id) => loadWorkspace(id).catch(() => undefined))
+  ])
+}
+
 /** Chats a `chat.running` or `retry` push reached while `chats.live` was out. The push came later, so it wins. */
 let pushedLive: { running: Set<string>; retry: Set<string> } | undefined
 
@@ -1083,6 +1117,8 @@ export function launchRoute(): Route {
       route = restored.route
     } else if (last) route = nearest(projectHome(last.id, state), state)
   }
+  // A paired browser has no Settings (a project nobody has briefed would open its Agents page there), so it opens the Inbox.
+  if (isRemote() && route.name === 'settings') route = { name: 'inbox' }
   return launch = route
 }
 

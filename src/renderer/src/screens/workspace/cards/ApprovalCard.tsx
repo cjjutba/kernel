@@ -1,3 +1,4 @@
+import { isRemote } from '../../../remote/isRemote'
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { AgentDef, Approval, AskedQuestion, Decision } from '@shared/types'
 import { call } from '../../../api'
@@ -383,7 +384,7 @@ function PlanTools({ a, agents }: { a: Approval; agents: AgentDef[] }) {
   return (
     <div className="pcard-tools">
       <CopyButton text={() => planCopyText(a, agents)} label="Copy plan" />
-      {file && <IconButton icon="ext" size={14} label="Open in editor" onClick={open} />}
+      {file && !isRemote() && <IconButton icon="ext" size={14} label="Open in editor" onClick={open} />}
     </div>
   )
 }

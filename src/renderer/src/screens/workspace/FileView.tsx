@@ -1,3 +1,4 @@
+import { isRemote } from '../../remote/isRemote'
 import { useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
 import type { ChangedFile, CompareTarget, Workspace } from '@shared/types'
 import { call, cleanError } from '../../api'
@@ -35,6 +36,7 @@ export function ViewHead({ path, children, trailing }: { path: string; children?
 
 /** A file in the scratchpad has an absolute path, a file in the worktree one relative to it. */
 function OpenInEditor({ ws, path }: { ws: Workspace; path: string }) {
+  if (isRemote()) return null
   return <IconButton icon="ext" size={14} box="sm" label="Open in editor" onClick={() => void call('system.openInEditor', { path: path.startsWith('/') ? path : `${ws.path}/${path}` })} />
 }
 
@@ -201,7 +203,7 @@ function ImageFile({ ws, path, editedBy, changed, onTab }: { ws: Workspace; path
 function CantShow({ ws, path, why }: { ws: Workspace; path: string; why: string }) {
   const reason = /binary|large|big|size|utf|bytes/i.test(why) ? "It's binary or too large to show here." : why
   return (
-    <EmptyList icon="doc" title="Can't show this file" action={<Button onClick={() => void call('system.openInEditor', { path: path.startsWith('/') ? path : `${ws.path}/${path}` })}>Open in editor</Button>}>
+    <EmptyList icon="doc" title="Can't show this file" action={isRemote() ? undefined : <Button onClick={() => void call('system.openInEditor', { path: path.startsWith('/') ? path : `${ws.path}/${path}` })}>Open in editor</Button>}>
       {reason}
     </EmptyList>
   )

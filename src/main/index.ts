@@ -11,6 +11,7 @@ import { bootDetail } from './bootError'
 import { Kernel } from './kernel'
 import { fixtureHandlers, fixturePush } from './fixtures'
 import { hookTokenFile } from './services/hookToken'
+import { staticAssets } from './services/remoteAssets'
 import { diagnostics, Log } from './services/log'
 import { errorEvent } from './services/telemetrySend'
 import { appMenu } from './menu'
@@ -445,6 +446,8 @@ app.whenReady().then(async () => {
     })
     app.on('before-quit', (e) => quit.beforeQuit(e))
     powerMonitor.on('shutdown', () => quit.shutdown())
+    // The page a paired browser loads is the renderer build the window loads (remote-web-client). None in a dev run, which keeps the placeholder.
+    kernel.remote.assets = staticAssets(join(here, '../renderer'))
     // The window opens while the kernel boots. Calls made before start() finishes wait for it.
     // PATH comes first so sessions and git calls made during start() find Homebrew and npm tools.
     started = refreshPath().then(() => kernel.start())

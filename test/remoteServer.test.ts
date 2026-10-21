@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 import { request } from 'node:http'
 import { createServer, type Server } from 'node:net'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { WebSocket } from 'ws'
@@ -12,6 +12,7 @@ import { Kernel } from '../src/main/kernel'
 import { PAIR_CODE_MS, RemoteAuth } from '../src/main/services/remoteAuth'
 import { ALL_CHANNELS_CLASSIFIED, ALLOWED_CHANNELS, REFUSED_CHANNELS, refusal } from '../src/main/services/remoteChannels'
 import { MAX_MESSAGE_BYTES } from '../src/main/services/remoteServer'
+import { assetPath, staticAssets } from '../src/main/services/remoteAssets'
 import { freePort, tempRepo } from './helpers'
 
 // remote-access-server: another device pairs with Kernel and drives it over a WebSocket, through the same handlers the window uses.
@@ -392,6 +393,96 @@ describe('remote access server (remote-access-server)', () => {
         request({ host: '127.0.0.1', port: b.port, path: '/', headers: { host: `mac.local:${b.port}` } }, (res) => { res.resume(); resolve(res.statusCode!) }).on('error', reject).end()
       })
       expect(status).toBe(200)
+    })
+  })
+
+  describe('the web client files (remote-web-client)', () => {
+    /** A folder like the renderer build, with a secret next to it that must stay out of reach. */
+    async function site() {
+      const outer = await mkdtemp(join(tmpdir(), 'kernel-web-'))
+      const dir = join(outer, 'renderer')
+      await mkdir(join(dir, 'assets'), { recursive: true })
+      await writeFile(join(dir, 'index.html'), '<!doctype html><title>app</title><div id="root"></div>')
+      await writeFile(join(dir, 'assets', 'app.js'), 'console.log(1)')
+      await writeFile(join(dir, 'assets', 'app.css'), 'a{}')
+      await writeFile(join(dir, 'assets', 'font.woff2'), 'font')
+      await writeFile(join(dir, 'assets', 'notes.exe'), 'nope')
+      await writeFile(join(dir, '.env'), 'SECRET=1')
+      await writeFile(join(outer, 'secret.txt'), 'outside')
+      await symlink(join(outer, 'secret.txt'), join(dir, 'assets', 'link.txt'))
+      return dir
+    }
+    /** A request with its path exactly as written: fetch would tidy a `..` away before it was sent. */
+    const raw = (b: Booted, path: string, headers: Record<string, string> = {}) => new Promise<{ status: number; headers: Record<string, string | string[] | undefined>; body: string }>((resolve, reject) => {
+      const r = request({ host: '127.0.0.1', port: b.k.remote.status().port, path, method: 'GET', headers: { connection: 'close', ...headers } }, (res) => {
+        let body = ''
+        res.on('data', (c: Buffer) => { body += c })
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body }))
+      })
+      r.on('error', reject)
+      r.end()
+    })
+
+    it('keeps the placeholder when there is no build', async () => {
+      const b = await boot()
+      b.k.remote.assets = staticAssets(join(tmpdir(), 'kernel-no-such-build'))
+      const r = await raw(b, '/')
+      expect(r.status).toBe(200)
+      expect(r.body).toContain('Kernel remote access is on')
+      expect((await raw(b, '/assets/app.js')).status).toBe(404)
+    })
+
+    it('serves the build with the right types and a strict policy that lets the socket through', async () => {
+      const b = await boot()
+      b.k.remote.assets = staticAssets(await site())
+      const page = await raw(b, '/')
+      expect(page.status).toBe(200)
+      expect(page.headers['content-type']).toBe('text/html; charset=utf-8')
+      expect(page.body).toContain('id="root"')
+      const csp = String(page.headers['content-security-policy'])
+      expect(csp).toContain("default-src 'self'")
+      expect(csp).toContain("script-src 'self'")
+      expect(csp).toContain(`connect-src 'self' ws://127.0.0.1:${b.k.remote.status().port}`)
+      expect(csp).toContain("object-src 'none'")
+      expect(csp).not.toMatch(/unsafe-eval|script-src[^;]*unsafe-inline/)
+      expect(page.headers['x-content-type-options']).toBe('nosniff')
+      expect((await raw(b, '/assets/app.js')).headers['content-type']).toBe('text/javascript; charset=utf-8')
+      expect((await raw(b, '/assets/app.css')).headers['content-type']).toBe('text/css; charset=utf-8')
+      expect((await raw(b, '/assets/font.woff2')).headers['content-type']).toBe('font/woff2')
+      expect((await raw(b, '/nope.js')).status).toBe(404)
+    })
+
+    it('lists no folder, serves no dot file or unknown type, and refuses every way out of the folder', async () => {
+      const b = await boot()
+      b.k.remote.assets = staticAssets(await site())
+      for (const path of [
+        '/assets/', '/assets', '/.env', '/assets/notes.exe', '/assets/missing.js',
+        '/../secret.txt', '/..%2fsecret.txt', '/%2e%2e/secret.txt', '/%2e%2e%2fsecret.txt', '/assets/../../secret.txt', '/assets/%2e%2e/%2e%2e/secret.txt',
+        '/assets/..%5c..%5csecret.txt', '/%252e%252e/secret.txt', '/assets/link.txt', '/assets/app.js%00.png', '//etc/passwd', '/index.html/../../secret.txt'
+      ]) {
+        const r = await raw(b, path)
+        expect(r.body, path).not.toContain('outside')
+        expect(r.body, path).not.toContain('SECRET')
+        expect(r.body, path).not.toContain('console.log')
+        expect([400, 404], path).toContain(r.status)
+      }
+    })
+
+    it('maps URL paths to files by one small rule', () => {
+      expect(assetPath('/')).toBe('index.html')
+      expect(assetPath('/assets/app.js')).toBe('assets/app.js')
+      for (const p of ['/assets/', '/.env', '/a/../b', '/a\\b', '/a%00', '/%zz', '..', '/a//b']) expect(assetPath(p), p).toBeUndefined()
+    })
+
+    it('answers /session for a live token only', async () => {
+      const b = await boot()
+      const { token } = await pairDevice(b)
+      expect((await raw(b, '/session', { authorization: `Bearer ${token}` })).status).toBe(204)
+      expect((await raw(b, '/session')).status).toBe(401)
+      expect((await raw(b, '/session', { authorization: 'Bearer nonsense' })).status).toBe(401)
+      const [device] = await b.h['remote.devices']()
+      await b.h['remote.revoke']({ id: device.id })
+      expect((await raw(b, '/session', { authorization: `Bearer ${token}` })).status).toBe(401)
     })
   })
 

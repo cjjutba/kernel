@@ -15,6 +15,7 @@ import { ProjectIcon } from '../ProjectIcon'
 import { projectInView } from '../../screens/search/model'
 import { archiveByHand } from '../../screens/workspace/byHand'
 import { HistoryButtons } from '../PanelToggles'
+import { isRemote } from '../../remote/isRemote'
 import { AccountButton } from './AccountMenu'
 import { isPlanApproval } from '../../screens/workspace/cards/steps'
 import { chatWaits } from './chatWaits'
@@ -455,7 +456,7 @@ export function AppSidebar() {
       </div>
       {/* Only the projects list gives up space when it outgrows the window, so the rows above it keep their height and y (flexShrink 0). */}
       <div className="row sb-switch-row">
-        <AccountButton />
+        {!isRemote() && <AccountButton />}
       </div>
       {/* Search looks like the Search settings field but is a button: it opens the ⌘K palette, the one place you search. New chat sits beside it as an icon (Pen 18.2). */}
       <div className="sb-search-row">
