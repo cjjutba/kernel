@@ -40,10 +40,11 @@ export function OneRowHeader({ project, children, end }: { project?: Project; ch
 
 /**
  * New chat's header, the only row a chat has: the project, then its one tab, "New chat", with no close button while it is the only tab
- * and empty. No editor button, panel toggle or PR capsule, since there is no workspace yet (KERNEL-788).
+ * and empty, and the view toggles (`end`) on the right. No editor button or PR capsule, since there is no workspace yet (KERNEL-788, amended by
+ * feat/new-chat-shows-session-rail-and).
  */
-export function NewChatHeader({ project }: { project?: Project }) {
-  return <OneRowHeader project={project}><NewChatTab /></OneRowHeader>
+export function NewChatHeader({ project, end }: { project?: Project; end?: ReactNode }) {
+  return <OneRowHeader project={project} end={end}><NewChatTab /></OneRowHeader>
 }
 
 /**
