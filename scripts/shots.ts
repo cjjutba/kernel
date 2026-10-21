@@ -429,21 +429,47 @@ const pressLink = (name: string, wait: 'dialog' | 'toast') => async (page: Page)
   await page.waitForTimeout(300)
 }
 
-// NewChatProjectPicker, NewChatMode, NewChatBranch and NewChatPlus are New chat with the project menu, the + menu or one of its Run in and Branch pickers open (KERNEL-786).
-// NewChatLocal has Local picked, which shows the chip beside +. NewChatBranchChip picks a branch from the + menu and shows its chip.
+// NewChatProjectPicker, NewChatBranch and NewChatPlus are New chat with the project menu, the + menu or the Workspace menu's Branch from picker open (KERNEL-786).
+// NewChatLocal has Current checkout picked by Settings, which the chip beside + says. NewChatBranchChip picks a branch from the Workspace menu and shows its chip.
 async function openWhere(page: Page, name: string | RegExp, item?: string | RegExp) {
   await page.getByRole('button', { name }).click()
   if (item) await page.getByRole('menuitemradio', { name: item }).first().waitFor()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
-// Opens the + menu and one of its rows, Run in or Branch, then waits for that picker's rows.
-async function openPlusPicker(page: Page, row: RegExp, ready: RegExp) {
-  await page.getByRole('button', { name: 'Add context' }).click()
-  await page.getByRole('menuitem', { name: row }).click()
-  await page.getByRole('menuitemradio', { name: ready }).first().waitFor()
+// Opens New chat's Workspace menu from the chip beside +, and waits for its rows.
+async function openWorkspaceMenu(page: Page) {
+  await page.getByRole('button', { name: /^Workspace:/ }).click()
+  await page.getByRole('menuitemradio', { name: /^New worktree/ }).waitFor()
 }
-// NewChatKeyboard drives the project picker and the + menu's Run in row with the keyboard only and throws when a step does not do what it should: a picker opens on Enter,
+// NewChatWorkspace, NewChatWorkspaceTaken and NewChatWorkspaceRecent are the Workspace menu open: with one previous worktree, with the checkout held by another chat,
+// and with four previous worktrees, whose list is open under Previous worktree. NewChatWorkspacePrevious picks the one previous worktree and shows the chip.
+async function showWorkspaceMenu(page: Page) {
+  await openWorkspaceMenu(page)
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+async function showPreviousList(page: Page) {
+  await openWorkspaceMenu(page)
+  // The list opens from the keyboard, so the pointer needn't stay on the row.
+  await page.getByRole('menuitem', { name: /^Previous worktree/ }).focus()
+  await page.keyboard.press('ArrowRight')
+  await page.getByRole('menuitemradio', { name: /Seed realistic demo data/ }).waitFor()
+  await page.waitForTimeout(300)
+}
+async function pickPreviousWorktree(page: Page) {
+  await openWorkspaceMenu(page)
+  await page.getByRole('menuitemradio', { name: /^Previous worktree/ }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+// Opens the Workspace menu and its Branch from row, then waits for that picker's rows.
+async function openBranchPicker(page: Page) {
+  await openWorkspaceMenu(page)
+  await page.getByRole('menuitem', { name: /^Branch from/ }).click()
+  await page.getByRole('menuitemradio', { name: /invoice-table/ }).first().waitFor()
+}
+// NewChatKeyboard drives the project picker and the Workspace menu with the keyboard only and throws when a step does not do what it should: a picker opens on Enter,
 // Escape closes it and gives the focus back to its button, Enter on a row picks it, and the project pick moves the breadcrumb and the route.
 async function driveWhereByKeyboard(page: Page) {
   const key = (k: string) => page.keyboard.press(k)
@@ -468,22 +494,19 @@ async function driveWhereByKeyboard(page: Page) {
   await must((await project().getAttribute('aria-label')) !== before, 'Enter did not pick the project')
   await must((await crumb()).includes('Client B'), 'the breadcrumb did not follow the project pick')
 
-  // The + button opens its menu on Enter, ArrowDown walks to Run in, Enter opens the picker and Enter on Local picks it. Focus comes back to +, and the chip says Local.
-  const plus = page.getByRole('button', { name: 'Add context' })
+  // The Workspace chip opens its menu on Enter, on the checked New worktree. ArrowUp walks to Current checkout and Enter picks it. Focus comes back to the chip, which says so.
+  const chip = page.getByRole('button', { name: /^Workspace:/ })
   const focused = (loc: ReturnType<Page['getByRole']>) => loc.evaluate((el) => el === document.activeElement)
-  await plus.focus(); await key('Enter')
-  const runIn = page.getByRole('menuitem', { name: /^Run in/ })
-  await runIn.waitFor()
-  for (let i = 0; i < 8 && !(await focused(runIn)); i++) await key('ArrowDown')
-  await must(await focused(runIn), 'ArrowDown did not reach Run in')
-  await key('Enter')
-  const local = page.getByRole('menuitemradio', { name: /Local/ }).first()
-  await local.waitFor()
-  for (let i = 0; i < 4 && !(await focused(local)); i++) await key('ArrowDown')
+  await chip.focus(); await key('Enter')
+  const worktree = page.getByRole('menuitemradio', { name: /^New worktree/ })
+  await worktree.waitFor()
+  await must(await focused(worktree), 'the menu did not open on the checked New worktree')
+  await key('ArrowUp')
+  await must(await focused(page.getByRole('menuitemradio', { name: /^Current checkout/ })), 'ArrowUp did not reach Current checkout')
   await key('Enter')
   await page.waitForTimeout(200)
-  await must(await page.getByRole('button', { name: /^Run in Local/ }).count() === 1, 'Enter did not pick Local, so there is no chip')
-  await must(await focused(plus), 'the + button did not get the focus back')
+  await must(await page.getByRole('button', { name: /^Workspace: Current checkout/ }).count() === 1, 'Enter did not pick Current checkout, so the chip does not say so')
+  await must(await focused(chip), 'the chip did not get the focus back')
 
   await page.getByRole('textbox').first().click()
   await page.keyboard.type('Check the invoice export')
@@ -498,13 +521,13 @@ async function openPermissionMenu(page: Page) {
   await openWhere(page, /^Permission mode:/, /Accept edits/)
 }
 async function openBranchMenu(page: Page) {
-  await openPlusPicker(page, /^Branch/, /invoice-table/)
+  await openBranchPicker(page)
   // The row with a workspace shows Open workspace while it is the active one, as on hover or focus.
   await page.getByRole('menuitemradio', { name: /t-12-invoice-schema/ }).focus()
   await page.waitForTimeout(300)
 }
 async function pickBranchChip(page: Page) {
-  await openPlusPicker(page, /^Branch/, /invoice-table/)
+  await openBranchPicker(page)
   await page.getByRole('menuitemradio', { name: /t-14-invoice-table/ }).click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
@@ -513,7 +536,7 @@ async function pickBranchChip(page: Page) {
 // LeadNoChatsBranch is New chat with Kernel with the + menu's Branch picker open, main checked. The menu is the composer's own, so open it and wait for the
 // remote's branches, which the menu reads when it opens.
 async function openBaseBranch(page: Page) {
-  await openPlusPicker(page, /^Branch/, /invoice-table/)
+  await openBranchPicker(page)
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
@@ -808,7 +831,10 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   FileLinkMissing: pressLink('Open src/fixtures.ts', 'toast'),
   LeadNoChatsBranch: openBaseBranch,
   NewChatProjectPicker: (page) => openWhere(page, /^Project:/, /Client B/),
-  NewChatMode: (page) => openPlusPicker(page, /^Run in/, /Local/).then(() => page.mouse.move(0, 0)).then(() => page.waitForTimeout(300)),
+  NewChatWorkspace: showWorkspaceMenu,
+  NewChatWorkspaceTaken: showWorkspaceMenu,
+  NewChatWorkspaceRecent: showPreviousList,
+  NewChatWorkspacePrevious: pickPreviousWorktree,
   NewChatKeyboard: driveWhereByKeyboard,
   NewChatBranch: openBranchMenu,
   NewChatBranchChip: pickBranchChip,

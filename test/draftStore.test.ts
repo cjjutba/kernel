@@ -295,6 +295,18 @@ describe('a New chat box keeps its picks with its draft (KERNEL-544)', () => {
     expect(relaunched.loadPicks(KEY)).toEqual({ place: 'current' })
   })
 
+  it("remembers the project's Workspace pick, a previous worktree included, through a send and a relaunch", async () => {
+    const m = await launch()
+    m.saveDraft(KEY, words('go'), '')
+    m.savePicks(KEY, { place: 'worktree', previous: 'ws-7', baseRef: 'origin/feat/x' })
+    m.clearDraft(KEY)
+    expect(m.loadPicks(KEY)).toEqual({ place: 'worktree', previous: 'ws-7' })
+    vi.advanceTimersByTime(500)
+    expect((await launch()).loadPicks(KEY)).toEqual({ place: 'worktree', previous: 'ws-7' })
+    m.savePicks(KEY, { previous: undefined })
+    expect(m.loadPicks(KEY)).toEqual({ place: 'worktree' })
+  })
+
   it('goes back to following the default when a pick is set to undefined, and forgets a box left with nothing', async () => {
     const m = await launch()
     m.savePicks(KEY, { place: 'current', baseRef: 'origin/feat/x' })

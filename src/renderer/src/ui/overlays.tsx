@@ -93,11 +93,14 @@ function MenuList({ items, onClose, onBack, label, heading, initiallyOpen }: { i
 function Submenu({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
   const [up, setUp] = useState(false)
+  const [left, setLeft] = useState(false)
   useLayoutEffect(() => {
     const r = ref.current?.getBoundingClientRect()
     if (r && r.bottom > window.innerHeight - 8) setUp(true)
+    // A menu at the window's right edge opens its list to the left, so it never runs off the screen.
+    if (r && r.right > window.innerWidth - 8) setLeft(true)
   }, [])
-  return <div ref={ref} className="submenu" data-up={up || undefined}>{children}</div>
+  return <div ref={ref} className="submenu" data-up={up || undefined} data-left={left || undefined}>{children}</div>
 }
 
 /**

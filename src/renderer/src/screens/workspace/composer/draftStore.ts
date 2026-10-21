@@ -10,12 +10,14 @@ export interface DraftPicks {
   model?: string; effort?: Effort; plan?: boolean; mode?: PermissionMode
   /** Worktree or Local. */
   place?: WorkspaceMode
+  /** The workspace of an earlier chat the new one joins (Previous worktree). It wins over `place` while that workspace is still on offer. */
+  previous?: string
   /** The branch the chat starts from, as the branch menu lists it. Left out for the default. */
   baseRef?: string
 }
 
 /** The picks a send keeps: how the user works in the project, not what the next chat starts from. */
-const PROJECT_PICKS = ['place'] as const
+const PROJECT_PICKS = ['place', 'previous'] as const
 
 /**
  * Unsent messages by chat id: the parts in the box, text and chips in order, and the workspace the chat belongs to. Module level, so
@@ -58,13 +60,14 @@ let listening = false
 /** The picks a file holds, field by field: a value that isn't a model id, an effort or a boolean is dropped. */
 function picksOf(v: unknown): DraftPicks | undefined {
   if (!v || typeof v !== 'object') return undefined
-  const { model, effort, plan, mode, place, baseRef } = v as Record<string, unknown>
+  const { model, effort, plan, mode, place, previous, baseRef } = v as Record<string, unknown>
   const out: DraftPicks = {}
   if (typeof model === 'string' && model.trim()) out.model = model
   if (typeof effort === 'string' && Object.keys(EFFORT_LABELS).includes(effort)) out.effort = effort as Effort
   if (typeof plan === 'boolean') out.plan = plan
   if (typeof mode === 'string' && PERMISSION_MODES.includes(mode as PermissionMode)) out.mode = mode as PermissionMode
   if (place === 'worktree' || place === 'current') out.place = place
+  if (typeof previous === 'string' && previous.trim()) out.previous = previous
   if (typeof baseRef === 'string' && baseRef.trim()) out.baseRef = baseRef
   return Object.keys(out).length ? out : undefined
 }

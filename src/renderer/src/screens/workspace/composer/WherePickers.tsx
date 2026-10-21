@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import type { Project, WorkspaceMode } from '@shared/types'
+import type { Project } from '@shared/types'
 import { ProjectIcon } from '../../../components/ProjectIcon'
 import { Button, Icon } from '../../../ui'
 import { PopSearch, WherePop } from './WherePop'
@@ -42,28 +42,5 @@ export function ProjectPicker({ variant, projects, project, open, disabled, onTo
         </WherePop>
       )}
     </span>
-  )
-}
-
-export const RUN_IN: { id: WorkspaceMode; label: string; hint: string; icon: 'fork' | 'computer' }[] = [
-  { id: 'worktree', label: 'Worktree', hint: 'Its own branch and copy of the files', icon: 'fork' },
-  { id: 'current', label: 'Local', hint: 'Works in your checkout, files and branch are shared', icon: 'computer' }
-]
-
-/**
- * Worktree or Local, two rows with a line under each, opened from the + menu's Run in row or the chip beside + (KERNEL-786). The Lead's own chat
- * is always a worktree (KERNEL-405), so this tells Kernel how its teammates should run. The default is Settings, Workspaces' mode.
- */
-export function RunInMenu({ anchorRef, mode, onPick, onClose }: { anchorRef: React.RefObject<HTMLElement | null>; mode: WorkspaceMode; onPick: (m: WorkspaceMode) => void; onClose: (refocus?: boolean) => void }) {
-  return (
-    <WherePop anchorRef={anchorRef} label="Worktree or Local" width={340} align="end" onClose={onClose}>
-      {RUN_IN.map((m) => (
-        <button key={m.id} type="button" role="menuitemradio" aria-checked={m.id === mode} className="menu-item where-row where-mode" onClick={() => onPick(m.id)}>
-          <Icon name={m.icon} size={16} />
-          <span className="where-tx"><span className="where-t">{m.label}</span><span className="where-d">{m.hint}</span></span>
-          {m.id === mode && <Icon name="check" size={14} />}
-        </button>
-      ))}
-    </WherePop>
   )
 }
