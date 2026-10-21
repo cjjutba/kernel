@@ -3,6 +3,7 @@ import type { KernelApi } from '@shared/ipc'
 import { isSentItem } from '@shared/approvalAnswer'
 import { call, cleanError } from '../../../api'
 import { actions, getState } from '../../../store'
+import { newId } from '../../../compat'
 
 type Sent = KernelApi['chats.send']['res']
 
@@ -37,7 +38,7 @@ interface Placed extends SendOptions {
  * from it, and only a failed call clears it. Resolves true when main took the message.
  */
 async function place(chatId: string, parts: ChatPart[], o: Placed): Promise<boolean> {
-  const id = crypto.randomUUID()
+  const id = newId()
   const to = destinationOf(chatId)
   const who = { ...(o.from ? { from: o.from } : {}), ...(o.update ? { update: o.update } : {}) }
   const row: ChatItem = { kind: 'user', id, ts: Date.now(), parts, ...who }
