@@ -106,11 +106,11 @@ export type Modal =
   | { name: 'mcpSetUp'; provider: Provider; accountId: string }
 
 /**
- * Menus and popovers. One is open at a time. `project:<id>` is a sidebar project's menu, and `reply:<id>` the "..." menu under a reply.
+ * Menus and popovers. One is open at a time. `project:<id>` is a sidebar project's menu, and `reply:<id>` the "..." menu under a reply, and `step:<id>` the one at the end of a step's row (KERNEL-1094).
   */
 export type MenuId =
   | 'projects' | `project:${string}` | 'account' | 'plan'
-  | 'pr' | 'tab' | 'newTab' | `reply:${string}`
+  | 'pr' | 'tab' | 'newTab' | `reply:${string}` | `step:${string}`
   | 'plus' | 'model' | 'effort' | 'mode' | 'mention' | 'slash' | 'linkIssue' | 'linkPr' | 'linkWorkspaces'
   | 'branch' | 'from' | 'settingsFiles' | 'projectIcon' | 'projectMode' | 'preview'
   | 'projectTracker' | 'help'

@@ -123,7 +123,44 @@ export function serviceOf(server: string): ToolService {
 const serverTitle = (server: string) => title(server.replace(/^claude[_ .]?ai[_ .]?/i, ''))
 
 /** A tool's verb in its three tenses. `rest` is what follows the verb, and `base` is how "Couldn't …" says it. */
-interface Say { base: string; ing: string; ed: string; rest?: string; object?: string; dir?: string; mono?: boolean; file?: string; agent?: string; fixed?: string }
+interface Say { base: string; ing: string; ed: string; rest?: string; object?: string; dir?: string; mono?: boolean; file?: string; agent?: string; fixed?: string; /** The agent's own words for what the call does, in the imperative ("Run steps 1 to 5"), which the row says in the call's tense. */ description?: string }
+
+/** The verbs an agent starts a Bash description with. Only these change tense, so a description that starts with something else is left as it was written. */
+const DESCRIPTION_VERBS = new Set((
+  'add analyze apply archive ask attach benchmark build bundle calculate capture check clean clear clone close collect commit compare compile confirm copy count create debug delete deploy describe diff display download dump edit enable ensure evaluate execute export extract fetch find fix format generate get grep import inspect install kill launch lint list load locate make measure merge migrate move open parse patch ping preview print profile publish pull push query read rebase rebuild record refresh regenerate reinstall remove rename replace report reproduce reset resolve restart restore review revert run rerun save scan search seed send set show simulate sort stage start stop submit summarize sync tail tag test trace trim uninstall unpack unstage update upload validate verify view wait watch write zip'
+).split(' '))
+
+const IRREGULAR_PAST: Record<string, string> = { run: 'ran', rerun: 'reran', read: 'read', build: 'built', rebuild: 'rebuilt', find: 'found', get: 'got', make: 'made', write: 'wrote', set: 'set', reset: 'reset', send: 'sent', show: 'showed' }
+
+/** The verbs that double their last letter before "-ing" and "-ed". */
+const DOUBLES = new Set(['run', 'rerun', 'stop', 'get', 'set', 'reset', 'plan', 'commit', 'submit', 'ship', 'drop', 'skip', 'map', 'scan', 'trim', 'tag', 'zip', 'grep'])
+
+const gerund = (v: string) => (v.endsWith('ie') ? `${v.slice(0, -2)}ying` : DOUBLES.has(v) ? `${v}${v.slice(-1)}ing` : /[^eoy]e$/.test(v) ? `${v.slice(0, -1)}ing` : `${v}ing`)
+
+const past = (v: string) => IRREGULAR_PAST[v] ?? (v.endsWith('e') ? `${v}d` : /[^aeiou]y$/.test(v) ? `${v.slice(0, -1)}ied` : DOUBLES.has(v) ? `${v}${v.slice(-1)}ed` : `${v}ed`)
+
+/** The verb a first word is, in its plain form: "capture" for "Capture" and for "Capturing". */
+function verbOfWord(word: string): { verb: string; ing: boolean } | undefined {
+  const w = word.toLowerCase()
+  if (DESCRIPTION_VERBS.has(w)) return { verb: w, ing: false }
+  if (!w.endsWith('ing') || w.length < 6) return undefined
+  const stem = w.slice(0, -3)
+  const verb = [stem, `${stem}e`, stem.slice(0, -1)].find((c) => DESCRIPTION_VERBS.has(c) && gerund(c) === w)
+  return verb ? { verb, ing: true } : undefined
+}
+
+/**
+ * A description in the tense of its call: "Capture every screen" is "Capturing every screen" while it runs and "Captured every screen" once it is done. Only the first
+ * word changes, and only when it is a verb this knows. Anything else is left as the agent wrote it.
+ */
+export function inflect(description: string, form: 'ing' | 'ed'): string {
+  const m = /^([A-Za-z]+)([\s\S]*)$/.exec(description)
+  const word = m && verbOfWord(m[1])
+  if (!m || !word) return description
+  if (form === 'ing' && word.ing) return description
+  const out = form === 'ing' ? gerund(word.verb) : past(word.verb)
+  return `${m[1][0] === m[1][0].toUpperCase() ? out[0].toUpperCase() : out[0]}${out.slice(1)}${m[2]}`
+}
 
 const say = (base: string, ing: string, ed: string, rest = ''): Say => ({ base, ing, ed, rest })
 
@@ -191,9 +228,10 @@ function builtIn(name: string, i: Record<string, unknown>, ctx: ToolCtx, stored?
   switch (name) {
     case 'Bash': {
       const description = str(i.description)
-      if (description) return { ...say('run', 'Running', 'Ran'), fixed: description.replace(/[.\s]+$/, '') }
       const command = str(i.command) ?? str(stored)
-      return { ...say('run', 'Running', 'Ran', ' a command'), object: command && firstLine(stripCd(command)), mono: true }
+      const object = command && firstLine(stripCd(command))
+      if (description) return { ...say('run', 'Running', 'Ran'), description: description.replace(/[.\s]+$/, ''), object, mono: true }
+      return { ...say('run', 'Running', 'Ran', ' a command'), object, mono: true }
     }
     case 'Read': return withFile(say('read', 'Reading', 'Read'))
     case 'Edit': case 'MultiEdit': case 'NotebookEdit': return withFile(say('edit', 'Editing', 'Edited'))
@@ -238,6 +276,11 @@ function stateOf(item: ToolLike): ToolState {
 
 function verbOf(s: Say, state: ToolState): string {
   const rest = s.rest ?? ''
+  if (s.description !== undefined) {
+    if (state === 'denied') return `Denied: ${s.description}`
+    if (state === 'stopped') return `Stopped: ${s.description}`
+    return inflect(s.description, state === 'running' ? 'ing' : 'ed')
+  }
   if (s.fixed !== undefined) {
     if (state === 'denied') return `Denied: ${s.fixed}`
     return state === 'stopped' ? `Stopped: ${s.fixed}` : s.fixed
@@ -311,7 +354,6 @@ export function toolTitle(name: string, input: Record<string, unknown> = {}): st
  * running and done tenses are the chat row's, and this is the third, which reads after "Sean wants to" (KERNEL-785).
  */
 export function toolAsk(name: string, input: Record<string, unknown> = {}, ctx: ToolCtx = {}): string {
-  const v = toolView({ name, input, status: 'running' }, ctx)
   const mcp = parseMcp(name)
   const service = mcp ? serviceOf(mcp.server) : undefined
   let s: Say | undefined
@@ -319,7 +361,9 @@ export function toolAsk(name: string, input: Record<string, unknown> = {}, ctx: 
     s = service === 'linear' ? linear(mcp.tool, input) : service === 'kernel' ? kernel(mcp.tool, input, ctx) : undefined
     s ??= service === 'mcp' ? humanized(mcp.tool) : generic(mcp.tool, service, input)
   } else s = builtIn(name, input, ctx)
+  // A described command is asked for by its description alone, as it always was: the row shows the command too, the question doesn't.
+  const v = toolView({ name, input: s?.description ? { ...input, command: undefined } : input, status: 'running' }, ctx)
   if (v.hidden || !s) return name
-  const verb = maskSecrets(s.fixed ?? `${upperFirst(s.base)}${s.rest ?? ''}`)
+  const verb = maskSecrets(s.description ?? s.fixed ?? `${upperFirst(s.base)}${s.rest ?? ''}`)
   return verb + v.sentence.slice(v.verb.length, v.detail ? -(v.detail.length + 2) : undefined)
 }
