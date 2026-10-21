@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import type { Approval, Decision, PlanStep } from '@shared/types'
+import type { Approval, Decision, PlanCriterion, PlanStep } from '@shared/types'
+import { criterionCheck, criterionText } from '@shared/criteria'
 import type { Store } from '../db'
 import { bus } from '../bus'
 import { toolAsk, toolView } from '@shared/toolView'
@@ -235,14 +236,21 @@ function answerOf(prev: Approval, decision: Decision, typed?: Typed): Pick<Appro
 /** Tools that are a question to the user, not a permission. No setting may answer them for the user. */
 export const needsUser = (toolName: string) => toolName === 'ExitPlanMode' || toolName === 'AskUserQuestion'
 
+/** A criterion with its text trimmed. A named check stays only when it has a name, so a plain criterion stays a plain string. */
+function cleanCriterion(c: PlanCriterion): PlanCriterion | undefined {
+  const text = criterionText(c).trim()
+  const check = criterionCheck(c)
+  return !text ? undefined : check ? { text, check } : text
+}
+
 /** "T-15a PDF renderer · Sean" becomes a step with the agent's id. Lines without a known name stay as plain text. */
-export function parsePlanSteps(lines: string[], agents: { id: string; name: string }[]): PlanStep[] {
-  return lines.map((line) => {
+export function parsePlanSteps(lines: { task: string; criteria?: PlanCriterion[] }[], agents: { id: string; name: string }[]): PlanStep[] {
+  return lines.map(({ task: line, criteria }) => {
     const at = line.lastIndexOf(' · ')
     const agent = at < 0 ? undefined : agents.find((a) => a.name.toLowerCase() === line.slice(at + 3).trim().toLowerCase() || a.id === line.slice(at + 3).trim().toLowerCase())
     const title = agent ? line.slice(0, at).trim() : line.trim()
     const id = /^(T-\d+[a-z]?)\b/.exec(title)?.[1]
-    return { title, ...(id ? { taskId: id } : {}), ...(agent ? { agentId: agent.id } : {}) }
+    return { title, criteria: (criteria ?? []).map(cleanCriterion).filter((c): c is PlanCriterion => !!c), ...(id ? { taskId: id } : {}), ...(agent ? { agentId: agent.id } : {}) }
   })
 }
 

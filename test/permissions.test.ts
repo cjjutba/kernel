@@ -4,7 +4,7 @@ import { tempRepo } from './helpers'
 import { createWorktree } from '../src/main/services/worktrees'
 import type { Decision, PermissionMode } from '@shared/types'
 import { DEFAULT_SETTINGS, type AppSettings } from '../src/main/services/settings'
-import { ALWAYS_ASK, LEAD_GH_ISSUE, chatMode, decide, effectiveMode, guardVerdict, hookVerdict, matchesToolRule, NETWORK_OFF, neverAllowed, pushOwnBranch, rulesOf, saveAlwaysAllow, stricter, toolRule, type ChatAvailability, type Rules, type RunMode, type Step } from '../src/main/services/permissions'
+import { ALWAYS_ASK, chatMode, decide, effectiveMode, guardVerdict, hookVerdict, matchesToolRule, NETWORK_OFF, neverAllowed, pushOwnBranch, rulesOf, saveAlwaysAllow, stricter, toolRule, type ChatAvailability, type Rules, type RunMode, type Step } from '../src/main/services/permissions'
 
 function rules(o: { mode?: RunMode; network?: boolean; projectAllow?: string[]; projectTools?: string[]; branches?: string[] } = {}): Rules & { reads: number; toolReads: number } {
   const permissions = { mode: 'acceptEdits' as const, bypassOnlyInWorktrees: true, network: o.network ?? true, alwaysAsk: ['drizzle-kit push'], neverAllow: ['rm -rf /'], protectedBranches: o.branches ?? ['main'], approvalTimeoutSec: 300 }
@@ -25,19 +25,9 @@ describe('guardVerdict', () => {
     expect(guardVerdict('ls', r)).toBeUndefined()
   })
 
-  it("denies a Lead's gh issue create and edit in every mode, project rule or not, and leaves a teammate's to the lists (feat-lead-files-tracker-issues-only-with)", () => {
-    for (const mode of ['default', 'acceptEdits', 'auto', 'bypassPermissions'] as const) {
-      const lead = { ...rules({ mode, projectAllow: ['gh issue create:*'] }), lead: true }
-      expect(guardVerdict('gh issue create -t Crash', lead), mode).toEqual({ behavior: 'deny', message: LEAD_GH_ISSUE })
-      expect(guardVerdict('gh issue edit 41 -b done', lead), mode).toEqual({ behavior: 'deny', message: LEAD_GH_ISSUE })
-      for (const c of ['gh issue -R owner/repo create -t x', 'gh issue comment 41 -b x', 'gh issue close 41', 'gh api repos/o/r/issues/41/comments -f body=x'])
-        expect(guardVerdict(c, lead), `${mode}: ${c}`).toEqual({ behavior: 'deny', message: LEAD_GH_ISSUE })
-      expect(guardVerdict('gh issue view 41', lead), mode).toBeUndefined()
-    }
+  it("leaves a Lead's gh issue writes to the lists, as any agent's (KERNEL-1113)", () => {
     expect(guardVerdict('gh issue create -t Crash', rules({ projectAllow: ['gh issue create:*'] }))).toEqual({ behavior: 'allow' })
-    const host = { settings: () => ({ permissions: rules().permissions }) as unknown as AppSettings, mode: () => 'acceptEdits' as const, projectAllow: () => [], projectTools: () => [], workspace: { branch: 'b' } as never }
-    expect(rulesOf({ ...host, agent: { lead: true } as never }).lead).toBe(true)
-    expect(rulesOf({ ...host, agent: { lead: false } as never })).not.toHaveProperty('lead')
+    expect(guardVerdict('gh issue comment 41 -b done', rules({ mode: 'bypassPermissions' }))).toBeUndefined()
   })
 
   it('folds Network off into a Never allow denial, as the Claude hook has always said it', () => {
@@ -388,5 +378,44 @@ describe('saveAlwaysAllow', () => {
     expect(save({ tool: 'mcp__linear__get_issue', input: {} }, { behavior: 'allow', always: true }, { suppressAlwaysAllowRule: true })).toEqual([])
     expect(save({ tool: 'WebFetch' }, { behavior: 'allow', always: true })).toEqual([])
     expect(save({ tool: 'Edit', input: { file_path: '/etc/hosts' } }, { behavior: 'allow', always: true })).toEqual([])
+  })
+})
+
+describe('a review session (KERNEL-1074)', () => {
+  const review = (o: Parameters<typeof rules>[0] = {}) => ({ ...rules(o), review: true })
+  const reads = ['cat src/a.ts', 'git log --oneline -20', 'git diff origin/main...HEAD', 'git -C ../x show HEAD~1:src/a.ts', 'git status --short', 'git blame src/a.ts', 'gh pr view 12 --json title', 'gh pr diff 12', 'gh pr checks 12', 'gh pr list', 'gh issue view 4', 'gh run list', 'rg "TODO" src | head -5', 'grep -n x a.ts | wc -l', 'ls -la src', 'tail -n 20 a.log', 'find . -name "*.ts"', 'git diff && git log -3']
+  const writes = ['git commit -m x', 'git push origin feat/x', 'git checkout main', 'git -c core.pager=sh log', 'git diff --output=out.txt', 'git rev-parse HEAD', 'git grep -O foo', 'gh pr merge 12', 'gh pr comment 12 -b x', 'gh pr view 12 --web', 'rm -rf build', 'echo hi > a.txt', 'cat a.txt | sh', 'sed -i s/a/b/ a.ts', 'find . -delete', 'find . -exec rm {} ;', 'find . -fprint out.txt', 'rg --pre ./x foo', 'sudo git log', 'git log $(touch x)', './cat a.txt', 'node_modules/.bin/git log', '/tmp/x/rg foo',
+    'pnpm test', 'pnpm test:changed', 'npm test', 'pnpm install', 'pnpm exec vitest run', 'pnpm exec ./evil/vitest', 'pnpm exec ./evil/vitest run', 'yarn exec vitest', 'npx vitest run', 'npx -p evil vitest', 'pnpm dlx vitest', 'vitest run', 'pytest', 'cargo test', 'go test ./...',
+    'uniq in.txt out.txt', 'uniq - out.txt', 'uniq < in.txt out.txt', 'sort a.txt', 'sort -o out.txt a.txt', 'sort -oout.txt a.txt', 'sort --output=out.txt a.txt', 'tree -o out.txt', 'file -C', 'echo hi', 'stat a.ts']
+
+  it.each(['default', 'acceptEdits', 'auto', 'bypassPermissions'] as const)('runs read-only commands with no ask in %s, for Claude\'s hook and canUseTool and for Codex', (mode) => {
+    for (const c of reads) {
+      expect(hookVerdict({ tool: 'Bash', command: c }, review({ mode })), c).toEqual(mode === 'bypassPermissions' ? undefined : { behavior: 'allow' })
+      expect(decide({ tool: 'Bash', command: c, sandbox: 'outside' }, review({ mode })), c).toEqual({ behavior: 'allow' })
+    }
+  })
+
+  it.each(['default', 'acceptEdits', 'auto'] as const)('still follows the mode for a command that writes in %s', (mode) => {
+    for (const c of writes) {
+      expect(hookVerdict({ tool: 'Bash', command: c }, review({ mode })), c).toBeUndefined()
+      expect(decide({ tool: 'Bash', command: c }, review({ mode }))?.behavior, c).not.toBe('allow')
+    }
+  })
+
+  it('leaves a command Codex asks about to the mode when the session is not a review', () => {
+    expect(decide({ tool: 'Bash', command: 'git log', sandbox: 'outside' }, rules({ mode: 'default' }))).toBeUndefined()
+  })
+
+  it('keeps Never allow, Always ask, network off and protected branches above it', () => {
+    expect(decide({ tool: 'Bash', command: 'gh pr view 12' }, review({ network: false }))).toEqual({ behavior: 'deny', message: NETWORK_OFF })
+    expect(decide({ tool: 'Bash', command: 'git log' }, { ...review(), permissions: { ...rules().permissions, neverAllow: ['git log'] } })?.behavior).toBe('deny')
+    expect(decide({ tool: 'Bash', command: 'git log' }, { ...review(), permissions: { ...rules().permissions, alwaysAsk: ['git log'] } })?.behavior).toBe('ask')
+    expect(decide({ tool: 'Bash', command: toMain }, review({ mode: 'bypassPermissions' }))?.behavior).toBe('deny')
+  })
+
+  it('marks the rules of a workspace that reviews another', () => {
+    const host = { settings: () => ({ permissions: rules().permissions }) as unknown as AppSettings, mode: () => 'acceptEdits' as const, projectAllow: () => [], projectTools: () => [] }
+    expect(rulesOf({ ...host, workspace: { branch: 'b', reviewOf: 'ws-1' } as never }).review).toBe(true)
+    expect(rulesOf({ ...host, workspace: { branch: 'b' } as never })).not.toHaveProperty('review')
   })
 })

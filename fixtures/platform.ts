@@ -1,10 +1,10 @@
-import type { AccountProfile, AgentDef, AppSettings, AppUpdate, ChatItem, DevUiPage, HookProblem, HookStatus, Integration, McpAccount, McpAccountServer, McpServer, McpSignInAll, Modal, PreflightCheck, Provider, ProviderModel, PushCheck, RateLimit, Project, ProjectSettings, ProjectSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
+import type { AccountProfile, AgentDef, AppSettings, RoleModel, Role, AppUpdate, ChatItem, DevUiPage, HookProblem, HookStatus, Integration, McpAccount, McpAccountServer, McpServer, McpSignInAll, Modal, PreflightCheck, Provider, ProviderModel, PushCheck, RateLimit, Project, ProjectSettings, ProjectSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset, Toast } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { mcpCounts } from '@shared/mcpCounts'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import type { Fixture } from './types'
 import { teamFixtures } from './team'
-import { SETUP_RAW, setupData, workspaceFixtures } from './workspace'
+import { along, leadAlong, SETUP_RAW, setupData, workspaceFixtures } from './workspace'
 import { at, base, ids, invaderIcon, scene, tableItems, withWorkspace } from './base'
 
 // Platform lane: setup checks (KERNEL-27), limits and setup failures (KERNEL-28).
@@ -26,7 +26,17 @@ const failing = (failed: PreflightCheck) => allOk.map((c) => (c.id === failed.id
 /** Every check passing, the one at `id` with more to say (KERNEL-437). */
 const passing = (row: PreflightCheck) => allOk.map((c) => (c.id === row.id ? row : c))
 
-const setup = (checks: PreflightCheck[]) => scene(() => ({ ...empty, preflight: checks, ui: onboarding }))
+// A launch after setup is done: the failing check is a toast on New chat, and nothing stops the app (KERNEL-1088).
+const setup = (checks: PreflightCheck[]) => scene(() => ({ ...empty, preflight: checks, settings: setupDone(), ui: onboarding }))
+
+// First run (KERNEL-1088): the four steps, with the checks the first one lists.
+const gitOk: PreflightCheck = { id: 'git', ok: true, blocking: true, title: 'Git', detail: 'Found on your PATH', meta: 'git 2.45' }
+const codexOff: PreflightCheck = { id: 'codex', ok: false, blocking: false, title: 'Codex', detail: 'Not set up' }
+const stepChecks = (...over: PreflightCheck[]) => [claudeOk, gitOk, authOk, ghOk, hooksOk, codexOff].map((c) => over.find((o) => o.id === c.id) ?? c)
+/** Your team as the Pen draws it: Teng left out, Artkin reviews on Opus. */
+const teamSettings = (() => { const d = DEFAULT_SETTINGS('/Users/you'); return { ...d, models: { ...d.models, roles: { ...d.models.roles, reviewer: { ...d.models.roles.reviewer, claude: { model: 'claude-opus-5-5', effort: 'high' as const } } } }, onboarding: { done: false, out: ['teng'], reviewer: 'artkin' } } })()
+const firstRun = (step: 'checks' | 'accounts' | 'team' | 'loop', extra: Partial<Fixture> = {}, menu?: 'obReviewer' | 'obMode' | 'obModel' | 'obAllowed' | 'obDenied') =>
+  scene(() => ({ ...empty, preflight: stepChecks(), telemetry: { canSend: true }, ...extra, ui: { route: { name: 'onboarding', step }, ...(menu ? { menu } : {}) } }))
 
 /** Six running sessions, the count the canvas shows: the seed's chats, topped up with copies. */
 const sixRunning = (f: Fixture) => {
@@ -70,12 +80,21 @@ const gallery = (page: DevUiPage) => scene(() => ({ ...empty, ui: { route: { nam
 
 // KERNEL-25: the app-wide settings pages. The seed's projects fill the nav; Account adds the three usage windows the canvas shows.
 const settingsPage = (page: SettingsPage, extra: Partial<Fixture> = {}) => scene(() => ({ ...extra, ui: { route: { name: 'settings', page } } }))
+/** Settings, About with the updater in one state, and the toasts that state raised (Redesign 15). */
+const aboutPage = (update: AppUpdate, toasts: Toast[] = []): Fixture => { const f = settingsPage('about', { preflight: [], update }); return { ...f, ui: { ...f.ui, toasts } } }
 /** One of Client A's project pages (KERNEL-191). */
 const projectPage = (section: ProjectSettingsSection, extra: Partial<Fixture> = {}, menu?: 'settingsFiles') => scene(() => ({ ...extra, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section }, ...(menu ? { menu } : {}) } }))
 /** Settings with some roles moved, the rest as Kernel ships them (KERNEL-406). */
-const withRoles = (roles: Partial<AppSettings['models']['roles']>): AppSettings => {
+const withRoles = (roles: Partial<Record<Role, RoleModel>>): AppSettings => {
   const d = DEFAULT_SETTINGS('/Users/you')
-  return { ...d, models: { ...d.models, roles: { ...d.models.roles, ...roles } } }
+  const picked = Object.fromEntries(Object.entries(roles).map(([r, m]) => [r, { ...d.models.roles[r as Role], prefer: m.provider, [m.provider]: { model: m.model, effort: m.effort } }]))
+  return { ...d, models: { ...d.models, roles: { ...d.models.roles, ...picked } } }
+}
+/** Settings with some roles' preferred provider or sides moved, the rest as Kernel ships them (KERNEL-1056). */
+const withSides = (roles: Partial<Record<Role, Partial<AppSettings['models']['roles'][Role]>>>): AppSettings => {
+  const d = DEFAULT_SETTINGS('/Users/you')
+  const picked = Object.fromEntries(Object.entries(roles).map(([r, c]) => [r, { ...d.models.roles[r as Role], ...c }]))
+  return { ...d, models: { ...d.models, roles: { ...d.models.roles, ...picked } } }
 }
 /** Codex's models as its model/list answers for a ChatGPT Plus account. */
 const codexModels: ProviderModel[] = [
@@ -114,71 +133,78 @@ const providerUsage = (readAt?: number): RateLimit[] => [
 ]
 const richAccounts: AccountProfile[] = [workClaude, personalClaude, keyAccount('claude'), ownCodex, personalCodex, keyAccount('codex')]
 /** Work's own login has Fable's weekly window at 90% beside its 5-hour and weekly ones (KERNEL-619). */
-const fableWindow: RateLimit = { type: 'seven_day_opus', status: 'allowed_warning', utilization: 0.9, resetsAt: secs(nextOn(1, 9, 0)), model: 'claude-fable-5-1' }
 /** Reset times for the footer canvases: a clock time today, Monday for Claude's weekly window, and more than a week out for Codex's. */
 const inDays = (days: number, h: number, m: number) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(h, m, 0, 0); return d.getTime() }
-// KERNEL-674: the accounts the footer canvases draw. 2nd account and Main account report a Fable window, 3rd account doesn't. Claude Code runs on 2nd account with Main account, a key and 3rd account beside it. Codex runs on its own login with work beside it.
-const secondClaude = subscription('claude', 'cli', '2nd account', 'hazelleespela@gmail.com', 'Claude Pro', { active: true })
-const mainClaude = subscription('claude', 'main', 'Main account', 'main@example.com', 'Claude Max')
+// KERNEL-674, KERNEL-1101: the accounts the footer canvases draw (Pen 14.1 to 14.6). Main account is Claude Code's own login and the one in use, with 2nd account, 3rd account and an API key beside it. Codex runs on its own login.
+const mainClaude = subscription('claude', 'cli', 'Main account', 'you@example.com', 'Claude Max', { active: true })
+const secondClaude = subscription('claude', 'second', '2nd account', 'second@example.com', 'Claude Pro')
 const thirdClaude = subscription('claude', 'third', '3rd account', 'third@example.com', 'Claude Pro')
+const workClaudeAccount = subscription('claude', 'work', 'Work account', 'work@example.com', 'Claude Max')
 const footerKey = (active = false): AccountProfile => ({ id: 'key', provider: 'claude', label: 'API Key', cli: false, auth: 'apiKey', active, signedIn: true })
-const footerCodex = subscription('codex', 'cli', 'cjjutbaofficial', 'cjjutbaofficial@gmail.com', 'ChatGPT Plus', { active: true })
-const workCodex = subscription('codex', 'work', 'work', 'work@example.com', 'ChatGPT Pro')
-const footerUsage = (codex5 = 31, claude5 = 9): RateLimit[] => [
-  window5('claude', 'cli', claude5, next(23, 0)), windowWeek('claude', 'cli', 19, nextOn(1, 3, 0)),
-  { type: 'seven_day_overage_included', status: 'allowed', utilization: 0.04, resetsAt: secs(nextOn(1, 3, 0)) },
-  window5('claude', 'main', 12, next(22, 0)), windowWeek('claude', 'main', 20, nextOn(2, 3, 0)),
-  { type: 'seven_day_overage_included', status: 'allowed', utilization: 0.31, resetsAt: secs(nextOn(2, 3, 0)), accountId: 'main' },
-  window5('claude', 'third', 75, next(22, 30)), windowWeek('claude', 'third', 40, nextOn(3, 3, 0)),
-  window5('codex', 'cli', codex5, next(18, 36)), windowWeek('codex', 'cli', 16, inDays(8, 13, 36)),
-  window5('codex', 'work', 40, next(19, 0)), windowWeek('codex', 'work', 30, inDays(8, 14, 0))
+const footerCodex = subscription('codex', 'cli', 'you@example.com', 'you@example.com', 'ChatGPT Plus', { active: true })
+const footerAccounts = [mainClaude, secondClaude, thirdClaude, footerKey(), footerCodex]
+/** Main account reports a Fable window at 0%, 2nd account reports 5-hour and weekly, and 3rd account only its weekly window, at 96%. The knobs are Codex's 5-hour, Main's 5-hour and Main's weekly use. */
+const footerUsage = (codex5 = 12, claude5 = 11, claudeWeek = 58): RateLimit[] => [
+  window5('claude', 'cli', claude5, next(20, 20)), windowWeek('claude', 'cli', claudeWeek, nextOn(4, 3, 0)),
+  { type: 'seven_day_overage_included', status: 'allowed', utilization: 0, resetsAt: secs(nextOn(4, 3, 0)) },
+  window5('claude', 'second', 36, next(22, 0)), windowWeek('claude', 'second', 53, nextOn(2, 3, 0)),
+  windowWeek('claude', 'third', 96, nextOn(3, 3, 0)),
+  window5('codex', 'cli', codex5, next(19, 5)), windowWeek('codex', 'cli', 31, nextOn(1, 3, 0))
 ]
-/** KERNEL-697: Claude Code with six accounts, so two show inline and the rest fold into "more". Fourth reports nothing yet, and Fifth shares limits with Main account and lacks Opus 5.5. */
-const manyClaude = [
-  subscription('claude', 'fourth', '4th account', 'fourth@example.com', 'Claude Pro'),
-  subscription('claude', 'fifth', 'Fifth account with a long name', 'fifth@example.com', 'Claude Team', { sameOrg: ['main'], missingModels: [{ model: 'claude-opus-5-5', label: 'Opus 5.5', agents: ['Kernel'] }] }),
-  subscription('claude', 'sixth', '6th account', 'sixth@example.com', 'Claude Pro')
-]
+/** Main account near its weekly limit and Codex's 5-hour window full: the footer icon is red (Pen 14.1 and 14.2). */
+const hotUsage = () => footerUsage(100, 11, 90)
+/** Claude Code with a fourth subscription, for the popover that lists many accounts. */
+const manyAccounts = [mainClaude, secondClaude, thirdClaude, workClaudeAccount, footerKey(), footerCodex]
 const manyUsage = (): RateLimit[] => [
-  ...footerUsage(),
-  window5('claude', 'fifth', 22, next(21, 0)), windowWeek('claude', 'fifth', 18, nextOn(4, 3, 0)),
-  window5('claude', 'sixth', 55, next(20, 0)), windowWeek('claude', 'sixth', 33, nextOn(5, 3, 0))
+  ...footerUsage().filter((l) => !(l.accountId === 'second' || l.accountId === 'third')),
+  window5('claude', 'second', 36, next(22, 0)), windowWeek('claude', 'second', 63, nextOn(2, 3, 0)),
+  window5('claude', 'third', 0, next(22, 30)), windowWeek('claude', 'third', 12, nextOn(3, 3, 0)),
+  window5('claude', 'work', 4, next(21, 0)), windowWeek('claude', 'work', 22, nextOn(4, 3, 0))
 ]
-const manyAccounts = [secondClaude, mainClaude, footerKey(), thirdClaude, ...manyClaude, footerCodex]
 /** The home screen with an update ready, so the footer has its pill, and the Claude Code and Codex accounts above (KERNEL-674). */
 const usageHome = (extra: Partial<Fixture> = {}, ui: Partial<Fixture['ui']> = {}): Fixture => ({
-  ...teamFixtures.UpdateReady, accounts: [secondClaude, mainClaude, footerKey(), thirdClaude, footerCodex], usage: footerUsage(), ...extra, ui: { ...teamFixtures.UpdateReady.ui, ...ui }
+  ...teamFixtures.UpdateReady, accounts: footerAccounts, usage: footerUsage(), ...extra, ui: { ...teamFixtures.UpdateReady.ui, ...ui }
 })
 /** The footer after a switch: the accounts push comes first, as it does from the engine, so the notice can name both accounts (KERNEL-699). */
 const switchedHome = (accounts: AccountProfile[], switched: PushEvent): Fixture => usageHome({ accounts, push: [{ type: 'accounts', accounts }, switched] })
 /** The popover open over the same home, in Detailed unless `view` says Compact. */
 const usagePopover = (extra: Partial<Fixture> = {}, ui: Partial<Fixture['ui']> = {}): Fixture => usageHome(extra, { menu: 'plan', ...ui })
+// Redesign 15 (Pen 15.4): Main account is Claude Code's own login, in use with two chats on it, beside a 2nd account and an API key, and Codex runs on its own login.
+const pageMain: AccountProfile = { ...mainClaude, chats: 2, mcpSignIns: [] }
+const pageSecond: AccountProfile = { ...secondClaude, mcpSignIns: [] }
+const pageAccounts: AccountProfile[] = [pageMain, pageSecond, footerKey(), footerCodex]
+const pageUsage = (): RateLimit[] => [
+  window5('claude', 'cli', 11, next(20, 20)), windowWeek('claude', 'cli', 90, nextOn(4, 3, 0)),
+  { type: 'seven_day_overage_included', status: 'allowed', utilization: 0, resetsAt: secs(nextOn(4, 3, 0)) },
+  window5('claude', 'second', 36, next(19, 5)), windowWeek('claude', 'second', 53, nextOn(5, 9, 0)),
+  window5('codex', 'cli', 12, next(19, 5)), windowWeek('codex', 'cli', 31, nextOn(1, 3, 0))
+]
 /** Settings, Accounts with each account's nickname, plan and usage windows (KERNEL-561, KERNEL-680). `tab` scrolls to that provider. */
 const providersPage = (tab: Provider, extra: Partial<Fixture> = {}) => scene(() => ({
-  accounts: richAccounts,
+  accounts: pageAccounts,
   providerStatus,
-  usage: providerUsage(),
+  usage: pageUsage(),
   ...extra,
-  ui: { route: { name: 'settings', page: 'accounts', tab } }
+  ui: { route: { name: 'settings', page: 'accounts', tab }, ...extra.ui }
 }))
-/**
- * Work, the account in use, hit its weekly limit with switching off, so the page's banner offers Personal, which is past 75% of its
- * 5-hour window: one red meter and one amber (feat-providers-redesign).
- */
+/** Main account, the account in use, hit its 5-hour limit and is near its weekly one, with switching off: the row says At limit and the meters turn red and amber (Pen 15.31). */
 const limitUsage = (): RateLimit[] => [
-  window5('claude', 'cli', 3, next(16, 10)), { ...windowWeek('claude', 'cli', 100, next(4, 0)), status: 'rejected' },
-  window5('claude', 'personal', 82, next(11, 20)), windowWeek('claude', 'personal', 10, nextOn(1, 3, 0)),
-  window5('codex', 'cli', 7, next(16, 15)), windowWeek('codex', 'cli', 21, nextOn(4, 8, 0))
+  { ...window5('claude', 'cli', 100, next(20, 20)), status: 'rejected' }, windowWeek('claude', 'cli', 91, nextOn(4, 3, 0)),
+  window5('claude', 'second', 36, next(19, 5)), windowWeek('claude', 'second', 53, nextOn(5, 9, 0)),
+  window5('codex', 'cli', 12, next(19, 5)), windowWeek('codex', 'cli', 31, nextOn(1, 3, 0))
 ]
+/** Both Claude subscriptions at their weekly limit, so the page says Claude Code is on hold and offers the API key (KERNEL-1043). */
 const holdUsage = (): RateLimit[] => [
-  window5('claude', 'cli', 3, next(16, 10)), { ...windowWeek('claude', 'cli', 100, next(4, 0)), status: 'rejected' },
-  window5('claude', 'personal', 12, next(11, 20)), { ...windowWeek('claude', 'personal', 100, nextOn(1, 3, 0)), status: 'rejected' },
-  window5('codex', 'cli', 7, next(16, 15)), windowWeek('codex', 'cli', 21, nextOn(4, 8, 0))
+  window5('claude', 'cli', 3, next(20, 20)), { ...windowWeek('claude', 'cli', 100, nextOn(4, 3, 0)), status: 'rejected' },
+  window5('claude', 'second', 12, next(19, 5)), { ...windowWeek('claude', 'second', 100, nextOn(5, 9, 0)), status: 'rejected' },
+  window5('codex', 'cli', 12, next(19, 5)), windowWeek('codex', 'cli', 31, nextOn(1, 3, 0))
 ]
-const holdPage = () => scene(() => ({ accounts: richAccounts, providerStatus, usage: holdUsage(), ui: { route: { name: 'settings', page: 'accounts' } } }))
-const limitPage = () => providersPage('claude', { usage: limitUsage(), settings: { ...DEFAULT_SETTINGS('/Users/you'), accounts: { ...DEFAULT_SETTINGS('/Users/you').accounts, switchAtLimit: { claude: false, codex: false } } } })
+const noSwitching = { ...DEFAULT_SETTINGS('/Users/you'), accounts: { ...DEFAULT_SETTINGS('/Users/you').accounts, switchAtLimit: { claude: false, codex: false } } }
+const limitPage = () => providersPage('claude', { usage: limitUsage(), settings: noSwitching })
+/** A switch to 2nd account that has started and is waiting on its call (Pen 15.31, A switch waits for running turns). */
+const holdPage = () => providersPage('claude', { ui: { route: { name: 'settings', page: 'accounts', tab: 'claude' }, switching: { provider: 'claude', accountId: 'second' } } })
 /** The Add account sheet is opened from the page's button, and a sign-in that waits on the browser is the engine's `account.add` step. */
-const addAccountPage = (tab: Provider, step?: 'browser' | 'code') => providersPage(tab, step ? { push: [{ type: 'account.add', add: { provider: tab, step, url: tab === 'claude' ? 'https://claude.ai/oauth/authorize' : 'https://auth.openai.com/oauth/authorize' } }] } : {})
+const addAccountPage = (tab: Provider, waiting = false) => providersPage(tab, waiting ? { push: [{ type: 'account.add', add: { provider: tab, step: 'browser', url: tab === 'claude' ? 'https://claude.ai/oauth/authorize' : 'https://auth.openai.com/oauth/authorize' } }] } : {})
 
 // KERNEL-26, KERNEL-191: the project pages read their own project's .kernel files, so the fixture gives Client A the values the canvas shows.
 // `sources` says which file set what: both files are there, so the settings files button offers both.
@@ -233,7 +259,7 @@ const envProjectA: Partial<Fixture> = {
   ...clientA({ env: { files: envFiles }, sources: { ...kernelFiles.sources, 'env.files': 'local' } }),
   env: { projects: { [ids.projectA]: { names: ['DATABASE_URL', 'STRIPE_SECRET_KEY'], files: envFiles.map((path) => ({ path, missing: path.startsWith('src/') })) } } }
 }
-const prSettings = { ...DEFAULT_SETTINGS('/Users/you'), pr: { ...DEFAULT_SETTINGS('/Users/you').pr, autoMerge: { on: false, maxLines: 200, alwaysReview: ['infra/**', 'scripts/release.sh'], withoutReview: false }, createInstructions: '# Create a pull request\n1. Rebase on origin/main and run pnpm test\n2. Title it as a Conventional Commit\n3. Fill in summary, scope and risk', resolveInstructions: '# Resolve conflicts\n1. Rebase on origin/main\n2. Re-run pnpm test and pnpm typecheck', fixChecksInstructions: '# Fix failing checks\n1. Read the failing job log\n2. Fix the cause, not the test\n3. Push and wait for the checks', addressReviewInstructions: '# Address review comments\n1. Read every open thread\n2. Change the code or reply with a reason\n3. Push and resolve the threads' } }
+const prSettings = { ...DEFAULT_SETTINGS('/Users/you'), pr: { ...DEFAULT_SETTINGS('/Users/you').pr, autoMerge: { on: false, maxLines: 400, alwaysReview: ['src/main/db.ts', 'electron-builder.yml'], withoutReview: false }, fixChecksInstructions: '# Fix failing checks\n1. Read the failing job log\n2. Fix the cause, not the test\n3. Push and wait for the checks' } }
 /** What approvals saved with Always allow in this project. The gh one is long enough to clamp to two lines. */
 const projectRules = [
   'pnpm test', 'pnpm typecheck',
@@ -323,10 +349,12 @@ const manyServers = (): McpAccount[] => {
   const plugins = ['github', 'vercel', 'figma', 'linear', 'sentry', 'superpowers'].map((n): McpAccountServer => server(`plugin:${n}:${n}`, 'plugin'))
   return [mcpAcrossAccounts[0], counted({ ...mcpAcrossAccounts[1], servers: [...user, ...connectors, ...plugins] })]
 }
-const signInAllRun: McpSignInAll = { accountId: 'personal', servers: ['Linear', 'claude.ai Gmail', 'claude.ai Google Drive'], current: 'claude.ai Gmail', done: ['Linear'], failed: [] }
-const signInAllFailed: McpSignInAll = { ...signInAllRun, current: undefined, done: ['Linear', 'claude.ai Gmail'], failed: [{ server: 'claude.ai Google Drive', error: 'The sign-in was not finished in the browser.' }], finished: true }
 const mcpPage = (extra: Partial<Fixture>, route: { tab?: Provider; account?: string } = { account: 'personal' }) => scene(() => ({ ...clientA(), mcp: mcpAcrossServers, mcpAccounts: mcpAcrossAccounts, accounts: [workClaude, personalClaude, ownCodex], ...extra, ui: { route: { name: 'settings', page: 'mcp', ...route }, ...extra.ui } }))
 const setUpModal: Modal = { name: 'mcpSetUp', provider: 'claude', accountId: 'personal' }
+// Redesign 15 (Pen 15.31): two MCP servers on 2nd account need a sign-in. The run is on Linear, then ends with Linear refused.
+const secondNeeds = [{ server: 'Linear', connector: false }, { server: 'Figma', connector: false }]
+const secondRun: McpSignInAll = { accountId: 'second', servers: ['Linear', 'Figma'], current: 'Linear', done: [], failed: [] }
+const secondFailed: McpSignInAll = { ...secondRun, current: undefined, finished: true, failed: [{ server: 'Linear', error: 'The browser window closed before sign-in finished.' }] }
 /** Two Codex accounts that list the same servers, which the page shows as one Codex tab (KERNEL-660). */
 const sharedCodex = (): McpAccount[] => {
   const [, , codex] = mcpAcrossAccounts
@@ -334,7 +362,6 @@ const sharedCodex = (): McpAccount[] => {
 }
 const setUpRun: McpSignInAll = { accountId: 'personal', servers: ['Linear', 'Vercel', 'claude.ai Gmail', 'claude.ai Google Drive', 'claude.ai Notion'], current: 'Vercel', done: ['Linear'], failed: [], ignored: ['plugin:vercel:vercel'] }
 const setUpConnect = { provider: 'claude' as const, accountId: 'personal', email: 'cj@jutba.example', url: connectUrl, servers: ['claude.ai Gmail', 'claude.ai Google Drive', 'claude.ai Notion'] }
-const personalMcpSignIns = [{ server: 'Linear', connector: false }, { server: 'claude.ai Gmail', connector: true }, { server: 'claude.ai Google Drive', connector: true }]
 /** As Kernel resolves them (KERNEL-397): Kernel leads, and Artkin reviews with tools that can't open a PR, so takes no tasks. */
 const agentFile = (id: string, name: string, role: string, description: string): AgentDef => ({ id, name, role, description, lead: id === 'kernel-lead', reviewer: id === 'artkin', member: id !== 'kernel-lead' && id !== 'artkin', prompt: '', ...(id === 'kernel-lead' ? { builtIn: 'lead' as const, file: '' } : { file: `.claude/agents/${id}.md` }), model: id === 'kernel-lead' || id === 'artkin' ? 'opus' : 'sonnet' })
 const sixAgents: AgentDef[] = [
@@ -342,8 +369,13 @@ const sixAgents: AgentDef[] = [
   agentFile('sean', 'Sean', 'Backend', 'Schema, API, migrations'), agentFile('teng', 'Teng', 'QA', 'Runs tests, attaches output'),
   agentFile('artkin', 'Artkin', 'Reviewer', 'Types, security, tenancy'), agentFile('wren', 'Wren', 'Designer', 'Joined today')
 ]
+/** Christian as Pen 15.9 draws him: a repo file with a model, tools and skills of his own. */
+const christianProfile: AgentDef = { ...agentFile('christian', 'Christian', 'Frontend', 'Builds UI from approved plans and checks each screen.'), model: 'sonnet', effort: 'medium', tools: ['Read', 'Edit', 'Write', 'Bash'], skills: ['/shots', '/issue'], prompt: 'You are Christian, the frontend engineer.\nBuild UI from approved plans. Follow DESIGN.md when the repo has one.\nMatch the screenshot or mock in the brief. Check your work with pnpm shots.\n\nKeep each PR to one task.' }
+const christianTeam = sixAgents.map((a) => (a.id === 'christian' ? christianProfile : a))
 /** The agents Settings, Models lists under each row: Frontend and Backend in two projects, one pinned to a model, one with a custom role. */
-const modelsPage = () => settingsPage('models', { agents: modelsAgents(), status: {}, settings: withRoles({ frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' } }), models: { codex: codexModels } })
+/** Settings once onboarding is finished, so a failing check shows as a toast instead of the first-run steps (KERNEL-1088). */
+function setupDone(): AppSettings { const d = DEFAULT_SETTINGS('/Users/you'); return { ...d, onboarding: { ...d.onboarding, done: true } } }
+const modelsPage = (roles: Partial<Record<Role, RoleModel>> = {}) => settingsPage('models', { agents: modelsAgents(), status: {}, settings: withRoles({ frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' }, ...roles }), models: { codex: codexModels } })
 const modelsAgents = (): Fixture['agents'] => {
   const christian = agentFile('christian', 'Christian', 'Frontend', 'UI work, follows DESIGN.md')
   const sean = { ...agentFile('sean', 'Sean', 'Backend', 'Schema, API, migrations'), model: undefined }
@@ -388,53 +420,51 @@ const extraAgents: AgentDef[] = [
   { ...agentFile('vercel:deployment-expert', 'Deployment Expert', 'Specialist', 'Debugs failed deployments'), origin: 'plugin', file: '', member: true, prompt: 'You debug failed deployments. Read the build log first, then the config that produced it.' }
 ]
 const integrationRows: Integration[] = [
-  { id: 'github', name: 'GitHub', connected: true, detail: 'Through the GitHub CLI as cjjutba' },
-  { id: 'linear', name: 'Linear', connected: false, detail: 'Create workspaces from issues' }
+  { id: 'github', name: 'GitHub', connected: true, detail: 'Signed in with gh as cjjutba. Repos, pull requests, checks and issues.' },
+  { id: 'linear', name: 'Linear', connected: false, detail: 'Not connected. Issues open as workspaces once it is.' }
 ]
 
 /** The same screen as `src`, drawn in the light theme (HomeLight.png, WorkspaceLight.png). */
 const light = (src: Fixture): Fixture => ({ ...src, ui: { ...src.ui, theme: 'light' } })
 
-// What's new: 0.6.0's notes as the updater reads them (scripts/notes.ts renderApp). New features have titles, and
-// Improved and Fixed come as one note per area, long enough to fold into rows.
+// What's new (Redesign 17): 0.43.0's notes as the updater reads them (scripts/notes.ts renderApp). New features have titles, and
+// Improved and Fixed come as one note per area, shown as rows.
 const whatsNewNotes = [
-  { title: 'Pull requests page', body: 'Every open pull request across your projects, with checks, review and conflicts, and Merge on the ready ones.' },
-  { title: 'Work in the sidebar', body: 'Issues and Pull requests share one entry, with a tab for each and an All projects picker. Press 1 or 2 to switch.' },
-  { title: 'History in the bottom bar', body: 'A History button next to Help opens History for all projects.' },
-  { title: 'Attach any file', body: "Up to 50 MB each. The chip shows the file's type and size." },
-  { title: 'Chats reopen where you left them', body: 'Even after a restart. Scroll to bottom shows how many messages arrived while you read higher up.' },
-  { title: 'Switch modes with ⌘⇧H', body: 'Moves a chat with Kernel between Hand off and Build here.' },
-  { title: 'Improved', body: 'Rooms are now called projects everywhere in Kernel.' },
-  { title: 'Improved: Chat', body: 'Sending a message shows it at the end of the chat at once, and the chat stays at the end while the reply streams.\nA long chat opens in place after a restart without moving as it draws.\nA running turn shows its timer on its own line under the work, and says when it is waiting for you.\nKernel answers questions without ending on an offer to file or hand off the work.' },
-  { title: 'Improved: Issues and pull requests', body: 'Work, Issues shows the last list and the last issue you read at once when you come back, then refreshes in the background.\nThe Lead\'s PRs tab shows an approved review in green and a failing state in red, each with a small icon.\nHovering Not reviewed on a pull request says when automatic review is off.' },
-  { title: 'Improved: Message box and models', body: 'The model picker has a rail to switch between Favorites, Claude and Codex, with older models folded under Legacy models.\nA draft in a message box comes back with the cursor and scroll where you left them.\nThe composer no longer suggests your next message.' },
-  { title: 'Improved: Keyboard', body: 'Escape stops a running turn, and Stop stays available while you type.\nInbox, Issues, Projects, Pull requests and History share the same list keys.' },
-  { title: 'Improved: Accounts and usage', body: 'Kernel moves to an account with room before the one in use hits its limit, unless you turn it off in Settings, Accounts.' },
-  { title: 'Fixed: Chat', body: 'Fixed a chat drifting toward the bottom each time you left it and came back.\nFixed long commands in a turn\'s steps running past the edge of the chat.\nFixed Edit and Cancel flashing under a message right after starting a new chat.\nFixed a chat with a plan waiting shaking after you switch to another chat and back.' },
-  { title: 'Fixed: Agents', body: 'Fixed agents being asked to rebase a branch they had already pushed, which they then couldn\'t push.\nFixed a frontend agent\'s profile and composer showing the Backend effort from Settings, Models.' },
-  { title: 'Fixed: Look and feel', body: 'Fixed the window buttons drifting off the top bar after zooming the window in or out.\nFixed the sidebar button shifting slightly when the sidebar is shown or hidden.' }
+  { title: 'Automatic review is on by default', body: "Every pull request gets a review unless you turn it off in Settings, Pull requests. If you turned it off before, it stays off." },
+  { title: 'Evidence on the pull request', body: 'Kernel can keep one comment on GitHub that lists each acceptance criterion and its state. Turn it on in Settings, Pull requests.' },
+  { title: 'Improved: Pull requests', body: 'The PRs panel shows each check as it finishes.\nMerge waits for required checks, then tries once more.' },
+  { title: 'Improved: Chat with Kernel', body: 'A reply that changed files ends with the files it changed.' },
+  { title: 'Fixed: Chat with Kernel', body: 'Fixed a chat losing its draft after a restart.\nFixed a long command running past the edge of a step.' },
+  { title: 'Fixed: Pull requests', body: 'Fixed the PRs panel showing a merged PR as open.' },
+  { title: 'Fixed: Settings', body: 'Fixed a rule in Settings, Hooks being forgotten after a restart.' }
 ]
 const whatsNewModal = { ...teamFixtures.UpdateReady.ui, modal: { name: 'whatsNew' as const } }
 const whatsNew: Fixture = {
   ...teamFixtures.UpdateReady,
-  update: { status: 'ready', current: '0.5.0', version: '0.6.0', notes: whatsNewNotes },
+  update: { status: 'ready', current: '0.42.0', version: '0.43.0', notes: whatsNewNotes },
   ui: whatsNewModal
 }
 // What's new opened from the sidebar with no update ready (KERNEL-154): the running version's notes and Done.
-const whatsNewCurrent: Fixture = { ...teamFixtures.UpdateReady, update: { status: 'idle', current: '0.6.0', currentNotes: whatsNewNotes }, ui: whatsNewModal }
-/** What's new opened from the sidebar while the updater is in `update`'s state, over the running 0.6.0's notes. */
-const whatsNewWith = (update: Partial<AppUpdate>): Fixture => ({ ...whatsNewCurrent, update: { status: 'idle', current: '0.6.0', currentNotes: whatsNewNotes, ...update } })
-// 0.6.0's notes, published before titles and areas: three flat lists. New shows in full, the rest fold after five.
+const whatsNewCurrent: Fixture = { ...teamFixtures.UpdateReady, update: { status: 'idle', current: '0.43.0', currentNotes: whatsNewNotes }, ui: whatsNewModal }
+/** What's new opened from the sidebar while the updater is in `update`'s state, over the running 0.43.0's notes. */
+const whatsNewWith = (update: Partial<AppUpdate>): Fixture => ({ ...whatsNewCurrent, update: { status: 'idle', current: '0.43.0', currentNotes: whatsNewNotes, ...update } })
+// 0.39.0's notes, published before titles and areas: a flat list for each section, folded into one row.
 const flatNotes = [
-  { title: 'New', body: whatsNewNotes.slice(0, 6).map((n) => `${n.title}. ${n.body}`).concat('File paths that agents mention in chat open the file in a tab when you click them.', 'Command Shift H switches a chat with Kernel between Hand off and Build here.', 'You can attach any file to a message, up to 50 MB each.').join('\n') },
-  { title: 'Improved', body: whatsNewNotes.filter((n) => n.title.startsWith('Improved')).flatMap((n) => n.body.split('\n')).join('\n') },
-  { title: 'Fixed', body: whatsNewNotes.filter((n) => n.title.startsWith('Fixed')).flatMap((n) => n.body.split('\n')).join('\n') }
+  { title: 'Improved', body: 'Chats remember their scroll position.\nThe composer keeps a draft per chat.\nSearch finds archived chats.' },
+  { title: 'Fixed', body: 'Fixed a chat jumping to the top after a restart.\nFixed Search missing a chat renamed a moment ago.' }
 ]
-// A patch with one short Fixed section lists it flat, with no area rows.
+const whatsNewFlat: Fixture = { ...whatsNew, update: { status: 'ready', current: '0.38.2', version: '0.39.0', notes: flatNotes } }
+// A patch with one short Fixed list: it lists open, with no row to fold it.
 const whatsNewPatch: Fixture = {
   ...whatsNew,
-  update: { status: 'ready', current: '0.6.0', version: '0.6.1', notes: [{ title: 'Fixed', body: 'Fixed long commands in a turn\'s steps running past the edge of the chat.\nFixed the Back and Forward buttons missing from the sidebar in Settings.' }] }
+  update: { status: 'ready', current: '0.43.0', version: '0.43.1', notes: [{ title: 'Fixed', body: 'Fixed a chat losing its draft after a restart.\nFixed the PRs panel showing a merged PR as open.' }] }
 }
+/** The toast that says a restart failed (Pen 17.4, WhatsNewRestartFailed). */
+const restartFailedToast: Toast = { id: 'upd-restart', title: "Couldn't restart Kernel", sub: "The installer didn't start. Your agents kept working.", glyph: 'error', action: { label: 'Try again', retry: 'update-install', primary: true } }
+/** The toast that says a check failed (Pen 17.4, WhatsNewCheckFailed). */
+const checkFailedToast: Toast = { id: 'upd-check', title: "Couldn't check for updates", sub: "GitHub releases didn't answer.", glyph: 'error', action: { label: 'Try again', retry: 'update-check', primary: true } }
+/** A check that failed on the running version, with no notes to show: a calm body and a toast. */
+const whatsNewCheckFailed: Fixture = { ...whatsNewWith({ status: 'error', error: 'net::ERR_CONNECTION_TIMED_OUT', currentNotes: undefined }), ui: { ...whatsNewModal, toasts: [checkFailedToast] } }
 
 /** KERNEL-251: Codex is on the PATH and one custom command is saved, as SettingsBigTerminal.png and WorkspaceTerminalPresets.png draw them. */
 const codex: TerminalPreset = { id: 'codex', name: 'Codex', command: 'codex', builtin: true, skipsPermissions: false }
@@ -443,26 +473,6 @@ const bigTerminal: Partial<Fixture> = {
   terminalClis: [codex]
 }
 
-
-/** Kernel's chat in its own workspace while its setup runs, or once it failed with `code`, the first message in the queue (KERNEL-405). */
-function leadSetup(f: Fixture, lines: Omit<ScriptLine, 'kind'>[], code?: number): Partial<Fixture> {
-  const queue = [{ id: 'q-lead', chatId: ids.leadChat, parts: [{ type: 'text' as const, text: 'Add PDF export to invoices. Spec first.' }], ts: at(10, 40) }]
-  return {
-    ...clientA({ scripts: { ...kernelFiles.scripts, setup: 'pnpm install --frozen-lockfile' } }),
-    workspaces: withWorkspace(f, ids.lead, { status: code === undefined ? 'setup' : 'failed', name: 'add-pdf-export-to-invoices', branch: 'kernel/add-pdf-export-to-invoices' }),
-    threads: [{ id: 't-lead', projectId: ids.projectA, title: 'Add PDF export to invoices', createdAt: at(10, 40) }],
-    chats: f.chats.map((c) => (c.id === ids.leadChat ? { ...c, title: 'New tab' } : c)),
-    items: {},
-    queue: { [ids.leadChat]: queue },
-    push: [
-      ...f.push,
-      { type: 'chat.queue', chatId: ids.leadChat, queue, why: 'setup' },
-      ...lines.map((l): PushEvent => ({ type: 'script.output', workspaceId: ids.lead, kind: 'setup', lines: [l] })),
-      ...(code === undefined ? [] : [{ type: 'script.exit' as const, workspaceId: ids.lead, kind: 'setup' as const, code }])
-    ],
-    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'files', leadRight: 'files', bottom: 'setup' }, tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: [], diffs: [] } } }
-  }
-}
 
 const projectGitToast: Fixture = (() => { const f = projectPage('git', { ...clientA({}), branches: ['origin/main'], ...pushCheck('ok') }); return { ...f, ui: { ...f.ui, toasts: [{ id: 'esc', title: 'Could not save the setting' }] } } })()
 
@@ -478,28 +488,60 @@ const scriptsPage = projectPage('setup', clientA({
     sources: { ...kernelFiles.sources, 'scripts.setup': 'override', 'runScripts.run': 'override', 'runScripts.frontend': 'local', 'runScripts.backend': 'local', 'preview.urls': 'shared' }
   }))
 
+/** Client A's Pull requests page: three reviews with their own agents and models, rules from both files, and a custom Create PR instruction. */
+const projectPrs = scene((f) => ({
+  ...clientA({
+    review: {
+      rounds: 2,
+      kinds: {
+        code: { enabled: true, paths: [], required: true, model: 'claude-opus-5-5', provider: 'claude' },
+        security: { enabled: true, paths: ['src/api/**', 'src/auth/**', 'db/migrations/**'], required: true, agent: 'artkin', model: 'claude-opus-5-5', provider: 'claude' },
+        ux: { enabled: true, paths: ['src/renderer/**/*.tsx', '**/*.css'], required: false, agent: 'wren', model: 'claude-sonnet-5-5', provider: 'claude' }
+      }
+    },
+    // KERNEL-594: the shared `[merge] always_review`, as the canvas's box lists it.
+    merge: { alwaysReview: ['src/billing/**', 'db/migrations/**'] },
+    pr: { ...kernelFiles.pr, mergeMethod: 'rebase', optionalChecks: ['Vercel*', 'codecov/patch'] },
+    sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local', 'pr.optionalChecks': 'shared' }
+  }),
+  agents: { ...f.agents, [ids.projectA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
+  ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'prs' } }
+}))
+
+/** Client A's Environment page (KERNEL-914): variables, env files with one missing from the checkout, and Files to copy with what they match. */
+const projectEnvPage: Fixture = scene((f) => ({
+    ...envProjectA,
+    ...clientA({ env: { files: envFiles }, files: { copy: ['.env*', 'certs/*.pem', '.npmrc'], symlinkNodeModules: false }, sources: { ...kernelFiles.sources, 'env.files': 'local', 'files.copy': 'shared' } }),
+    projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, path: '/Users/you/Projects/client-a' } : r)),
+    localFiles: { [ids.projectA]: ['.env', '.env.development', '.env.local', '.env.production', '.env.test', '.npmrc', 'certs/ca.pem', 'certs/dev.pem', 'certs/localhost.pem'].map((path, i) => ({ path, size: 96 + i * 31 })) },
+    ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'environment' } }
+  }))
+
 export const platformFixtures: Record<string, Fixture> = {
   WhatsNew: whatsNew,
-  // Restart to update stays busy as Restarting while the install call is out, with Later off beside it.
+  // Restart to update stays busy as Restarting while the install call is out, with Later gone beside it.
   WhatsNewRestarting: { ...whatsNew, lag: { 'update.install': 60_000 }, motion: { action: { click: 'Restart to update' }, ms: 400, area: '.modal' } },
-  // A restart that fails says why above the buttons, and Restart to update becomes Try again.
-  WhatsNewRestartFailed: { ...whatsNew, fails: { 'update.install': 'No update is ready' }, motion: { action: { click: 'Restart to update' }, ms: 400, area: '.modal' } },
+  // A restart that fails leaves the dialog as it was, and a toast says why with Try again.
+  WhatsNewRestartFailed: { ...whatsNew, ui: { ...whatsNewModal, toasts: [restartFailedToast] } },
   WhatsNewPatch: whatsNewPatch,
-  WhatsNewInstalled: { ...whatsNew, update: { status: 'idle', current: '0.6.0', version: '0.6.0', installed: true, notes: whatsNewNotes } },
+  WhatsNewInstalled: { ...whatsNew, update: { status: 'idle', current: '0.43.0', version: '0.43.0', installed: true, notes: whatsNewNotes } },
   WhatsNewLight: light(whatsNew),
   WhatsNewCurrent: whatsNewCurrent,
-  // A release from before titles and areas, with the area rows' fixture open on Fixed so the stuck heading shows its hairline.
-  WhatsNewFlat: whatsNewWith({ currentNotes: flatNotes }),
-  WhatsNewFlatOpen: { ...whatsNewWith({ currentNotes: flatNotes }), motion: { action: { click: 'Show 3 more' }, ms: 300, area: '.modal' } },
-  WhatsNewGroupOpen: { ...whatsNew, motion: { action: { click: 'Issues and pull requests 3' }, ms: 300, area: '.modal' } },
+  // A release from before titles and areas: each list folds into one row, and the second opens on its changes.
+  WhatsNewFlat: whatsNewFlat,
+  WhatsNewFlatOpen: { ...whatsNewFlat, motion: { action: { click: 'Show 3 changes' }, ms: 300, area: '.modal' } },
+  WhatsNewGroupOpen: { ...whatsNew, motion: { action: { click: 'Pull requests 2' }, ms: 300, area: '.modal' } },
   // Opened before Kernel answers update.get: Loading release notes.
   WhatsNewLoading: { ...whatsNewCurrent, update: undefined, lag: { 'update.get': 60_000 } },
   // A dev run, or a release without notes.
-  WhatsNewEmpty: whatsNewWith({ currentNotes: [] }),
-  WhatsNewDownloading: whatsNewWith({ status: 'downloading', version: '0.7.0', progress: 42 }),
-  WhatsNewCheckFailed: whatsNewWith({ status: 'error', error: 'net::ERR_INTERNET_DISCONNECTED' }),
+  WhatsNewEmpty: { ...whatsNew, update: { status: 'ready', current: '0.43.1', version: '0.43.2', notes: [] } },
+  // The next version's notes while it downloads, with the percentage in the footer and Restart to update waiting.
+  WhatsNewDownloading: { ...whatsNew, update: { status: 'downloading', current: '0.43.0', version: '0.44.0', progress: 62, notes: [{ title: 'Several projects in one chat', body: 'Mention a second project with @ and Kernel works in both.' }] } },
+  WhatsNewCheckFailed: whatsNewCheckFailed,
   // Try again on a failed check spins as Trying again until the check answers.
-  WhatsNewCheckRetrying: { ...whatsNewWith({ status: 'error', error: 'net::ERR_INTERNET_DISCONNECTED' }), lag: { 'update.check': 60_000 }, motion: { action: { press: ['Tab', 'Tab', 'Tab', 'Enter'] }, ms: 400, area: '.modal' } },
+  WhatsNewCheckRetrying: { ...whatsNewCheckFailed, ui: whatsNewModal, lag: { 'update.check': 60_000 }, motion: { action: { click: 'Try again' }, ms: 400, area: '.modal' } },
+  // The title bar's Update pill in a workspace, where it sits left of the right panel's toggle.
+  UpdateReadyWorkspaceNoSidebar: { ...workspaceFixtures.Workspace, update: { status: 'ready', current: '0.42.0', version: '0.43.0' }, ui: { ...workspaceFixtures.Workspace.ui, sidebar: false } },
   // The update card in the light theme (KERNEL-164). UpdateReady shows it in dark; no PNG draws it.
   UpdateReadyLight: light(teamFixtures.UpdateReady),
   WorkspaceLight: light(workspaceFixtures.Workspace),
@@ -508,144 +550,140 @@ export const platformFixtures: Record<string, Fixture> = {
   // Open at login is off by default since KERNEL-57; the canvas draws it on.
   Settings: settingsPage('general', { settings: { ...DEFAULT_SETTINGS('/Users/you'), general: { ...DEFAULT_SETTINGS('/Users/you').general, openTo: 'lastPlace', openAtLogin: true } } }),
   SettingsAppearance: settingsPage('appearance'),
-  SettingsNotifications: settingsPage('notifications'),
+  // Redesign 15: quiet hours on for the night, and a finished workspace stays quiet.
+  SettingsNotifications: settingsPage('notifications', { settings: { ...DEFAULT_SETTINGS('/Users/you'), notifications: { ...DEFAULT_SETTINGS('/Users/you').notifications, finished: false, quietHours: { from: '22:00', to: '08:00' } } } }),
   SettingsShortcuts: settingsPage('shortcuts'),
   // KERNEL-406, KERNEL-974: Frontend runs on Codex and Backend on Opus, each on its own row. The rest stay on their defaults.
   // KERNEL-974: Christian and Sean in two projects, Mira on her own model, and Rio with a custom role that lands under Backend. QA has no one.
   SettingsModels: settingsPage('models', { agents: modelsAgents(), status: {}, settings: withRoles({ frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' } }), models: { codex: codexModels } }),
+  // KERNEL-1056: every role holds a Claude and a Codex pick. Frontend prefers Codex, QA prefers Claude with its own Codex fallback, and the rest keep their defaults.
+  SettingsModelsFallback: settingsPage('models', { agents: modelsAgents(), status: {}, settings: withSides({ frontend: { prefer: 'codex', codex: { model: 'gpt-6-astra', effort: 'medium' } }, qa: { codex: { model: 'gpt-5.6-sol', effort: 'low' } }, engineers: { claude: { model: 'claude-opus-5-5', effort: 'xhigh' } } }), models: { codex: codexModels } }),
   // KERNEL-988: a role's Model cell opens the model picker under it, on Claude, on Codex, and with the Legacy models flyout open.
   SettingsModelsPicker: modelsPage(),
   SettingsModelsPickerCodex: modelsPage(),
-  SettingsModelsPickerLegacy: modelsPage(),
+  // Pen 15.34: Backend on a legacy model with the flyout open, Frontend moving from Claude to Codex, and QA on Haiku with a search typed.
+  SettingsModelsPickerLegacy: modelsPage({ engineers: { provider: 'claude', model: 'claude-sonnet-4-6', effort: 'medium' } }),
   // KERNEL-995: one chip per role and an agent count. The large fixture is the real setup, to check every row is as tall as the next.
   SettingsModelsLarge: largeModels(),
   SettingsModelsAgents: largeModels(),
-  // No agent follows the QA row, but Teng pins its own model, so the count still opens and lists only that agent.
+  // No agent follows the QA row, but Teng pins its own model, so QA says "No agents" and the count still opens and lists only that agent.
   SettingsModelsAgentsNone: settingsPage('models', { agents: { ...modelsAgents(), [ids.projectA]: [...modelsAgents()[ids.projectA], agentFile('teng', 'Teng', 'QA', 'Runs tests, attaches output')] }, status: {}, settings: withRoles({ frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' } }), models: { codex: codexModels } }),
   SettingsModelsPickerEffort: modelsPage(),
-  SettingsModelsPickerCompact: modelsPage(),
-  SettingsModelsPickerCodexRole: modelsPage(),
+  // Pen 15.38: Agent teams on, with its two rules under it.
+  SettingsModelsAgentTeams: settingsPage('models', { agents: modelsAgents(), status: {}, settings: ((d) => ({ ...d, models: { ...d.models, agentTeams: true, agentLimit: 4 }, hooks: { ...d.hooks, requireTestOutput: true, keepTeammatesWorking: false } }))(DEFAULT_SETTINGS('/Users/you')), models: { codex: codexModels } }),
+  // KERNEL-1116: the five-step track on a Codex model (Pen 8.3, 8.11), and a Claude role's picker with Codex open (Pen 15.34).
+  SettingsModelsPickerEffortCodex: modelsPage(),
+  SettingsModelsPickerBoth: modelsPage(),
+  SettingsModelsPickerCompact: modelsPage({ qa: { provider: 'claude', model: 'claude-haiku-5-5', effort: 'low' } }),
+  SettingsModelsPickerCodexRole: modelsPage({ frontend: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'medium' } }),
   SettingsModelsNarrow: largeModels(),
-  // KERNEL-406, KERNEL-665: both providers' accounts and status, with Claude's own login active, a second Claude account, a key, and Fable's weekly window on Work.
-  SettingsAccounts: providersPage('claude', { accounts: [workClaude, personalClaude, keyAccount('claude'), ownCodex], usage: [...providerUsage(), fableWindow] }),
-  // KERNEL-701: Work is added in Kernel and is also Claude Code's own login in Terminal, so it shows once, with its details open.
-  // KERNEL-774: Main account has Fable, 2nd account (Pro) has none and says Not in plan, and 3rd account's 5-hour window has reset and sits at 0%.
-  SettingsAccountsReset: providersPage('claude', {
-    accounts: [secondClaude, mainClaude, thirdClaude, footerKey(), footerCodex],
-    usage: [
-      window5('claude', 'cli', 18, next(23, 0)), windowWeek('claude', 'cli', 32, nextOn(1, 3, 0)),
-      window5('claude', 'main', 9, next(22, 0)), windowWeek('claude', 'main', 9, nextOn(2, 3, 0)),
-      { type: 'seven_day_opus', status: 'allowed', utilization: 0, resetsAt: secs(nextOn(2, 3, 0)), accountId: 'main', model: 'claude-fable-5-1' },
-      window5('claude', 'third', 100, Date.now() - 3600_000), windowWeek('claude', 'third', 49, nextOn(3, 3, 0)),
-      window5('codex', 'cli', 0, next(18, 36)), windowWeek('codex', 'cli', 24, inDays(8, 13, 36))
-    ]
-  }),
-  SettingsAccountsAlsoCli: providersPage('claude', { accounts: [{ ...workClaude, cli: false, alsoCli: true }, personalClaude, keyAccount('claude'), ownCodex] }),
+  // Redesign 15 (Pen 15.4): Claude Code's accounts with their meters, then Limits and Chats and accounts. The window is tall, so the whole page is in the shot.
+  SettingsAccounts: providersPage('claude'),
+  // Pen 15.31: one account's row in each state it has. Main account is Claude Code's own login in use, and 2nd account is one added in Kernel.
+  // A window about to reset: Main account's 5-hour window is at 98%.
+  SettingsAccountsReset: providersPage('claude', { usage: [window5('claude', 'cli', 98, Date.now() + 12 * 60_000), windowWeek('claude', 'cli', 58, nextOn(4, 3, 0)), window5('claude', 'second', 36, next(19, 5)), windowWeek('claude', 'second', 53, nextOn(5, 9, 0)), window5('codex', 'cli', 12, next(19, 5)), windowWeek('codex', 'cli', 31, nextOn(1, 3, 0))] }),
+  // KERNEL-701: Main account is added in Kernel and is also Claude Code's own login in Terminal, so it shows once, with its note.
+  SettingsAccountsAlsoCli: providersPage('claude', { accounts: [{ ...pageMain, cli: false, alsoCli: true }, pageSecond, footerKey(), footerCodex] }),
+  // KERNEL-1056: the fallback switch under Switch accounts at a limit, on with both providers signed in, and off with a reason while Codex is signed out.
+  SettingsAccountsFallback: providersPage('claude'),
+  SettingsAccountsFallbackDisabled: providersPage('claude', { accounts: [pageMain, pageSecond, footerKey(), { ...footerCodex, signedIn: false }] }),
   SettingsAccountsCodex: providersPage('codex'),
-  SettingsAccountsCodexSignedOut: providersPage('codex', { accounts: [workClaude, { ...ownCodex, signedIn: false }, personalCodex], providerStatus: { codex: { provider: 'codex', source: 'bundled', version: '0.153.4', signedIn: false, configFile: '/Users/you/.codex/config.toml' } } }),
-  // KERNEL-524: an API key account beside the login, on each tab, then with the key in use and the sheet that adds one.
-  SettingsAccountsApiKey: providersPage('claude', { accounts: [workClaude, keyAccount('claude'), ownCodex] }),
+  SettingsAccountsCodexSignedOut: providersPage('codex', { accounts: [pageMain, { ...footerCodex, signedIn: false }], providerStatus: { codex: { provider: 'codex', source: 'bundled', version: '0.153.4', signedIn: false, configFile: '/Users/you/.codex/config.toml' } } }),
+  // KERNEL-524: an API key account beside the login, on each tab, then with the key in use and the dialog that adds one.
+  SettingsAccountsApiKey: providersPage('claude', { accounts: [pageMain, footerKey(), footerCodex] }),
   SettingsAccountsApiKeyActive: providersPage('claude', {
-    accounts: [{ ...workClaude, active: false }, keyAccount('claude', true), ownCodex],
+    accounts: [{ ...pageMain, active: false }, footerKey(true), footerCodex],
     providerStatus: { ...providerStatus, claude: { provider: 'claude', source: 'bundled', version: '2.1.292', signedIn: true, loginMethod: 'API key', configFile: '/Users/you/.claude/settings.json' } }
   }),
-  SettingsAccountsCodexApiKey: providersPage('codex', { accounts: [workClaude, ownCodex, keyAccount('codex')] }),
-  SettingsAddAccountApiKey: providersPage('claude', { accounts: [workClaude, keyAccount('claude'), ownCodex] }),
-  // KERNEL-561: the one-button sheet on each tab, and its signing-in state. Claude's `code` step arrives from the start and the sheet shows a link for it (KERNEL-615), Codex has no such step.
+  SettingsAccountsCodexApiKey: providersPage('codex', { accounts: [pageMain, footerCodex, { id: 'key', provider: 'codex', label: 'OpenAI API key', cli: false, auth: 'apiKey', active: false, signedIn: true }] }),
+  SettingsAddAccountApiKey: providersPage('claude'),
+  // Redesign 15 (Pen 15.5, 15.32): Add account opens three cards, Continue opens what the pick needs. Claude's sign-in waits on the browser, which is the engine's `account.add` step.
   SettingsAddAccount: addAccountPage('claude'),
-  SettingsAddAccountBrowser: addAccountPage('claude', 'code'),
+  SettingsAddAccountBrowser: addAccountPage('claude', true),
   SettingsAddAccountCodex: addAccountPage('codex'),
-  SettingsAddAccountCodexBrowser: addAccountPage('codex', 'browser'),
-  // KERNEL-561: Personal being renamed, and a Claude account from before the full login that asks to sign in again with the usage its last turn read.
+  SettingsAddAccountCodexBrowser: addAccountPage('codex', true),
+  // KERNEL-561: 2nd account being renamed, and a Claude account from before the full login that asks to move to one, with the usage its last turn read.
   SettingsAccountsRename: providersPage('claude'),
   SettingsAccountsLegacy: providersPage('claude', {
-    accounts: [workClaude, { ...personalClaude, email: undefined, plan: undefined, usageFromTurns: true, legacyToken: true }, keyAccount('claude'), ownCodex],
-    usage: providerUsage(todayAt(14, 10))
+    accounts: [pageMain, { ...pageSecond, id: 'legacy', label: 'Claude Code login', email: undefined, plan: undefined, usageFromTurns: true, legacyToken: true }, footerKey(), footerCodex],
+    usage: pageUsage()
   }),
-  // KERNEL-619: Claude Code found two claude.ai connectors on Personal's login that need a sign-in. Work's login has none.
-  SettingsAccountsMcp: providersPage('claude', {
-    mcpAccounts: mcpAcrossAccounts,
-    accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, mcpSignIns: [{ server: 'claude.ai Google Drive', connector: true }, { server: 'claude.ai Gmail', connector: true }] }, keyAccount('claude'), ownCodex]
-  }),
-  // KERNEL-627: Sign in to all on the same line while it runs, then what failed.
-  SettingsAccountsMcpSigningIn: providersPage('claude', {
-    mcpAccounts: mcpAcrossAccounts,
-    accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, mcpSignIns: personalMcpSignIns.slice(1) }, keyAccount('claude'), ownCodex],
-    push: [{ type: 'account.mcpSignInAll', run: signInAllRun }]
-  }),
-  SettingsAccountsMcpSignInFailed: providersPage('claude', {
-    mcpAccounts: mcpAcrossAccounts,
-    accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, mcpSignIns: personalMcpSignIns.slice(2) }, keyAccount('claude'), ownCodex],
-    push: [{ type: 'account.mcpSignInAll', run: signInAllFailed }]
-  }),
-  // KERNEL-661: the notice after adding Personal, with Set up opening the checklist.
+  // KERNEL-619: Claude Code found two MCP servers on 2nd account that need a sign-in. Main account has none.
+  SettingsAccountsMcp: providersPage('claude', { mcpAccounts: mcpAcrossAccounts, accounts: [pageMain, { ...pageSecond, mcpSignIns: secondNeeds }, footerKey(), footerCodex] }),
+  // KERNEL-627: Sign in to all on the account's row while it runs, then what failed, with a toast that says why.
+  SettingsAccountsMcpSigningIn: providersPage('claude', { mcpAccounts: mcpAcrossAccounts, accounts: [pageMain, { ...pageSecond, mcpSignIns: secondNeeds }, footerKey(), footerCodex], push: [{ type: 'account.mcpSignInAll', run: secondRun }] }),
+  SettingsAccountsMcpSignInFailed: providersPage('claude', { mcpAccounts: mcpAcrossAccounts, accounts: [pageMain, { ...pageSecond, mcpSignIns: secondNeeds.slice(0, 1) }, footerKey(), footerCodex], push: [{ type: 'account.mcpSignInAll', run: secondFailed }] }),
+  // KERNEL-661: the notice after adding 2nd account, which opens its servers on Settings, MCP servers.
   SettingsMcpNeededNotice: scene(() => ({
     ...clientA(),
-    accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, mcpSignIns: personalMcpSignIns }, keyAccount('claude'), ownCodex],
+    accounts: [pageMain, { ...pageSecond, mcpSignIns: secondNeeds }, footerKey(), footerCodex],
     providerStatus,
-    usage: providerUsage(),
-    ui: { route: { name: 'settings', page: 'accounts', tab: 'claude' }, toasts: [{ id: 'mcp-needed', title: '6 MCP servers need you', action: { label: 'Set up', modal: setUpModal } }] }
+    usage: pageUsage(),
+    ui: { route: { name: 'settings', page: 'accounts', tab: 'claude' }, toasts: [{ id: 'mcp-needed', title: '2 MCP servers need a sign-in', sub: 'Linear and Figma, for 2nd account.', action: { label: 'Open MCP servers', route: { name: 'settings', page: 'mcp', tab: 'claude', account: 'second' } } }] }
   })),
-  // KERNEL-619: Personal's Keychain item waits on a macOS prompt. It reads as waiting, not signed out, keeps no usage lines, and can't be switched to or signed out.
+  // KERNEL-619: 2nd account's Keychain item waits on a macOS prompt. It reads as waiting, not signed out, keeps no usage lines, and can't be switched to or signed out.
   SettingsAccountsKeychain: providersPage('claude', {
-    accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, keychainWait: true }, keyAccount('claude'), ownCodex],
-    usage: providerUsage().filter((l) => l.accountId !== 'personal')
+    accounts: [pageMain, { ...pageSecond, keychainWait: true }, footerKey(), footerCodex],
+    usage: pageUsage().filter((l) => l.accountId !== 'second')
   }),
-  // KERNEL-619: both logins are seats in one Claude Team organization, so Personal says it shares limits with Work.
+  // KERNEL-619: both logins are seats in one Claude Team organization, so 2nd account says it shares limits with Main account.
   SettingsAccountsSameOrg: providersPage('claude', {
-    accounts: [{ ...workClaude, plan: 'Claude Team', mcpSignIns: [], sameOrg: ['personal'] }, { ...personalClaude, plan: 'Claude Team', mcpSignIns: [], sameOrg: ['cli'] }, keyAccount('claude'), ownCodex],
+    accounts: [{ ...pageMain, plan: 'Claude Team', sameOrg: ['second'] }, { ...pageSecond, plan: 'Claude Team', sameOrg: ['cli'] }, footerKey(), footerCodex],
     providerStatus: { ...providerStatus, claude: { ...providerStatus.claude!, plan: 'Claude Team' } }
   }),
-  // feat-providers-redesign: the account in use at its weekly limit with switching off, the page in light, and Personal's menu and Remove.
+  // Main account at its 5-hour limit with switching off, the page in light, and 2nd account's switch in flight.
   SettingsAccountsLimit: limitPage(),
   SettingsAccountsLimitLight: light(limitPage()),
-  // KERNEL-1043: every Claude subscription at its weekly limit, so the page says Claude is on hold and offers the API key.
   SettingsAccountsHold: holdPage(),
+  // KERNEL-1043: every Claude subscription at its weekly limit, so the page says Claude Code is on hold and offers the API key.
+  SettingsAccountsOnHold: providersPage('claude', { usage: holdUsage() }),
   SettingsAccountsLight: light(providersPage('claude')),
+  // 2nd account's menu, its name turned into a field, and Remove asking first. A chat runs on it, so the dialog says where it moves.
   SettingsAccountsMenu: providersPage('claude'),
-  SettingsAccountsRemove: providersPage('claude'),
-  // KERNEL-619: Personal's login is already in Kernel, so Add account says so and keeps its Sign in button.
+  SettingsAccountsRemove: providersPage('claude', { accounts: [pageMain, { ...pageSecond, chats: 1 }, footerKey(), footerCodex] }),
+  // Advanced opened: each provider's executable and config file, and Codex's personality.
+  SettingsAccountsAdvanced: providersPage('claude'),
+  // KERNEL-619: the engine has refused the account Add account opened the browser for, because Kernel already has it.
   SettingsAddAccountDuplicate: providersPage('claude', { push: [{ type: 'account.add', add: { provider: 'claude', step: 'failed', error: 'That account is already in Kernel.' } }] }),
   // KERNEL-561: the menu lists every account of both providers with its plan and usage, and Cmd+K switches to any that isn't in use.
-  AccountMenu: { ...teamFixtures.Inbox, accounts: richAccounts, usage: providerUsage(), ui: { route: { name: 'inbox' }, menu: 'account' } },
+  AccountMenu: { ...teamFixtures.Inbox, accounts: footerAccounts, usage: footerUsage(), ui: { route: { name: 'inbox' }, menu: 'account' } },
   AccountMenuFooter: usageHome({}, { menu: 'account' }),
   // KERNEL-986: the menu and the footer in the middle of a switch to 2nd account. The menu stays open with a spinner on that row, and the footer chip names the new account with no numbers.
-  AccountMenuSwitching: { ...teamFixtures.Inbox, accounts: richAccounts, usage: providerUsage(), ui: { route: { name: 'inbox' }, menu: 'account', switching: { provider: 'claude', accountId: 'personal' } } },
-  AccountMenuFooterSwitching: usageHome({}, { menu: 'account', switching: { provider: 'claude', accountId: mainClaude.id } }),
-  UsageFooterSwitching: usageHome({}, { switching: { provider: 'claude', accountId: mainClaude.id } }),
+  AccountMenuSwitching: { ...teamFixtures.Inbox, accounts: footerAccounts, usage: footerUsage(), ui: { route: { name: 'inbox' }, menu: 'account', switching: { provider: 'claude', accountId: secondClaude.id } } },
+  AccountMenuFooterSwitching: usageHome({}, { menu: 'account', switching: { provider: 'claude', accountId: secondClaude.id } }),
+  UsageFooterSwitching: usageHome({}, { switching: { provider: 'claude', accountId: secondClaude.id } }),
   // KERNEL-674: usage is in the footer all the time. Detailed gives the active account of each provider its name and both windows, and Compact gives it one number.
-  UsageFooter: usageHome(),
-  UsageFooterCompact: usageHome({}, { usageView: 'compact' }),
+  UsageFooter: usageHome({ usage: hotUsage() }),
   // The Help button stays at the footer's right with no update, and its menu opens upward from it.
   UsageFooterNoUpdate: usageHome({ update: undefined }),
   FooterHelpMenu: usageHome({ update: undefined }, { menu: 'help' }),
   // KERNEL-674: Codex's 5-hour window is full, so its bar and number go red.
   UsageFooterCodexFull: usageHome({ usage: footerUsage(100) }),
   // KERNEL-1027: Anthropic reported 101% for the 5-hour window, and the chip reads 100%.
-  UsageFooterOverLimit: usageHome({ usage: footerUsage(31, 101) }),
+  UsageFooterOverLimit: usagePopover({ usage: footerUsage(12, 101, 64) }),
   // KERNEL-949: the footer shows only the account each provider runs on, however many there are. Switching is in the account menu. A narrow window drops the Fable number.
   UsageFooterManyAccounts: usageHome({ accounts: manyAccounts, usage: manyUsage() }),
-  UsageFooterNarrow: usageHome({ accounts: manyAccounts, usage: manyUsage() }),
   // KERNEL-699: every switch shows a notice with Undo. Your own says what you now use, and Kernel's at a limit says why it moved.
-  UsageSwitchToast: switchedHome([{ ...secondClaude, active: false }, { ...mainClaude, active: true }, footerKey(), thirdClaude, footerCodex], { type: 'accountSwitched', provider: 'claude', from: 'cli', to: 'main', reason: 'user' }),
-  UsageSwitchToastAtLimit: switchedHome([{ ...secondClaude, active: false }, mainClaude, footerKey(), { ...thirdClaude, active: true }, footerCodex], { type: 'accountSwitched', provider: 'claude', from: 'main', to: 'third', reason: 'limit', limit: 'five_hour' }),
+  UsageSwitchToast: switchedHome([{ ...mainClaude, active: false }, { ...secondClaude, active: true }, thirdClaude, footerKey(), footerCodex], { type: 'accountSwitched', provider: 'claude', from: 'cli', to: 'second', reason: 'user' }),
+  UsageSwitchToastAtLimit: switchedHome([{ ...mainClaude, active: false }, { ...secondClaude, active: true }, thirdClaude, footerKey(), footerCodex], { type: 'accountSwitched', provider: 'claude', from: 'cli', to: 'second', reason: 'limit', limit: 'five_hour' }),
   // KERNEL-697: Codex's chip opens the popover with Codex expanded and Claude Code folded.
   UsagePopoverFromCodex: usagePopover({}, { usageOpen: ['codex'] }),
   UsagePopoverManyAccounts: usagePopover({ accounts: manyAccounts, usage: manyUsage() }),
   // KERNEL-674: the popover opens upward from the footer. Claude Code is open in Detailed and Codex shows both windows folded.
-  UsagePopover: usagePopover(),
-  UsagePopoverOverLimit: usagePopover({ usage: footerUsage(31, 101) }),
+  UsagePopover: usagePopover({ usage: hotUsage() }),
+  UsagePopoverOverLimit: usagePopover({ usage: footerUsage(12, 100, 86) }),
   UsagePopoverCompact: usagePopover({}, { usageView: 'compact', usageOpen: [] }),
-  UsagePopoverCompactCodex: usagePopover({ accounts: [secondClaude, mainClaude, footerKey(), thirdClaude, footerCodex, workCodex] }, { usageView: 'compact', usageOpen: ['codex'] }),
+  UsagePopoverCompactCodex: usagePopover({}, { usageView: 'compact', usageOpen: ['codex'] }),
   // KERNEL-619: a key is in use on Claude Code, so it says Billed per token and Switch lists the subscriptions.
-  UsagePopoverApiKey: usagePopover({ accounts: [{ ...secondClaude, active: false }, mainClaude, footerKey(true), thirdClaude, footerCodex] }),
+  UsagePopoverApiKey: usagePopover({ accounts: [{ ...mainClaude, active: false }, secondClaude, thirdClaude, footerKey(true), footerCodex] }),
   // KERNEL-619: Codex isn't signed in, so its row is one line with Sign in.
-  UsagePopoverSignedOut: usagePopover({ accounts: [secondClaude, mainClaude, footerKey(), thirdClaude, { ...footerCodex, signedIn: false }] }),
+  UsagePopoverSignedOut: usagePopover({ accounts: [mainClaude, secondClaude, thirdClaude, footerKey(), { ...footerCodex, signedIn: false }] }),
   SearchSwitchAccount: { ...teamFixtures.CommandPalette, workspaces: teamFixtures.CommandPalette.workspaces.map((w) => (w.id === ids.schema ? { ...w, status: 'archived' as const } : w)), accounts: richAccounts, usage: providerUsage() },
   // KERNEL-455: Auto is the pick, and the fixture's availability has it working on Claude Code and not on Codex.
   SettingsPermissions: settingsPage('permissions', { settings: { ...autoMode(), permissions: { ...autoMode().permissions, neverAllow: ['git push origin main', 'curl * | sh'] } } }),
   SettingsBigTerminal: settingsPage('bigterm', bigTerminal),
-  SettingsAbout: settingsPage('about', { preflight: [] }),
+  SettingsBigTerminalPreset: settingsPage('bigterm', { terminalClis: [codex] }),
+  SettingsAbout: aboutPage({ status: 'idle', current: '0.42.0' }),
   // KERNEL-397: usage data is opt-in. This build can send, and the user hasn't said yes, so every event is kept on the Mac.
   SettingsPrivacy: settingsPage('privacy', { telemetry: { canSend: true, recent: [
     { event: { name: 'team.resolved', leadFrom: 'builtin', reviewerFrom: 'file', agents: '1-5', helpers: '1-5', warnings: '1-5' }, at: at(10, 42), sent: false },
@@ -689,11 +727,10 @@ export const platformFixtures: Record<string, Fixture> = {
     runScripts: [],
     sources: {}
   })),
-  // KERNEL-914: Add run script over the Scripts page, with the name and the command empty.
-  SettingsRunScriptAdd: scene(() => ({
-    ...clientA({ scripts: { ...kernelFiles.scripts, setup: '', archive: '', run: '' }, runScripts: [], sources: {} }),
-    ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'setup' } }
-  })),
+  // KERNEL-914: Add a run script over the Scripts page, with a name and a command typed (scripts/shots.ts).
+  SettingsRunScriptAdd: scriptsPage,
+  // Redesign 15.38: Add preview URL over the Scripts page, with a name and an address typed (scripts/shots.ts).
+  SettingsPreviewUrlForm: scriptsPage,
   // KERNEL-684: Setup is empty, and Kernel found a script in the repo's .conductor file. Archive has a value, so it offers nothing.
   SettingsProjectScriptsSuggestion: scene((f) => ({
     ...clientA({ scripts: { ...kernelFiles.scripts, setup: '' }, sources: Object.fromEntries(Object.entries(kernelFiles.sources ?? {}).filter(([k]) => k !== 'scripts.setup')) }),
@@ -703,24 +740,28 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-254: names only, since a value only ever comes from env.reveal. Client A's list is its personal file, and one of the two files isn't there.
   SettingsEnvironment: settingsPage('env', { env: { app: ['GH_TOKEN', 'NPM_TOKEN', 'NODE_OPTIONS'] } }),
   // KERNEL-914: Files to copy sits under the env files, with the files it matches in the checkout.
-  SettingsProjectEnvironment: scene((f) => ({
-    ...envProjectA,
-    ...clientA({ env: { files: envFiles }, files: { copy: ['.env*', 'certs/*.pem', '.npmrc'], symlinkNodeModules: false }, sources: { ...kernelFiles.sources, 'env.files': 'local', 'files.copy': 'shared' } }),
-    projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, path: '/Users/you/Projects/client-a' } : r)),
-    localFiles: { [ids.projectA]: ['.env', '.env.development', '.env.local', '.env.production', '.env.test', '.npmrc', 'certs/ca.pem', 'certs/dev.pem', 'certs/localhost.pem'].map((path, i) => ({ path, size: 96 + i * 31 })) },
-    ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'environment' } }
-  })),
-  SettingsEnvironmentAdd: scene(() => ({ ...envProjectA, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'environment' }, modal: { name: 'envVar', projectId: ids.projectA } } })),
+  SettingsProjectEnvironment: projectEnvPage,
+  // Redesign 15.27: Add env file over the project's Environment page, with a path typed (scripts/shots.ts).
+  SettingsEnvironmentAdd: projectEnvPage,
+  // Redesign 15.38: Add variable over the page, with the name and the value empty.
+  SettingsEnvVariableForm: scene(() => ({ ...envProjectA, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'environment' }, modal: { name: 'envVar', projectId: ids.projectA } } })),
   // KERNEL-914: the Agents page with Permissions, Skills and MCP servers under the agents.
   SettingsProjectAgents: scene((f) => ({ ...projectPermissions(f), skills: ['setup', 'plan', 'feature'].map(skill), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } })),
+  // Redesign 15.38: a retired agent under the team, with the folded Retired section opened (scripts/shots.ts).
+  SettingsProjectAgentsRetired: scene((f) => ({ ...projectPermissions(f), agents: { ...f.agents, [ids.projectA]: [...sixAgents, { ...agentFile('mira', 'Mira', 'Brand designer', 'Designs logos and app icons'), member: false, retired: true, file: '.claude/retired-agents/mira.md' }] }, skills: ['setup', 'plan', 'feature'].map(skill), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } })),
   SettingsProjectPermissions: scene((f) => ({ ...projectPermissions(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } })),
   // KERNEL-455: the project's mode menu is open, over Use app default.
   SettingsProjectPermissionsMode: scene((f) => ({ ...projectPermissions(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' }, menu: 'projectMode' } })),
   // KERNEL-726: Client A changes the merge method, so the app page says so under the row and links to the project.
   SettingsPRs: settingsPage('prs', { settings: prSettings, ...clientA({ pr: { ...kernelFiles.pr, mergeMethod: 'rebase' }, sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local' } }) }),
   SettingsPRsWithoutReview: settingsPage('prs', { settings: { ...prSettings, pr: { ...prSettings.pr, autoMerge: { ...prSettings.pr.autoMerge, on: true, withoutReview: true } } } }),
+  SettingsPRsMergeWithoutReview: settingsPage('prs', { settings: { ...prSettings, pr: { ...prSettings.pr, autoMerge: { ...prSettings.pr.autoMerge, on: true, withoutReview: true } } } }),
+  // Redesign 15: Create PR's text in its sheet, with one edit saved so the footer says Saved. The edit is in scripts/shots.ts.
+  SettingsPRsInstructions: settingsPage('prs', { settings: prSettings }),
   // KERNEL-727: a search for "size limit" landed here: the row is highlighted and its field has focus.
-  SettingsPRsLanded: scene(() => ({ settings: prSettings, ui: { route: { name: 'settings', page: 'prs', row: 'size-limit' } } })),
+  SettingsPRsLanded: scene(() => ({ settings: prSettings, ...clientA({ pr: { ...kernelFiles.pr, mergeMethod: 'rebase' }, sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local' } }), ui: { route: { name: 'settings', page: 'prs', row: 'merge-method' } } })),
+  // KERNEL-1066: the evidence comment setting, off by default, landed on from a search.
+  SettingsPRsEvidenceComment: scene(() => ({ settings: prSettings, ui: { route: { name: 'settings', page: 'prs', row: 'evidence-comment' } } })),
   // KERNEL-721: Size limit typed and left, shown while main is still saving, just after it answered and after main clamped it. The typing is in scripts/shots.ts.
   SettingsPRsSaving: settingsPage('prs', { settings: prSettings }),
   SettingsPRsSaved: settingsPage('prs', { settings: prSettings }),
@@ -763,24 +804,34 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsTeamLeadMode: scene((f) => ({ ...clientA({ agents: { leadMode: 'handoff' } }), settings: { ...DEFAULT_SETTINGS('/Users/you'), team: { ...DEFAULT_SETTINGS('/Users/you').team, leadMode: 'build' as const } }, agents: { ...f.agents, [ids.projectA]: sixAgents }, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } })),
   SettingsAgents: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents' } } })),
   // KERNEL-641: a personal agent's editor, opened from Settings, Agents: Back says Agents, and there is no status, workspace or recent work.
-  SettingsAgentEdit: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'ops' } } })),
+  // Pen 15.9: a repo agent, so Retire is there, and Pen 15.38: its description changed and Save changes pressed, which asks who gets the change.
+  SettingsAgentEdit: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: christianTeam }, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents', agentId: 'christian' } } })),
+  // Redesign 16.5: what Kernel noticed in an agent's file, above its fields, with Use Settings for a model Kernel doesn't recognize.
+  AgentEditorNotices: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: sixAgents.map((a) => (a.id === 'christian' ? { ...christianProfile, model: 'sonnet-4', warnings: [{ kind: 'model-unknown' as const }, { kind: 'cant-open-pr' as const }] } : a)) }, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents', agentId: 'christian' } } })),
+  SettingsAgentSaveScope: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: sixAgents.map((a) => (a.id === 'christian' ? { ...christianProfile, description: 'Builds UI from plans.' } : a)) }, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents', agentId: 'christian' } } })),
+  // A personal agent's editor, opened from Settings, Agents (KERNEL-641): Back says Agents, and there is no Retire.
+  SettingsAgentEditPersonal: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'ops' } } })),
   // KERNEL-641: a plugin's agent read only: the fields are disabled, the line names the plugin, and there is no Save changes or Retire.
+  SettingsAgentEditPicker: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'ops' } } })),
   SettingsAgentPlugin: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'vercel:deployment-expert' } } })),
   // KERNEL-557: Client A's `[review]` as the canvas draws it (KERNEL-594: and its always-review paths). The code review runs as Kernel, so the project has no agent that reviews. Security runs as Artkin, and the UX review as Wren, which is optional.
-  SettingsProjectPrs: scene((f) => ({
+  SettingsProjectPrs: projectPrs,
+  // Redesign 15: the code review's details open, where it runs, who runs it, its model and whether it is required.
+  SettingsProjectPrsDetails: projectPrs,
+  // KERNEL-1064: no model or provider set on any review, so each reads Other provider from the builder (KERNEL-1059). Redesign 15: the merge method is the app's, so its row says so.
+  SettingsProjectPrsDefault: scene((f) => ({
     ...clientA({
       review: {
         rounds: 2,
         kinds: {
-          code: { enabled: true, paths: [], required: true, model: 'claude-opus-5-5', provider: 'claude' },
-          security: { enabled: true, paths: ['src/api/**', 'src/auth/**', 'db/migrations/**'], required: true, agent: 'artkin', model: 'claude-opus-5-5', provider: 'claude' },
-          ux: { enabled: true, paths: ['src/renderer/**/*.tsx', '**/*.css'], required: false, agent: 'wren', model: 'claude-sonnet-5-5', provider: 'claude' }
+          code: { enabled: true, paths: [], required: true },
+          security: { enabled: true, paths: ['src/api/**', 'src/auth/**', 'db/migrations/**'], required: true, agent: 'artkin' },
+          ux: { enabled: true, paths: ['src/renderer/**/*.tsx', '**/*.css'], required: false, agent: 'wren' }
         }
       },
-      // KERNEL-594: the shared `[merge] always_review`, as the canvas's box lists it.
       merge: { alwaysReview: ['src/billing/**', 'db/migrations/**'] },
-      pr: { ...kernelFiles.pr, mergeMethod: 'rebase' },
-      sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local' }
+      pr: { ...kernelFiles.pr },
+      sources: { ...kernelFiles.sources }
     }),
     agents: { ...f.agents, [ids.projectA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
     ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'prs' } }
@@ -835,25 +886,40 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-661: the notice or Providers opens the page on Personal: sign-ins, a failure, connectors not set up and one ignored.
   SettingsMcpServers: mcpPage({}),
   // KERNEL-937: saved results on screen while both Claude Code accounts are checked again, Personal for the first time in 3 minutes.
-  McpServersChecking: mcpPage({ mcpAccounts: mcpAcrossAccounts.map((a) => ({ ...a, checking: true, checkedAt: Date.now() - 3 * 60_000 })) }),
+  McpServersChecking: mcpPage({ mcpAccounts: [mcpAcrossAccounts[0], counted({ ...mcpAcrossAccounts[1], checking: true, checkedAt: undefined, servers: mcpAcrossAccounts[1].servers.map((s) => ({ ...s, state: 'checking' as const, error: undefined, note: undefined })) }), mcpAcrossAccounts[2]] }),
+  // The check ran again while the saved results stayed on screen (KERNEL-937).
+  McpServersCheckingSaved: mcpPage({ mcpAccounts: mcpAcrossAccounts.map((a) => ({ ...a, checking: true, checkedAt: Date.now() - 3 * 60_000 })) }),
   // KERNEL-937: Linear was just signed in by copying a login, and Claude Code hasn't said yet.
   McpServersCopiedSignIn: mcpPage({ mcpAccounts: [mcpAcrossAccounts[0], counted({ ...mcpAcrossAccounts[1], checking: true, servers: mcpAcrossAccounts[1].servers.map((s) => (s.name === 'Linear' ? { ...s, state: 'checking' as const } : s)) }), mcpAcrossAccounts[2]] }),
-  // KERNEL-937: the check failed, so Personal keeps the servers from 3 hours ago.
-  McpServersOffline: mcpPage({ mcpAccounts: [mcpAcrossAccounts[0], { ...mcpAcrossAccounts[1], checkedAt: Date.now() - 3 * 3600_000, error: 'Claude Code did not answer' }, mcpAcrossAccounts[2]] }),
+  // The Mac is offline, so what was ready reads Offline and the checks wait until it is back (Pen 15.35).
+  McpServersOffline: mcpPage({ mcpAccounts: [{ ...mcpAcrossAccounts[0], checkedAt: Date.now() - 3 * 3600_000 }, mcpAcrossAccounts[1], mcpAcrossAccounts[2]], push: [{ type: 'online', online: false }] }, { account: 'cli' }),
+  // KERNEL-937: the check failed, so Personal keeps the servers from 3 hours ago and a toast says why.
+  McpServersCheckFailed: mcpPage({ mcpAccounts: [mcpAcrossAccounts[0], { ...mcpAcrossAccounts[1], checkedAt: Date.now() - 3 * 3600_000, error: 'Claude Code did not answer' }, mcpAcrossAccounts[2]] }),
   // KERNEL-661: Codex accounts that read the same show as one Codex tab, with a sign-in and two servers that are off on purpose.
   SettingsMcpServersCodex: mcpPage({ mcpAccounts: sharedCodex(), accounts: [workClaude, personalClaude, ownCodex, personalCodex] }, { tab: 'codex', account: 'cli' }),
   // KERNEL-661: twenty-seven servers on Personal at 1440x900.
   SettingsMcpServersMany: mcpPage({ mcpAccounts: manyServers() }),
   // KERNEL-661: Set up this account over Settings, MCP servers, with everything that needs Personal ticked.
-  SettingsMcpSetUp: mcpPage({ ui: { route: { name: 'settings', page: 'mcp', account: 'personal' }, modal: setUpModal } }),
+  SettingsMcpSetUp: mcpPage({}),
+  // KERNEL-661: Set up this account over Settings, MCP servers, with everything that needs Personal ticked.
+  SettingsMcpSetUpAccount: mcpPage({ ui: { route: { name: 'settings', page: 'mcp', account: 'personal' }, modal: setUpModal } }),
   // KERNEL-661: signing in to Vercel, the second of five, with the claude.ai step waiting for the connectors.
-  SettingsMcpSetUpRunning: mcpPage({ ui: { route: { name: 'settings', page: 'mcp', account: 'personal' }, modal: setUpModal }, push: [{ type: 'account.mcpSignInAll', run: { ...setUpRun, connect: setUpConnect } }, { type: 'account.mcpConnect', connect: setUpConnect }] }),
+  SettingsMcpSetUpAccountRunning: mcpPage({ ui: { route: { name: 'settings', page: 'mcp', account: 'personal' }, modal: setUpModal }, push: [{ type: 'account.mcpSignInAll', run: { ...setUpRun, connect: setUpConnect } }, { type: 'account.mcpConnect', connect: setUpConnect }] }),
+  // Pen 15.35: one server is being added while the rest wait, so its row reads Setting up.
+  SettingsMcpSetUpRunning: mcpPage({ mcpAccounts: [mcpAcrossAccounts[0], counted({ ...mcpAcrossAccounts[1], servers: mcpAcrossAccounts[1].servers.map((s) => (s.name === 'Linear' ? { ...s, state: 'checking' as const } : s)) }), mcpAcrossAccounts[2]], push: [{ type: 'account.mcpSignInAll', run: { accountId: 'personal', servers: ['Linear', 'claude.ai Google Drive'], current: 'claude.ai Google Drive', done: ['Linear'], failed: [] } }] }),
   // KERNEL-661: it ended with Vercel failed, the connectors left for claude.ai and one server ignored.
-  SettingsMcpSetUpDone: mcpPage({ ui: { route: { name: 'settings', page: 'mcp', account: 'personal' }, modal: setUpModal }, push: [{ type: 'account.mcpSignInAll', run: { ...setUpRun, current: undefined, done: ['Linear'], failed: [{ server: 'Vercel', error: 'The sign-in was not finished in the browser.' }], finished: true, connect: setUpConnect } }] }),
-  SettingsIntegrations: settingsPage('integrations', { integrations: integrationRows }),
+  SettingsMcpSetUpDone: mcpPage({ mcpAccounts: [mcpAcrossAccounts[0], counted({ ...mcpAcrossAccounts[1], servers: mcpAcrossAccounts[1].servers.map((s) => (s.name === 'Linear' ? { ...s, state: 'ready' as const } : s)) }), mcpAcrossAccounts[2]], push: [{ type: 'account.mcpSignInAll', run: { accountId: 'personal', servers: ['Linear'], done: ['Linear'], failed: [], finished: true } }] }),
+  SettingsMcpSetUpAccountDone: mcpPage({ ui: { route: { name: 'settings', page: 'mcp', account: 'personal' }, modal: setUpModal }, push: [{ type: 'account.mcpSignInAll', run: { ...setUpRun, current: undefined, done: ['Linear'], failed: [{ server: 'Vercel', error: 'The sign-in was not finished in the browser.' }], finished: true, connect: setUpConnect } }] }),
+  // Redesign 15: both services connected, as the page usually reads.
+  SettingsIntegrations: settingsPage('integrations', { integrations: integrationRows.map((r) => (r.id === 'linear' ? { ...r, connected: true, detail: 'Read with an API token. Issues and comments.' } : r)) }),
+  // Redesign 15: Connect pressed on Linear and a token typed.
+  SettingsIntegrationsLinearToken: settingsPage('integrations', { integrations: integrationRows }),
+  // Redesign 15: the read failed, so the card keeps a calm row with Try again and a toast carries the error.
+  SettingsIntegrationsFailed: settingsPage('integrations', { integrations: integrationRows, fails: { 'integrations.list': 'gh did not answer within 10 seconds.' } }),
   // KERNEL-893: the integrations read is slow, so each row shows its name and a skeleton, with no Connect.
   SettingsIntegrationsLoading: settingsPage('integrations', { integrations: integrationRows, lag: { 'integrations.list': 60000 } }),
   SettingsProject: scene(settingsProject),
+  SettingsProjectArchived: scene((f) => { const b = settingsProject(f); return { ...b, projects: (b.projects ?? f.projects).map((r) => (r.id === ids.projectA ? { ...r, archived: true } : r)) } }),
   // KERNEL-253: the project has its GitHub avatar and the Icon row's menu is open. The sidebar row for Client A shows it too.
   SettingsProjectIcon: scene((f) => {
     const project = settingsProject(f)
@@ -876,12 +942,12 @@ export const platformFixtures: Record<string, Fixture> = {
     return { ...project, projectSettings: { [ids.projectA]: { ...rs, references: ['/Users/you/Projects/client-a-api', '/Users/you/Projects/design-system'], missingReferences: ['/Users/you/Projects/design-system'] } } }
   }),
   DevUi: { ...gallery('components'), motion: { action: { hold: 'Deny' }, ms: 400, area: '.devui-row' } },
-  DevUiDisplay: gallery('display'),
+  DevUiDisplay: { ...gallery('display'), motion: { action: { press: [] }, ms: 800, area: '.devui-row' } },
   DevUiStates: gallery('states'),
   DevUiOverlays: gallery('overlays'),
   DevUiDialogs: gallery('dialogs'),
-  // KERNEL-942: the wordmark a fresh install sees before New chat.
-  Splash: scene(() => ({ ...empty, ui: { route: { name: 'onboarding', step: 'splash' } } })),
+  // KERNEL-1088: the K mark. The settings save that follows it is held, as the shot's finished animation would open New chat otherwise.
+  Splash: { ...scene(() => ({ ...empty, settings: setupDone(), ui: { route: { name: 'onboarding', step: 'splash' } } })), hold: ['settings.set'] },
   // KERNEL-217: boot failed. The Loading layout with the error and Try again. No PNG.
   LoadingError: scene(() => ({ ...empty, ui: { route: { name: 'onboarding', step: 'loading' }, startError: 'Could not read the Kernel database. Quit Kernel and open it again.' } })),
   LoadingApp: scene((f) => ({ ...sixRunning(f), ui: { route: { name: 'onboarding', step: 'loading' } } })),
@@ -909,6 +975,27 @@ export const platformFixtures: Record<string, Fixture> = {
   SetupGhToken: setup(passing({ ...ghOk, detail: 'Signed in as cjjutba-bot, from `GH_TOKEN` in your shell', note: 'Kernel passes it on because gh has no stored login.' })),
   SetupShellTimeout: setup([{ id: 'shell', ok: false, blocking: false, title: 'Reading your shell timed out', detail: 'Kernel reads PATH and proxy settings from your login shell and gave up after 10 seconds. Tools from nvm, or a proxy set in `.zshrc`, may be missing until it can.', note: 'Look in `.zshrc` for a slow command, or one that waits for an answer, like an update prompt.', fix: { action: 'recheck' } }, ...allOk]),
   SetupBedrock: setup(passing({ id: 'auth', ok: true, blocking: true, title: 'Using Bedrock from your shell', detail: 'Agents bill your AWS account. No Claude sign-in needed.', note: '`CLAUDE_CODE_USE_BEDROCK` is set in your shell.', meta: 'us-east-1' })),
+  // KERNEL-1088: the four first-run steps. Each state of the 1.12 sheet is one fixture, named as the sheet names it.
+  OnboardingChecks: firstRun('checks'),
+  OnboardingChecksRunning: firstRun('checks', { hold: ['preflight.run'] }),
+  ChecksRequiredFailed: firstRun('checks', { preflight: stepChecks({ id: 'claude', ok: false, blocking: true, title: 'Claude Code not found', detail: 'Kernel runs agents with its own copy. Install Claude Code to sign in from Terminal.', fix: { command: 'curl -fsSL https://claude.ai/install.sh | bash' } }) }),
+  ChecksOptionalMissing: firstRun('checks', { preflight: stepChecks({ id: 'gh', ok: false, blocking: false, title: 'GitHub CLI is not installed', detail: 'Kernel uses gh to open and merge pull requests. Everything else works without it.', fix: { command: 'brew install gh' } }) }),
+  ChecksPortTaken: firstRun('checks', { preflight: stepChecks({ id: 'hooks', ok: false, blocking: true, title: 'Port 7420 is taken', detail: 'Another app is using it. Kernel can listen on 7421 and update your hooks.', fix: { action: 'use-next-port' } }) }),
+  OnboardingAccounts: firstRun('accounts', { accounts: [claudeAccounts[0]!] }),
+  ClaudeSignedOut: firstRun('accounts', { accounts: [], preflight: stepChecks({ id: 'auth', ok: false, blocking: true, title: 'Not signed in to Claude', detail: 'Agents run on your own Claude plan.', fix: { command: 'claude auth login' } }) }),
+  ClaudeBedrock: firstRun('accounts', { accounts: [], preflight: stepChecks({ id: 'auth', ok: true, blocking: true, title: 'Using Bedrock from your shell', detail: 'Agents bill your AWS account. No Claude sign-in needed.', note: '`CLAUDE_CODE_USE_BEDROCK` is set in your shell.', meta: 'us-east-1' }) }),
+  SecondAccount: firstRun('accounts', { accounts: claudeAccounts }),
+  OnboardingTeam: firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels }, settings: teamSettings }),
+  OnboardingTeamModel: firstRun('team', { accounts: [claudeAccounts[0]!, ...codexAccounts], models: { codex: codexModels }, settings: teamSettings }, 'obModel'),
+  CodexUnavailable: firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels }, settings: withRoles({ qa: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }) }),
+  ReviewerMenu: firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels }, settings: teamSettings }, 'obReviewer'),
+  PermissionMenu: firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels }, settings: teamSettings }, 'obMode'),
+  OnboardingNewAgent: ({ ...firstRun('team', { accounts: [claudeAccounts[0]!], models: { codex: codexModels } }), ui: { route: { name: 'onboarding', step: 'team' }, modal: { name: 'newAgent', step: 'describe', prefill: { name: 'Wren', model: 'sonnet' } } } }),
+  OnboardingLoop: firstRun('loop'),
+  UsageUnpicked: firstRun('loop', {}, 'obAllowed'),
+  NotificationsAllowed: firstRun('loop', {}, 'obAllowed'),
+  NotificationsDenied: firstRun('loop', {}, 'obDenied'),
+  SettingsRunOnboarding: settingsPage('general'),
   // KERNEL-28: failure banners. Each one is the state main would push: usage, account, network, retry, setup, hooks.
   WorkspaceSessionLimit: scene(() => ({ usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }], ui: open })),
   // KERNEL-406: Christian on Claude hit its 5-hour limit while Codex runs other roles, and a second Claude account has headroom.
@@ -916,6 +1003,12 @@ export const platformFixtures: Record<string, Fixture> = {
     settings: withRoles({ qa: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }),
     accounts: claudeAccounts,
     usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }, { type: 'five_hour', status: 'allowed', utilization: 0.12, resetsAt: secs(next(15, 40)), accountId: 'work' }],
+    ui: open
+  })),
+  // KERNEL-1056: Christian's chat started on Codex because every Claude account was at its limit, so one plain line says so above the composer.
+  WorkspaceFellBack: scene((f) => ({
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, provider: 'codex' as const, model: 'gpt-6-astra' } : c)),
+    push: [...f.push, { type: 'providerFellBack', workspaceId: ids.table, from: 'claude', to: 'codex' }],
     ui: open
   })),
   // KERNEL-524: the account on offer is an API key, so the banner says it is billed per token. Christian's project runs on Codex too, as in the one above.
@@ -942,13 +1035,13 @@ export const platformFixtures: Record<string, Fixture> = {
   WorkspaceAccountNote: scene(() => ({
     account: personalAccount,
     accounts: [{ ...workClaude, active: false }, { ...personalClaude, active: true }],
-    items: { [ids.tableChat]: afterSwitch('Now on Personal') },
+    items: { [ids.tableChat]: afterSwitch('Moved to Personal and re-read 310k tokens') },
     ui: open
   })),
   WorkspaceAccountNoteLimit: scene(() => ({
     account: personalAccount,
     accounts: [{ ...workClaude, active: false }, { ...personalClaude, active: true }],
-    items: { [ids.tableChat]: afterSwitch('Now on Personal (Work hit its 5-hour limit)') },
+    items: { [ids.tableChat]: afterSwitch('Moved to Personal and re-read 310k tokens (Work hit its 5-hour limit)') },
     ui: open
   })),
   // KERNEL-619: after a switch to Personal, whose plan lacks Opus 5.5, which Artkin and Sean use. The banner offers the way back and the place to pick another model.
@@ -997,37 +1090,46 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-941: an added account in use signed out. The banner names it and its Sign in opens its row in Settings, Accounts.
   WorkspaceSignedOutAdded: scene(() => ({ account: { signedIn: false, name: 'Personal', plan: 'Claude Pro' }, accounts: [{ ...workClaude, active: false }, { ...personalClaude, active: true, signedIn: false }], ui: open })),
   // KERNEL-218: the dialog the banner's Review opens, over the held workspace.
-  WorkspaceSetupFailed: scene((f) => ({
-    ...clientA({ scripts: { ...kernelFiles.scripts, setup: 'pnpm install --frozen-lockfile' } }),
-    workspaces: withWorkspace(f, ids.table, { status: 'failed' }),
-    items: {},
-    push: [
-      ...f.push,
-      { type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line: '$ pnpm install --frozen-lockfile', stream: 'stdout' }] },
-      { type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line: 'ERR_PNPM_OUTDATED_LOCKFILE  Cannot install with "frozen-lockfile" because pnpm-lock.yaml is not up to date', stream: 'stderr' }] },
-      { type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line: 'Setup failed with exit code 1', stream: 'stderr' }] },
-      setupData(ids.table, SETUP_RAW.frozen),
-      { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: 1 }
-    ],
-    ui: { ...open, workspace: { right: 'files', bottom: 'setup' } }
-  })),
-  // A chat with Kernel sets up like a teammate's before its first message goes out (KERNEL-405): the skeleton, and the message in the queue.
-  WorkspaceLeadSetup: scene((f) => leadSetup(f, [
-    { line: '$ pnpm install --frozen-lockfile', stream: 'stdout' },
-    { line: 'Progress: resolved 812, reused 806, downloaded 6, added 0', stream: 'stdout' }
-  ])),
-  // Its setup failed: the banner and Run again, as for a teammate, and the first message still waits.
-  WorkspaceLeadSetupFailed: scene((f) => leadSetup(f, [
-    { line: '$ pnpm install --frozen-lockfile', stream: 'stdout' },
-    { line: 'ERR_PNPM_OUTDATED_LOCKFILE  Cannot install with "frozen-lockfile" because pnpm-lock.yaml is not up to date', stream: 'stderr' },
-    { line: 'Setup failed with exit code 1', stream: 'stderr' }
-  ], 1)),
+  // KERNEL-1093: the Setup tab after a run failed. The log keeps pnpm's output and its last line, with Edit script and Run again under it. The toast already said so and has gone.
+  WorkspaceSetupFailed: scene((f) => {
+    const w = along(f, { setup: 'failed', steps: 3, pane: true, right: 'files', secs: 72, quiet: true })
+    return {
+      ...clientA({ scripts: { ...kernelFiles.scripts, setup: 'pnpm install --frozen-lockfile' } }),
+      ...w,
+      push: [
+        ...f.push,
+        { type: 'chat.running', chatId: ids.tableChat, running: true },
+        { type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line: '$ pnpm install --frozen-lockfile', stream: 'stdout' }] },
+        { type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line: 'ERR_PNPM_OUTDATED_LOCKFILE  Cannot install with "frozen-lockfile" because pnpm-lock.yaml is not up to date', stream: 'stderr' }] },
+        { type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line: 'Setup failed with exit code 1', stream: 'stderr' }] },
+        setupData(ids.table, SETUP_RAW.frozen),
+        { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: 1 }
+      ]
+    }
+  }),
+  // The Lead's chat sets up the same way, silently, and when its setup fails Kernel keeps working (KERNEL-1093).
+  WorkspaceLeadSetup: scene((f) => leadAlong(f, false)),
+  WorkspaceLeadSetupFailed: scene((f) => leadAlong(f, true)),
   // A worktree deleted outside Kernel (KERNEL-291): the banner says so and offers Archive, and the composer waits.
   WorkspaceFolderMissing: scene((f) => ({ workspaces: withWorkspace(f, ids.table, { folderGone: true }), ui: open })),
   WorkspaceHooksDown: scene(() => ({ hooks: { port: 7420, listening: false, installed: true, events: hookEvents }, ui: open })),
   // KERNEL-401: a GitHub rate limit holds PR reads off until 3:41 PM, over a PR that passed its checks.
+  // Pen 12.1: a branch that is up to date archives with one button.
   ConfirmArchive: scene((f) => ({
+    gitStatus: { [ids.table]: { branch: 'feat/t-14-invoice-table', ahead: 0, behind: 0, dirty: { files: 0, added: 0, removed: 0 } } },
+    push: f.push,
+    ui: { ...open, modal: { name: 'confirm', kind: 'archive', workspaceId: ids.table } }
+  })),
+  // Two commits that never reached GitHub: the main button pushes first, and Archive anyway leaves them on the local branch.
+  ConfirmArchiveUnpushed: scene((f) => ({
     gitStatus: { [ids.table]: { branch: 'feat/t-14-invoice-table', ahead: 2, behind: 0, dirty: { files: 0, added: 0, removed: 0 } } },
+    push: f.push,
+    ui: { ...open, modal: { name: 'confirm', kind: 'archive', workspaceId: ids.table } }
+  })),
+  // Its PR is still open: archiving stops Kernel watching it but leaves it open on GitHub, and the box says so before it goes (Pen 12.3).
+  ConfirmArchiveOpenPr: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { prNumber: 43, prState: 'ready' }),
+    gitStatus: { [ids.table]: { branch: 'feat/t-14-invoice-table', ahead: 0, behind: 0, dirty: { files: 2, added: 34, removed: 6 } } },
     push: f.push,
     ui: { ...open, modal: { name: 'confirm', kind: 'archive', workspaceId: ids.table } }
   })),
@@ -1035,23 +1137,27 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-455: the first switch into Bypass permissions, with Only in worktrees on.
   ConfirmBypass: scene(() => ({ ui: { ...open, modal: { name: 'confirm', kind: 'bypass' } } })),
   // UX audit (app shell and platform): states the screens above leave out. See docs/audits/ux-platform.md.
-  AuditAboutChecking: settingsPage('about', { preflight: [], update: { status: 'checking', current: '0.1.0' } }),
-  AuditAboutDownloading: settingsPage('about', { preflight: [], update: { status: 'downloading', current: '0.1.0', version: '0.2.0', progress: 42 } }),
-  AuditAboutUpdateError: settingsPage('about', { preflight: [], update: { status: 'error', current: '0.1.0', error: 'net::ERR_INTERNET_DISCONNECTED' } }),
-  AboutInstallFailedSignature: settingsPage('about', { preflight: [], update: { status: 'idle', current: '0.5.0', installFailed: { version: '0.6.0', reason: 'signature' } } }),
-  AboutInstallFailedOther: settingsPage('about', { preflight: [], update: { status: 'idle', current: '0.5.0', installFailed: { version: '0.6.0', reason: 'other' } } }),
-  AuditAboutUpdateBlocked: settingsPage('about', { preflight: [], update: { status: 'idle', current: '0.1.0', blocked: 'Kernel is running from outside Applications, so it does not check for updates.' } }),
-  // The home screen while an update downloads or fails: a quiet footer line.
-  AuditHomeUpdateDownloading: { ...teamFixtures.UpdateReady, update: { status: 'downloading', current: '0.1.0', version: '0.2.0', progress: 42 } },
-  AuditHomeUpdateError: { ...teamFixtures.UpdateReady, update: { status: 'error', current: '0.1.0', error: 'net::ERR_INTERNET_DISCONNECTED' } },
-  // Toasts: three at once, and one with a long title and sub, over Home.
-  AuditToastsStacked: { ...teamFixtures.UpdateReady, ui: { ...teamFixtures.UpdateReady.ui, toasts: [
-    { id: 't1', title: 'Archived Invoice table', sub: 'Its branch was kept.', action: { label: 'Undo', route: { name: 'inbox' } } },
-    { id: 't2', title: 'Could not save the setting' },
-    { id: 't3', title: 'Switched Claude Code to Work', action: { label: 'Undo', switchAccount: { provider: 'claude', accountId: 'cli' } } }
+  // Redesign 15: the Version card for each thing the updater does. A failed check or install is a toast, and the card stays calm. Kernel raises the install toast itself when it loads.
+  AuditAboutChecking: aboutPage({ status: 'checking', current: '0.43.2' }),
+  AuditAboutDownloading: aboutPage({ status: 'downloading', current: '0.43.2', version: '0.44.0', progress: 62 }),
+  AuditAboutUpdateError: aboutPage({ status: 'error', current: '0.43.2', error: 'net::ERR_CONNECTION_TIMED_OUT' }, [{ id: 'upd', title: "Couldn't check for updates", sub: 'Could not reach the update server.', glyph: 'error', action: { label: 'Try again', retry: 'update', primary: true } }]),
+  AboutInstallFailedSignature: aboutPage({ status: 'idle', current: '0.43.2', installFailed: { version: '0.44.0', reason: 'signature' } }),
+  AboutInstallFailedOther: aboutPage({ status: 'idle', current: '0.43.2', installFailed: { version: '0.44.0', reason: 'other' } }),
+  AuditAboutUpdateBlocked: aboutPage({ status: 'idle', current: '0.43.2', blocked: 'Kernel 0.44.0 is ready, but this copy runs from Downloads. Move Kernel to Applications to update.' }),
+  // The home screen while an update downloads, a quiet footer line, or when the download failed: the footer goes back to its round button and a toast says why.
+  AuditHomeUpdateDownloading: { ...teamFixtures.UpdateReady, update: { status: 'downloading', current: '0.43.0', version: '0.44.0', progress: 62 } },
+  AuditHomeUpdateError: { ...teamFixtures.UpdateReady, update: { status: 'error', current: '0.43.0', version: '0.44.0', error: 'net::ERR_CONNECTION_TIMED_OUT' }, ui: { ...teamFixtures.UpdateReady.ui, toasts: [{ id: 'upd-download', title: "Couldn't download Kernel 0.44.0", sub: "GitHub releases didn't answer.", glyph: 'error', action: { label: 'Try again', retry: 'update-check', primary: true } }] } },
+  // Redesign 18 (Pen 18.3): three toasts at once (merged, failed, plain), one with a long title and sub, and one over the Session rail and the composer, to see where a toast sits.
+  AuditToastsStacked: { ...workspaceFixtures.WorkspaceTurnRunning, ui: { ...workspaceFixtures.WorkspaceTurnRunning.ui, toasts: [
+    { id: 't1', glyph: 'merged', title: 'PR #1151 merged', sub: 'Noor squashed it into main.', action: { label: 'View', href: 'https://github.com/kernel/kernel/pull/1151' } },
+    { id: 't2', glyph: 'error', title: "Couldn't push to origin", sub: 'git rejected the push: authentication failed.', action: { label: 'Try again', primary: true, route: { name: 'inbox' } } },
+    { id: 't3', glyph: 'done', title: 'Copied', sub: 'The message is on the clipboard.' }
   ] } },
-  AuditToastLong: { ...teamFixtures.UpdateReady, ui: { ...teamFixtures.UpdateReady.ui, toasts: [
-    { id: 'long', title: 'Could not archive the Client portal login workspace because its worktree has uncommitted changes in 14 files', sub: 'Commit or discard them in the Changes tab, then try again. The folder is /Users/you/kernel/worktrees/client-portal/feat-login-with-a-very-long-branch-name-that-keeps-going', action: { label: 'Open workspace', route: { name: 'workspace', workspaceId: ids.table } } }
+  AuditToastLong: { ...workspaceFixtures.WorkspaceTurnRunning, ui: { ...workspaceFixtures.WorkspaceTurnRunning.ui, toasts: [
+    { id: 'long', glyph: 'error', title: "Couldn't start the dev server for kernel-232a-clean-account", sub: "Port 4400 is in use by another process, and Kernel couldn't free it. Stop that process, or change the port in Project settings, Scripts.", other: { label: 'Open Scripts', route: { name: 'inbox' } }, action: { label: 'Try again', primary: true, route: { name: 'inbox' } } }
+  ] } },
+  AuditToastPlacement: { ...workspaceFixtures.Workspace, ui: { ...workspaceFixtures.Workspace.ui, toasts: [
+    { id: 'place', glyph: 'done', title: 'Branch copied', sub: 'test/kernel-232a-clean-account' }
   ] } },
   // A turn running and a toast up, and Settings with a toast up: Escape goes to the open thing first, the screen next, the toast last (KERNEL-878).
   AuditEscapeTurnToast: { ...workspaceFixtures.WorkspaceTurnRunning, ui: { ...workspaceFixtures.WorkspaceTurnRunning.ui, toasts: [{ id: 'esc', title: 'Could not save the setting' }] } },

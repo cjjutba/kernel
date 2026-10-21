@@ -11,8 +11,11 @@ import './toasts.css'
 
 const UNDO_KBD = '⌘⌥Z'
 
+/** Calls that failed say "Could not ..." (DESIGN.md), so a toast that doesn't name its glyph takes the error one from its title. */
+const glyphOf = (t: ToastType) => t.glyph ?? (/^(Could not|Couldn't)\b/.test(t.title) ? 'error' : 'done')
+
 /**
- * `ui.toasts`, bottom right of the main panel (WorkspaceToast.png). Each one leaves after 5s, or stays while hovered. Swiping
+ * `ui.toasts`, 20px above the window's bottom edge and 16px from its right (Pen 18.1). Each one leaves after 5s, or stays while hovered. Swiping
  * it right or down, pressing its action, or Escape (newest first, after anything else open and the screen's own Escape) dismisses it sooner. ⌘⌥Z presses
  * the newest toast's action, such as Undo after an account switch. The stack holds three.
  * The update card sits last, under them (KERNEL-164). The stack stays mounted so a closed card stays closed.
@@ -56,9 +59,9 @@ export function Toasts() {
       <ToastStack>
         {toasts.map((t) => (
           <Toast
-            key={t.id} title={t.title} sub={t.sub} closing={closing.includes(t.id)} onDismiss={() => actions.ui.dismissToast(t.id)}
-            // A plain link would navigate the app window away, so the action opens its link in the browser, or its tab in the app.
-            action={t.action && undoable(t.action) ? { label: t.action.label, boxed: !!t.action.tab, kbd: t === actionable ? UNDO_KBD : undefined, onClick: () => { if (t.action) press(t.action) } } : undefined}
+            key={t.id} title={t.title} sub={t.sub} detail={t.detail} glyph={glyphOf(t)} closing={closing.includes(t.id)} onDismiss={() => actions.ui.dismissToast(t.id)}
+            // A plain link would navigate the app window away, so an action opens its link in the browser, or its tab in the app.
+            actions={[t.other, t.action].flatMap((a) => a && undoable(a) ? [{ label: a.label, primary: a.primary, kbd: a === actionable?.action ? UNDO_KBD : undefined, onClick: () => press(a) }] : [])}
           />
         ))}
         <UpdateCard />

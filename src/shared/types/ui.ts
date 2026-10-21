@@ -9,7 +9,7 @@ import type { LeadMode, WorkspaceMode, WorkspaceSource } from './workspaces'
  * `loading` is LoadingApp.png: the app shell while the main process boots or reconnects. `splash` is the wordmark a fresh install
  * sees before New chat (KERNEL-942). The checks run behind it and show inside the app, so there is no checks or permissions step.
  */
-export type OnboardingStep = 'splash' | 'project' | 'loading'
+export type OnboardingStep = 'splash' | 'project' | 'loading' | 'checks' | 'accounts' | 'team' | 'loop'
 
 /** Where the renderer is. Lives here so fixtures can open any screen. One entry per screen family. */
 export type DevUiPage = 'components' | 'display' | 'states' | 'overlays' | 'dialogs'
@@ -78,6 +78,8 @@ export type Modal =
   | { name: 'envVar'; projectId?: string; editName?: string }
   | { name: 'confirm'; kind: 'archive'; workspaceId: string }
   | { name: 'confirm'; kind: 'discard'; workspaceId: string }
+  /** Merge a pull request past the blockers its review found on the latest commit (Pen 10.2, KERNEL-1097). */
+  | { name: 'confirm'; kind: 'mergeAnyway'; workspaceId: string }
   /** Revert files to a checkpoint from the transcript. `start` says it is the chat's first (KERNEL-766). */
   | { name: 'confirm'; kind: 'revert'; workspaceId: string; checkpointId: string; start?: boolean }
   | { name: 'confirm'; kind: 'removeProject'; projectId: string }
@@ -106,14 +108,16 @@ export type Modal =
   | { name: 'mcpSetUp'; provider: Provider; accountId: string }
 
 /**
- * Menus and popovers. One is open at a time. `project:<id>` is a sidebar project's menu, and `reply:<id>` the "..." menu under a reply.
+ * Menus and popovers. One is open at a time. `project:<id>` is a sidebar project's menu, and `reply:<id>` the "..." menu under a reply, and `step:<id>` the one at the end of a step's row (KERNEL-1094).
   */
 export type MenuId =
   | 'projects' | `project:${string}` | 'account' | 'plan'
-  | 'pr' | 'tab' | 'newTab' | `reply:${string}`
+  | 'pr' | 'tab' | 'newTab' | `reply:${string}` | `step:${string}`
   | 'plus' | 'model' | 'effort' | 'mode' | 'mention' | 'slash' | 'linkIssue' | 'linkPr' | 'linkWorkspaces'
   | 'branch' | 'from' | 'settingsFiles' | 'projectIcon' | 'projectMode' | 'preview'
   | 'projectTracker' | 'help'
+  /** Your team's menus, which a fixture opens so a shot can show them (KERNEL-1088). The app never sets them. */
+  | 'obReviewer' | 'obMode' | 'obModel' | 'obAllowed' | 'obDenied'
 
 /** Failure banners (DESIGN.md Patterns). The banner component reads the facts it shows from the store. */
 export type BannerKind = 'limit' | 'context' | 'offline' | 'auth' | 'setup' | 'hooks' | 'retry'
@@ -125,24 +129,35 @@ export interface Banner {
   chatId?: string
 }
 
-/** Bottom-right toast, auto-dismissed after 5s (WorkspaceToast.png). */
+/** What pressing a toast's button does. `href` opens in the browser. `tab` opens that tab of the workspace in the app (KERNEL-311: Open chat after a comment is sent). `route` goes to that screen (KERNEL-627). `modal` opens it (KERNEL-661). `switchAccount` switches that provider to that account, as Undo does after a switch (KERNEL-699). `primary` draws it filled, for the action that fixes what went wrong (Try again). */
+export interface ToastAction { label: string; href?: string; tab?: { workspaceId: string; id: string }; route?: Route; modal?: Exclude<Modal, null>; switchAccount?: { provider: Provider; accountId: string }; /** Copies this text, such as the command that fixes a setup problem (KERNEL-1088). */ copy?: string; /** Runs the setup checks again (KERNEL-1088). */ recheck?: true; /** Runs a project's setup again, for a step that could not finish (KERNEL-1089). */ retrySetup?: string; /** Opens New chat's project menu, or Add a project when there is none (KERNEL-1090). */ pickProject?: true; /** Checks again whether git can push from a project's checkout, and updates its Check push access step (KERNEL-1089). */ recheckPush?: string; /** Sends a chat's last message again at once, for "Retry now" on the overloaded toast (KERNEL-1101). */ retryNow?: string; /** Reads the signed-in accounts again, for "Try again" on a signed-out toast (KERNEL-1101). */ recheckAccount?: true; /** Runs a workspace's setup script again, for "Rerun setup" on the toast for a setup run that didn't pass (KERNEL-1093). */ rerunSetup?: string; /** Opens a workspace's Setup tab in its bottom pane, to read the log (KERNEL-1093). */ openSetup?: string; /** Makes a new chat's worktree again and sends its message, for "Try again" when git couldn't (KERNEL-1093). */ retryWorktree?: string; /** Sends a Lead chat's held message from the shared folder instead, for "Send as Hand off" when its working copy couldn't be made (KERNEL-1093). */ sendAsHandoff?: string; /** Reads a list again. The key is the one the open screen registered with `onRetry`, such as `issues` or `prs`, and a screen that closed since leaves the button doing nothing (KERNEL-1098). */ retry?: string; /** Applies that check's one-click fix, such as moving the hook server to the next port, then checks again. */ fix?: 'shell' | 'claude' | 'auth' | 'git' | 'gh' | 'hooks' | 'codex'; primary?: boolean }
+
+/** Bottom-right toast, auto-dismissed after 5s (Pen 18.1 and 18.3). */
 export interface Toast {
   id: string
   title: string
   sub?: string
-  /** `href` opens in the browser. `tab` opens that tab of the workspace in the app (KERNEL-311: Open chat after a comment is sent). `route` goes to that screen (KERNEL-627). `modal` opens it (KERNEL-661). `switchAccount` switches that provider to that account, as Undo does after a switch (KERNEL-699). */
-  action?: { label: string; href?: string; tab?: { workspaceId: string; id: string }; route?: Route; modal?: Exclude<Modal, null>; switchAccount?: { provider: Provider; accountId: string } }
+  /** A third, quieter line under the sub: what the toast is about, such as the chat's title (KERNEL-1093). */
+  detail?: string
+  /** The icon in front of the title (KERNEL-1109): `error` for a call that failed, `merged` for a PR that landed, `plug` for MCP servers that need a sign-in, `switch` for a model or an account that changed under a chat (KERNEL-1095), `done` for the rest. Left out, it is `error` when the title starts "Could not" or "Couldn't", `done` otherwise. */
+  glyph?: 'done' | 'error' | 'merged' | 'plug' | 'switch'
+  action?: ToastAction
+  /** A second, quieter button that sits before `action` (Open Scripts beside Try again). */
+  other?: ToastAction
 }
 
 /** The three ways a turn's folds behave. */
 export type ToolCalls = 'auto' | 'closed' | 'open'
 
+/** The right panel's tabs. Files, Changes, Review and Pull request are a workspace's own, `prs` is the Lead's list, and `preview` is the app's preview (KERNEL-1096). */
+export type PanelTab = 'prs' | 'files' | 'changes' | 'review' | 'pr' | 'preview'
+
 /** The workspace screen's panes, so fixtures can open any of them. */
 export interface WorkspaceView {
-  /** The right panel's tab. `prs` is the Lead's own, so a teammate's workspace shows Changes in its place (KERNEL-354). */
-  right: 'prs' | 'files' | 'changes' | 'checks' | 'shared'
+  /** The right panel's tab. `prs` is the Lead's own, so a teammate's workspace shows Changes in its place (KERNEL-354). `review` and `pr` are the Review and Pull request tabs (KERNEL-1096). */
+  right: PanelTab
   /** The tab the Lead's workspace shows. The store starts it at `prs` and sets it back on entering a workspace, as it does `right` to `changes`; a fixture can leave it out. */
-  leadRight?: 'prs' | 'files' | 'changes' | 'checks' | 'shared'
+  leadRight?: PanelTab
   bottom: 'setup' | 'run' | 'terminal'
   /** How a turn's folds start (Settings, Appearance, Tool calls). `auto` shows the steps while the turn works and folds them when it ends, `closed` starts every fold closed, `open` starts every fold open and never folds one. A fixture can leave it out for `auto`. */
   toolCalls?: ToolCalls
@@ -200,6 +215,11 @@ export interface UiState {
   nav: { canBack: boolean; canForward: boolean }
   /** The screen's right panel is showing: a workspace's files and run panels. Cmd+Option+B; kept across launches. */
   rightPanel: boolean
+  /**
+   * The Session rail is wanted on the right while the right panel is closed. The title bar's two view toggles switch between them, and pressing the one that is on
+   * leaves neither, which is Focus mode with the sidebar hidden (KERNEL-1096). Kept across launches.
+   */
+  rail: boolean
   /** Ids of the workspaces whose right panel stays closed whatever `rightPanel` says, until the toggle is pressed in that chat. A chat started from New chat is one (KERNEL-788). */
   panelHeld: string[]
   /** The right panel's bottom pane (Setup, Run, Terminal) as a fraction of the panel below its header. One size for every chat; kept across launches (KERNEL-513). */

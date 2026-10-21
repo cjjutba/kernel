@@ -2,7 +2,8 @@ import { Suspense, createElement, lazy, useEffect, useState, type ComponentType,
 import type { DevUiPage, Modal, Route } from '@shared/types'
 import { call } from './api'
 import { SidebarToggle, toggleFocus, toggleRightPanel, toggleSidebar, useFoldPanels } from './components/PanelToggles'
-import { Footer, Sidebar } from './components/Shell'
+import { Sidebar } from './components/Shell'
+import { TitleBarUpdate } from './components/footer/UpdatePill'
 import { Toasts } from './components/Toasts'
 import { ConfirmBypass } from './components/ConfirmBypass'
 import { askAboutTelemetry, TelemetryAsk } from './components/TelemetryAsk'
@@ -19,10 +20,12 @@ import { History } from './screens/history/History'
 import { Inbox } from './screens/inbox/Inbox'
 import { ConfirmIssueTaken } from './screens/issues/ConfirmIssueTaken'
 import { backToNewChat, startHeld } from './screens/new-workspace/start'
+import { useWarmUpNext } from './screens/workspace/warmUpNext'
 import { Issues } from './screens/issues/Issues'
 import { PullRequests } from './screens/prs/PullRequests'
 import { CheckHooks } from './screens/onboarding/CheckHooks'
 import { Loading } from './screens/onboarding/Loading'
+import { Onboarding } from './screens/onboarding/Onboarding'
 import { Splash } from './screens/onboarding/Splash'
 import { ConfirmRemoveProject } from './screens/projects/ConfirmRemoveProject'
 import { ConfirmDeleteHistory } from './screens/history/ConfirmDeleteHistory'
@@ -44,6 +47,7 @@ import { ConfirmArchive } from './screens/workspace/ConfirmArchive'
 import { ConfirmArchiveChat } from './screens/workspace/ConfirmArchiveChat'
 import { ConfirmCloseChats } from './screens/workspace/ConfirmCloseChats'
 import { ConfirmDiscard } from './screens/workspace/ConfirmDiscard'
+import { ConfirmMergeAnyway } from './screens/workspace/ConfirmMergeAnyway'
 import { ConfirmRevert } from './screens/workspace/ConfirmRevert'
 import { LeadNewScreen, Workspace } from './screens/workspace/Workspace'
 import { useArchiveLanding } from './screens/workspace/archiveLanding'
@@ -80,6 +84,7 @@ function Screen({ route }: { route: Route }): ReactNode {
   switch (route.name) {
     case 'onboarding':
       if (route.step === 'project') return <ProjectSetup projectId={route.projectId} />
+      if (route.step === 'checks' || route.step === 'accounts' || route.step === 'team' || route.step === 'loop') return <Onboarding key={route.step} step={route.step} />
       return <Splash />
     case 'inbox': return <Inbox />
     case 'issues': return <Issues issueId={route.issueId} projectId={route.projectId} tracker={route.tracker} />
@@ -109,6 +114,7 @@ function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
     case 'confirm':
       if (modal.kind === 'archive') return <ConfirmArchive workspaceId={modal.workspaceId} />
       if (modal.kind === 'discard') return <ConfirmDiscard workspaceId={modal.workspaceId} />
+      if (modal.kind === 'mergeAnyway') return <ConfirmMergeAnyway workspaceId={modal.workspaceId} />
       if (modal.kind === 'revert') return <ConfirmRevert workspaceId={modal.workspaceId} checkpointId={modal.checkpointId} start={modal.start} />
       if (modal.kind === 'removeProject') return <ConfirmRemoveProject projectId={modal.projectId} />
       if (modal.kind === 'deleteHistory') return <ConfirmDeleteHistory workspaceIds={modal.workspaceIds} />
@@ -162,6 +168,7 @@ export function App() {
   const route = useStore((s) => s.ui.route)
   const modal = useStore((s) => s.ui.modal)
   const booted = useStore((s) => s.system.booted)
+  useWarmUpNext(booted)
   const sidebar = useStore((s) => s.ui.sidebar)
   // Settings shows the column even with the sidebar hidden (⌘B), so it never counts as hidden: its panel starts at the column's edge, like the app's.
   const settingsOpen = route.name === 'settings'
@@ -255,9 +262,10 @@ export function App() {
             <Screen route={route} />
           </div>
         </div>
-        {!fullWindow(route) && <Footer />}
         {/* Once, at a fixed spot, so it is the same element with the sidebar open or hidden. Settings has no toggle: its column can't be hidden. */}
         {!fullWindow(route) && route.name !== 'settings' && <SidebarToggle />}
+        {/* With the sidebar hidden its footer is gone, so an update that is ready shows as a pill at the title bar's right end (Pen 17.3). */}
+        {hidden && <TitleBarUpdate />}
         {modal && <ModalView modal={modal} />}
         <Toasts />
         <Tooltips />

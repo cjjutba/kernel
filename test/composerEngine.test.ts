@@ -7,12 +7,12 @@ import { discoverSkills, searchFiles } from '../src/main/services/files'
 import { commitHunks, listHunks } from '../src/main/services/hunks'
 import { git } from '../src/main/services/exec'
 import { chatMode } from '../src/main/services/permissions'
-import { attachFiles, Held, numberImages, partOf, pathOnlyFiles, previewOf, PLAN_FILES_ONLY, PLAN_SEND_BLOCKED } from '../src/renderer/src/screens/workspace/composer/attach'
+import { attachFiles, Held, numberImages, partOf, pastedText, pathOnlyFiles, previewOf, PLAN_FILES_ONLY } from '../src/renderer/src/screens/workspace/composer/attach'
 import { mentionMenu, mentionPart } from '../src/renderer/src/screens/workspace/composer/autocomplete'
 import { noteFromParts } from '../src/renderer/src/screens/workspace/cards/steps'
 import { toUserMessage } from '../src/main/services/providers/claude'
 import { ModeMenu } from '../src/renderer/src/screens/workspace/composer/ModeMenu'
-import { MODE_ORDER, buttonName, modeAria, modePatch, modeRows, nextMode, offLine, shownMode, whyLine, type ComposerMode } from '../src/renderer/src/screens/workspace/composer/modes'
+import { buttonName, modeAria, modePatch, modeRows, nextMode, offLine, shownMode, whyLine, type ComposerMode } from '../src/renderer/src/screens/workspace/composer/modes'
 import { apply, getState } from '../src/renderer/src/store'
 import { INLINE_TEXT_MAX, type AppSettings, type ChatPart, type ChatRunMode } from '../src/shared/types'
 import { tempRepo } from './helpers'
@@ -175,7 +175,6 @@ describe('permission mode from the composer', () => {
 
   it('cycles Manual, Accept edits, Plan, Auto, Bypass and round again', () => {
     const order = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions']
-    expect(MODE_ORDER).toEqual(order)
     expect(order.map((m) => nextMode(m as ComposerMode, all))).toEqual(['acceptEdits', 'plan', 'auto', 'bypassPermissions', 'default'])
   })
 
@@ -222,8 +221,8 @@ describe('permission mode from the composer', () => {
 
   it('dims Auto on a Codex agent and checks the pick', () => {
     const rows = modeRows(shownMode(false, { mode: 'acceptEdits', picked: 'acceptEdits', pickedIn: 'chat' }, 'default'), 'codex', claude)
-    expect(rows[3]).toMatchObject({ mode: 'auto', desc: 'Auto isn’t available for Codex agents yet', off: true, checked: false })
-    expect(rows[1]).toMatchObject({ mode: 'acceptEdits', desc: 'Edits files without asking', checked: true })
+    expect(rows[3]).toMatchObject({ mode: 'auto', desc: 'Auto isn’t available for Codex agents yet. They use Accept edits instead.', off: true, checked: false })
+    expect(rows[1]).toMatchObject({ mode: 'acceptEdits', desc: 'Edits files without asking. Commands still ask unless a rule allows them.', checked: true })
   })
 
   it('draws the menu with its five modes, the check and the Shift+Tab line', () => {
@@ -258,6 +257,13 @@ describe('permission mode from the composer', () => {
 })
 
 describe('attaching files', () => {
+  // KERNEL-1079: the engine counts a message of nothing but pastes as the user's words, so only the composer may mark one.
+  it('marks a long paste as pasted, numbered after the pastes already in the draft', () => {
+    const long = Array.from({ length: 12 }, (_, i) => `line ${i}`).join('\n')
+    expect(pastedText('short', [])).toBeNull()
+    expect(pastedText(long, [{ type: 'file', name: 'pasted_text_1.txt', text: 'x', pasted: true }])).toEqual({ type: 'file', name: 'pasted_text_2.txt', lines: 12, text: long, pasted: true })
+  })
+
   const file = (name: string) => ({ name }) as File
   const host = (log: string[]) => ({
     hold: (part: ChatPart) => { const name = part.type === 'text' ? '' : part.name; log.push(`hold ${name}`); return `id-${name}` },
@@ -297,7 +303,6 @@ describe('attaching files', () => {
     const byPath: ChatPart = { type: 'file', name: 'brief.pdf', src: '/Users/cj/brief.pdf', size: 10 }
     const inlined: ChatPart = { type: 'file', name: 'notes.md', src: '/Users/cj/notes.md', text: 'a', lines: 1 }
     expect(pathOnlyFiles([{ type: 'text', text: 'x' }, byPath, inlined, { type: 'file', name: 'a.ts', path: 'src/a.ts' }])).toEqual([byPath])
-    expect(PLAN_SEND_BLOCKED).toBe('Plan change requests take images and text files only. Remove the other files to send.')
   })
 
   it('removes the place of a file that cannot be attached, toasts, and still attaches the rest', async () => {
@@ -310,7 +315,7 @@ describe('attaching files', () => {
     expect(log).toEqual(['hold big.bin', 'hold ok.txt', 'drop id-big.bin', 'settle id-ok.txt ok.txt'])
     const toasts = getState().ui.toasts.slice(before)
     expect(toasts).toHaveLength(1)
-    expect(toasts[0].title).toBe('Could not attach')
+    expect(toasts[0].title).toBe("Couldn't read big.bin")
     expect(toasts[0].sub).toContain('too large')
   })
 

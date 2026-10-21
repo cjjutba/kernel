@@ -50,9 +50,6 @@ async function openSharedInLead(projectId: string, sharedId: string) {
   if (ws) actions.ui.openShared(ws.id, sharedId)
 }
 
-/** A chord is one chip: "⌘⇧T" for a modified key, "G I" for keys pressed in turn. */
-const chord = (keys: string[]) => keys.join(keys.some((k) => /[⌘⇧⌥⌃]/.test(k)) ? '' : ' ')
-
 function RowIcon({ item }: { item: PaletteItem }) {
   if (item.file) return <FileIcon path={item.file} size={16} />
   if (item.project) return <ProjectIcon project={item.project} size={16} />
@@ -130,7 +127,6 @@ export function CommandPalette() {
           autoFocus role="combobox" aria-expanded={flat.length > 0} aria-controls="cp-list" aria-activedescendant={flat[cur] ? `cp-${flat[cur].id}` : undefined} aria-label="Type a command or search"
           placeholder="Type a command or search" value={q} onChange={(e) => { setQ(e.target.value); setAt(0) }} onKeyDown={onKey}
         />
-        <Kbd>esc</Kbd>
       </div>
       <div className="cp-scopes" role="tablist" aria-label="Search in">
         {SCOPES.map((t) => (
@@ -144,21 +140,25 @@ export function CommandPalette() {
             {g.list.map((it) => (
               <div key={it.id} id={`cp-${it.id}`} role="option" aria-selected={flat[cur] === it} className="cp-row" onMouseMove={() => setAt(flat.indexOf(it))} onClick={() => run(it)}>
                 <span className="cp-icon" aria-hidden="true"><RowIcon item={it} /></span>
-                <span className="cp-label grow ellipsis"><Hit text={it.label} query={q} /></span>
+                <span className={it.note ? 'cp-label ellipsis' : 'cp-label grow ellipsis'}><Hit text={it.label} query={q} /></span>
+                {it.note && <><span className="cp-note ellipsis">{it.note}</span><span className="grow" /></>}
+                {it.hint && flat[cur] === it && <span className="cp-act" aria-hidden="true">{it.hint}</span>}
                 {it.meta && <span className="cp-meta ellipsis">{it.meta}</span>}
-                {it.keys && <kbd className="cp-keys" aria-label={`Shortcut ${it.keys.join(' ')}`}>{chord(it.keys)}</kbd>}
+                {it.keys && <span className="cp-keys" role="img" aria-label={`Shortcut ${it.keys.join(' ')}`}>{it.keys.map((k, n) => <kbd key={n} aria-hidden="true">{k}</kbd>)}</span>}
               </div>
             ))}
           </div>
         ))}
-        {!groups.length && <div className="cp-none">{q.trim() ? `No results for "${q.trim()}" in ${scopeLabel(scope)}` : `Nothing in ${scopeLabel(scope)} yet`}</div>}
+        {!groups.length && (q.trim()
+          ? <div className="cp-none"><div className="cp-none-title">No matches for "{q.trim()}"{scope !== 'all' && ` in ${scopeLabel(scope)}`}</div><div className="cp-none-sub">Try a chat's title, a file name, or a setting.</div></div>
+          : <div className="cp-none">Nothing in {scopeLabel(scope)} yet</div>)}
       </div>
       <div className="cp-foot">
         <span className="cp-hint" aria-hidden="true"><Kbd>↑↓</Kbd>Navigate</span>
         <span className="cp-hint" aria-hidden="true"><Kbd>↵</Kbd>Open</span>
         <span className="cp-hint" aria-hidden="true"><Kbd>←→</Kbd>Scope</span>
         <span className="cp-hint" aria-hidden="true"><Kbd>Esc</Kbd>Close</span>
-        <span className="cp-count" aria-live="polite">{flat.length} {flat.length === 1 ? 'result' : 'results'}</span>
+        <span className="sr-only" aria-live="polite">{flat.length} {flat.length === 1 ? 'result' : 'results'}</span>
       </div>
     </Modal>
   )

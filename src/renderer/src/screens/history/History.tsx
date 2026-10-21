@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import type { Workspace } from '@shared/types'
 import { actions, go, useStore } from '../../store'
+import { ProjectIcon } from '../../components/ProjectIcon'
 import { oneOf, useRemembered } from '../../remember'
 import { Button, EmptyState, Icon, IconButton, Pill, useBusy, useListKeys } from '../../ui'
 import { archivedList, historyName, deleteAllLabel, endedAt, groupOf, inTab, matches, prGlyph, prLabel, whenLabel, type HistoryGroup, type HistoryTab } from './model'
@@ -26,7 +27,10 @@ export function History() {
   const [q, setQ] = useState('')
   const [busy, run] = useBusy()
   const projectName = (w: Workspace) => projects.find((r) => r.id === w.projectId)?.name
-  const agentName = (w: Workspace) => agents[w.projectId]?.find((a) => a.id === w.agentId)?.name ?? w.agentId
+  const agentOf = (w: Workspace) => agents[w.projectId]?.find((a) => a.id === w.agentId)
+  const agentName = (w: Workspace) => agentOf(w)?.name ?? w.agentId
+  /** "Ivy · QA" under a teammate's workspace. Kernel's own chat names Kernel alone. */
+  const byLine = (w: Workspace) => { const a = agentOf(w); return a?.role && !isLeadChatWorkspace(w) ? `${a.name} · ${a.role}` : agentName(w) }
   const threads = useStore((s) => s.threads)
   const nameOf = (w: Workspace) => historyName(w, threads)
 
@@ -43,17 +47,28 @@ export function History() {
   const body = useRef<HTMLDivElement>(null)
   useKeptScroll(body, { key: `history:${only ?? 'all'}`, ready: rows.length > 0 })
 
+  const scope = only ? projects.find((r) => r.id === only) : undefined
+  const showAll = () => go({ name: 'history' }, { history: 'replace' })
   const confirmDelete = (workspaceIds: string[]) => actions.ui.openModal({ name: 'confirm', kind: 'deleteHistory', workspaceIds })
 
   return (
     <div className="panel">
       <header className="header hs-header">
         <SidebarToggleSlot />
-        <Icon name="history" />
-        <h1>{only ? `History, ${projects.find((r) => r.id === only)?.name ?? 'project'}` : 'History'}</h1>
-        {only && <Button variant="ghost" onClick={() => go({ name: 'history' }, { history: 'replace' })}>All projects</Button>}
+        <h1>History</h1>
+        {scope && (
+          <span className="hs-scope">
+            <ProjectIcon project={scope} size={14} />
+            <span className="ellipsis">{scope.name}</span>
+            <button type="button" className="hs-scope-x" aria-label="Show every project" onClick={showAll}><Icon name="close" size={12} /></button>
+          </span>
+        )}
         <span className="grow" />
-        <input type="search" className="input hs-search" placeholder="Search workspaces" aria-label="Search workspaces" value={q} onChange={(e) => setQ(e.target.value)} />
+        {scope && <Button variant="ghost" onClick={showAll}>All projects<Icon name="arrowRight" size={12} /></Button>}
+        <span className="hs-search">
+          <Icon name="search" size={13} />
+          <input type="search" placeholder="Search workspaces" aria-label="Search workspaces" autoComplete="off" value={q} onChange={(e) => setQ(e.target.value)} />
+        </span>
       </header>
       <div className="hs-tabs" role="group" aria-label="Filter history">
         {tabs.map(([id, label]) => <Pill key={id} pressed={tab === id} onClick={() => setTab(id)}>{label}<span className="hs-n">{count(id)}</span></Pill>)}
@@ -69,13 +84,13 @@ export function History() {
               <ul className="hs-list" onKeyDown={keys.onKeyDown}>
                 {list.map((w) => (
                   <li key={w.id} {...keys.rowProps(w.id)} data-keep-id={w.id} className="hs-row">
-                    <span className="col hs-name"><span className="ellipsis hs-title">{isLeadChatWorkspace(w) && <Icon name="chat" size={14} />}{nameOf(w)}</span><span className="ellipsis hs-sub">{agentName(w)}</span></span>
+                    <span className="col hs-name"><span className="ellipsis hs-title">{isLeadChatWorkspace(w) && <Icon name="chat" size={14} />}{nameOf(w)}</span><span className="ellipsis hs-sub">{byLine(w)}</span></span>
                     <span className="mono ellipsis hs-branch">{w.branch}</span>
                     <span className="ellipsis hs-project">{projectName(w)}</span>
                     <span className="hs-pr" data-merged={w.prState === 'merged' ? 'true' : undefined}>{w.prNumber ? <Icon name={prGlyph(w)} size={12} /> : null}{prLabel(w)}</span>
                     <span className="hs-when">{whenLabel(endedAt(w))}</span>
                     <span className="hs-actions">
-                      <Button busy={busy === w.id} busyPattern="wave-back" busyLabel="Restoring" disabled={busy !== null} aria-label={busy === w.id ? `Restoring ${nameOf(w)}` : `Restore ${nameOf(w)}`} onClick={() => void restore(w)}>Restore</Button>
+                      <Button busy={busy === w.id} busyPattern="ripple" busyLabel="Restoring" disabled={busy !== null} aria-label={busy === w.id ? `Restoring ${nameOf(w)}` : `Restore ${nameOf(w)}`} onClick={() => void restore(w)}>Restore</Button>
                       <IconButton icon="trash" label={`Delete ${nameOf(w)}`} disabled={busy !== null} onClick={() => confirmDelete([w.id])} />
                     </span>
                   </li>
@@ -85,8 +100,8 @@ export function History() {
           )
         })}
         {!rows.length && (
-          <EmptyState icon="history" title={all.length ? 'Nothing matches' : 'Nothing archived yet'}>
-            {all.length ? 'Try another word, or another tab.' : 'Workspaces you archive or finish land here, and you can bring any of them back.'}
+          <EmptyState icon="archive" title={all.length ? 'Nothing matches' : 'Nothing archived yet'}>
+            {all.length ? 'Try another word, or another tab.' : 'Archived chats and workspaces land here, ready to restore.'}
           </EmptyState>
         )}
       </div>

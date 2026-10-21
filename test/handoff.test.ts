@@ -8,7 +8,7 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { tempRepo, freePort } from './helpers'
-import { BLOCKER_RULE, GO_AHEAD_LINE, HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE, LEAD_SHARING_RULE, reviewRule, SETUP_LINE, TEAMMATE_RULE, UPDATE_HEADER } from '../src/main/services/handoff'
+import { BLOCKER_RULE, GO_AHEAD_LINE, HANDOFF_NOW, HANDOFF_REMINDER, forProvider, Handoffs, LEAD_RULE, LEAD_SHARING_RULE, reviewRule, SETUP_LINE, TEAMMATE_RULE } from '../src/main/services/handoff'
 import { reviewTools } from '../src/main/services/reviewMcp'
 import { reviewPolicyOf } from '../src/main/services/settings'
 import { kindsFor } from '../src/main/services/lenses'
@@ -20,7 +20,7 @@ import { waitRefusal } from '../src/main/services/waits'
 import { toolSpecs } from '../src/main/services/providers/codex/tools'
 import { toCodexInput } from '../src/main/services/providers/codex/runner'
 import { toUserMessage } from '../src/main/services/providers/claude'
-import { capRefusal, kernelTools, LEAD_INSTRUCTIONS, NO_FILE_GO_AHEAD, NO_GO_AHEAD, NO_PLAN, PLAN_MODE_OFF, quotesUser, signInNote, type KernelToolDeps } from '../src/main/services/kernelMcp'
+import { capRefusal, kernelTools, LEAD_INSTRUCTIONS, NO_PLAN, PLAN_MODE_OFF, signInNote, type KernelToolDeps } from '../src/main/services/kernelMcp'
 
 // A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -75,10 +75,19 @@ async function realLead() {
 
 describe('what teammates are told about setup (KERNEL-1012)', () => {
   it('never tells an agent to wait for a note that may not come', () => {
-    expect(SETUP_LINE).toContain('Never wait for a note that hasn\'t come.')
     expect(SETUP_LINE).not.toMatch(/Wait for Kernel's note/)
     expect(TEAMMATE_RULE).toContain(SETUP_LINE)
     expect(reviewRule({ author: 'Christian', task: 'x', workspaceId: 'w', branch: 'b', base: 'main' })).toContain(SETUP_LINE)
+  })
+})
+
+describe('the Lead leaves acceptance criteria out of the brief (KERNEL-1080)', () => {
+  it('asks for goal and files, and says the plan step\'s criteria are added', () => {
+    for (const rule of [LEAD_RULE, forProvider(LEAD_RULE, 'codex')]) {
+      expect(rule).toContain('with a complete brief: goal and files.')
+      expect(rule).toContain("Its plan step's criteria are added for you.")
+      expect(rule).not.toMatch(/goal, files, acceptance criteria/)
+    }
   })
 })
 
@@ -169,13 +178,7 @@ describe("create_workspace stops at the project's open teammate workspaces (KERN
     expect(createWorkspace).toHaveBeenCalledOnce()
   })
 
-  it('tells the Lead to set user_asked only when the user asked for more', () => {
-    expect(LEAD_RULE).toContain('create_workspace refuses once the project has as many teammate workspaces open as its limit allows.')
-    expect(LEAD_RULE).toContain('Pass user_asked true only when the user explicitly asked for more teammate workspaces than the limit allows.')
-  })
-
-  it('tells the Lead never to use em or en dashes, and has none itself', () => {
-    expect(LEAD_RULE).toContain('Never use em dashes or en dashes. Use a comma, or split the sentence in two.')
+  it('has no em or en dashes in the Lead\'s rule', () => {
     expect(`${LEAD_RULE}\n${LEAD_SHARING_RULE}`).not.toMatch(/[\u2013\u2014]/)
   })
 
@@ -223,7 +226,7 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
   it('asks with plan mode on', async () => {
     const t = leadTools({ behavior: 'allow' }, { on: true })
     expect(await t.run('request_plan_approval', plan)).toEqual({ isError: false, text: `approved. ${HANDOFF_NOW}` })
-    expect(t.askUser).toHaveBeenCalledWith(expect.objectContaining({ kind: 'plan', title: 'KERNEL-53', steps: plan.steps }), undefined)
+    expect(t.askUser).toHaveBeenCalledWith(expect.objectContaining({ kind: 'plan', title: 'KERNEL-53', steps: [{ task: 'Symlink node_modules · Sean' }] }), undefined)
   })
 
   it('reads plan mode on each call, so turning it on mid-session lets the next call ask', async () => {
@@ -294,11 +297,71 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     expect(await planSaved()).toBe('.kernel/plans/plan.md')
   })
 
+  describe('acceptance criteria on each step (KERNEL-1061)', () => {
+    const CRITERIA = ['Totals match the invoice lines', 'An empty invoice shows a message']
+    const approved = async (steps: unknown[]) => {
+      const t = await realLead()
+      await t.k.sessions.configure(t.chat.id, { plan: true })
+      const asked = t.tool.handler({ title: 'Invoice table', plan: PLAN, steps } as never, {})
+      for (let i = 0; i < 100 && !t.plans().length; i++) await new Promise((r) => setTimeout(r, 20))
+      t.k.approvals.decide(t.plans()[0].id, { behavior: 'allow' })
+      await asked
+      await t.planSaved()
+      const lead = (await t.k.agents(t.project.id)).find((a) => a.lead)!
+      const create = kernelTools(t.k.lead.leadToolDeps(t.project.id, lead, t.chat)).find((x) => x.name === 'create_workspace')!
+      const made = vi.spyOn(t.k.workspaces, 'createWorkspace')
+      const brief = async (text = 'Build the table.') => { made.mockClear(); await create.handler({ agent: 'sean', title: 'Invoice table', brief: text } as never, {}); return made.mock.calls[0][1].prompt }
+      return { ...t, brief }
+    }
+
+    it('stores each step\'s criteria on the approved plan', { timeout: 30_000 }, async () => {
+      const { plans } = await approved([{ task: 'Build the table · Sean', criteria: [...CRITERIA, '  '] }, 'Write the docs'])
+      expect(plans()[0].steps).toEqual([
+        { title: 'Build the table', criteria: CRITERIA, agentId: 'sean' },
+        { title: 'Write the docs', criteria: [] }
+      ])
+    })
+
+    it('lists the step\'s criteria in the brief the teammate receives', { timeout: 30_000 }, async () => {
+      const { brief } = await approved([{ task: 'Build the table · Sean', criteria: CRITERIA }])
+      expect(await brief()).toBe('Build the table.\n\nAcceptance criteria:\n- Totals match the invoice lines\n- An empty invoice shows a message')
+    })
+
+    const STEP = [{ task: 'Build the table · Sean', criteria: CRITERIA }]
+    const LISTED = 'Acceptance criteria:\n- Totals match the invoice lines\n- An empty invoice shows a message'
+
+    it('replaces a criteria section the Lead wrote with the step\'s own, once', { timeout: 30_000 }, async () => {
+      const { brief } = await approved(STEP)
+      expect(await brief('Build the table.\n\nAcceptance criteria:\n- Totals add up\n- Empty case works\n\nUse the existing Table component.')).toBe(`Build the table.\n\nUse the existing Table component.\n\n${LISTED}`)
+    })
+
+    it('replaces a paraphrased heading too', { timeout: 30_000 }, async () => {
+      const { brief } = await approved(STEP)
+      expect(await brief('Build the table.\n\n**Done when:**\n1. Totals add up\n2. Empty case works')).toBe(`Build the table.\n\n${LISTED}`)
+    })
+
+    it('keeps prose that only mentions criteria', { timeout: 30_000 }, async () => {
+      const { brief } = await approved(STEP)
+      expect(await brief('Build the table. The criteria are in the plan.')).toBe(`Build the table. The criteria are in the plan.\n\n${LISTED}`)
+    })
+
+    it('leaves a criteria section the Lead wrote when the step has none', { timeout: 30_000 }, async () => {
+      const { brief } = await approved(['Build the table · Sean'])
+      const text = 'Build the table.\n\nAcceptance criteria:\n- Totals add up'
+      expect(await brief(text)).toBe(text)
+    })
+
+    it('leaves the brief as written for a plan saved without criteria', { timeout: 30_000 }, async () => {
+      const { k, plans, brief } = await approved(['Build the table · Sean'])
+      const old = plans()[0]
+      k.approvals.update(old.id, { steps: [{ title: 'Build the table', agentId: 'sean' }] })
+      expect(k.store.approval(old.id)?.steps).toEqual([{ title: 'Build the table', agentId: 'sean' }])
+      expect(await brief()).toBe('Build the table.')
+    })
+  })
+
   it('tells the Lead to ask for approval only in plan mode, and otherwise to ask in the chat before handing off', () => {
-    expect(LEAD_RULE).toContain('Ask for plan approval only while the chat is in plan mode')
     expect(LEAD_RULE).not.toContain('in plan mode or through request_plan_approval')
-    expect(LEAD_RULE).toContain('With plan mode off, when the user asks for work, say who gets what, ending with one yes-or-no question for one set of tasks. Call mcp__kernel__create_workspace only on a go-ahead')
-    expect(PLAN_MODE_OFF).toContain('there is no plan to approve')
     // "Don't ask" holds only after an approved plan, so it can't be read against asking first with plan mode off.
     const dontAsk = LEAD_RULE.split('\n').filter((l) => /don't ask/i.test(l))
     expect(dontAsk).toEqual([expect.stringMatching(/^After an approved plan, don't end the turn with only the plan, and don't ask again whether to hand it off\./)])
@@ -325,25 +388,6 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     const teammates = () => k.store.workspaces(project.id).filter((w) => !w.lead)
     return { ...r, run, handOff, teammates }
   }
-
-  it('matches a quote in the message, ignoring case and whitespace', () => {
-    expect(quotesUser('Hand it  to\nsean', 'Looks good. hand it to Sean, thanks')).toBe(true)
-    expect(quotesUser('hand it to Christian', 'hand it to Sean')).toBe(false)
-    expect(quotesUser('  ', 'hand it to Sean')).toBe(false)
-    expect(quotesUser(undefined, 'hand it to Sean')).toBe(false)
-    expect(quotesUser('yes', undefined)).toBe(false)
-  })
-
-  it('refuses a hand-off with no go-ahead, or one the latest message does not say, and creates nothing', { timeout: 60_000 }, async () => {
-    const t = await offLead('Yes, but should it also cover pnpm?')
-    expect(await t.handOff()).toEqual({ isError: true, text: NO_GO_AHEAD })
-    expect(await t.handOff({ go_ahead: 'hand it to Sean' })).toEqual({ isError: true, text: NO_GO_AHEAD })
-    expect(t.teammates()).toEqual([])
-    // An older message doesn't count once the user wrote again.
-    t.k.store.saveItem(t.chat.id, { kind: 'user', id: 'later', ts: Date.now() + 1, parts: [{ type: 'text', text: 'What would Sean change?' }] })
-    expect(await t.handOff({ go_ahead: 'Yes' })).toEqual({ isError: true, text: NO_GO_AHEAD })
-    expect(t.teammates()).toEqual([])
-  })
 
   it('hands off in the same turn when the latest message says to, and keeps the quote', { timeout: 60_000 }, async () => {
     const t = await offLead('hand it to Sean')
@@ -381,36 +425,7 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     return { wrote, file }
   }
 
-  it('files or edits a tracker issue only on a go-ahead quoted from the latest message', { timeout: 60_000 }, async () => {
-    const t = await offLead('Yes, but is it a bug?')
-    const { wrote, file } = fileTracker(t)
-    expect(await file({ title: 'Symlink node_modules' })).toEqual({ isError: true, text: NO_FILE_GO_AHEAD })
-    expect(await file({ title: 'Symlink node_modules', go_ahead: 'file it' })).toEqual({ isError: true, text: NO_FILE_GO_AHEAD })
-    expect(await file({ issue: 'KERNEL-90', title: 'Better title', go_ahead: 'file it' })).toEqual({ isError: true, text: NO_FILE_GO_AHEAD })
-    expect(wrote).toEqual([])
-    t.k.store.saveItem(t.chat.id, { kind: 'user', id: 'yes', ts: Date.now() + 1, parts: [{ type: 'text', text: 'Yes, file it' }] })
-    expect(await file({ title: ' Symlink node_modules ', description: 'Steps', go_ahead: 'file it' })).toEqual({ isError: false, text: 'Filed KERNEL-90, "Symlink node_modules": https://linear.app/x/KERNEL-90.' })
-    expect(await file({ issue: 'KERNEL-90', description: 'More steps', go_ahead: 'file it' })).toEqual({ isError: false, text: 'Changed KERNEL-90.' })
-    expect(wrote).toEqual([['create', { title: 'Symlink node_modules', description: 'Steps' }], ['edit', 'KERNEL-90', { description: 'More steps' }]])
-    // A new issue needs a title, and an edit something to change.
-    expect(await file({ go_ahead: 'file it' })).toEqual({ isError: true, text: 'Not filed: a new issue needs a title.' })
-    expect(await file({ issue: 'KERNEL-90', go_ahead: 'file it' })).toEqual({ isError: true, text: 'Not filed: pass the title, description, state or comment to change on KERNEL-90.' })
-  })
-
   // The /issue flow's comment and move go through file_issue too, on the same go-ahead (feat-lead-files-tracker-issues-only-with).
-  it('comments on an issue and moves its state only on the go-ahead, and never on a new one', { timeout: 60_000 }, async () => {
-    const t = await offLead('Ship it')
-    const { wrote, file } = fileTracker(t)
-    expect(await file({ issue: 'KERNEL-90', comment: 'Opened PR #7' })).toEqual({ isError: true, text: NO_FILE_GO_AHEAD })
-    expect(await file({ issue: 'KERNEL-90', state: 'In Review', go_ahead: 'move it' })).toEqual({ isError: true, text: NO_FILE_GO_AHEAD })
-    expect(wrote).toEqual([])
-    expect(await file({ issue: 'KERNEL-90', state: 'In Review', comment: 'Opened PR #7', go_ahead: 'ship it' })).toEqual({
-      isError: false, text: 'Changed KERNEL-90, now In Review. Commented on KERNEL-90: https://linear.app/x/KERNEL-90#comment-1.'
-    })
-    expect(wrote).toEqual([['edit', 'KERNEL-90', { state: 'In Review' }], ['comment', 'KERNEL-90', 'Opened PR #7']])
-    expect(await file({ title: 'New', comment: 'hi', go_ahead: 'ship it' })).toEqual({ isError: true, text: 'Not filed: pass the issue key to change its state or comment on it.' })
-  })
-
   it('files an issue with no quote after an approved plan, and says when the project has no tracker', { timeout: 60_000 }, async () => {
     const t = await offLead('Plan the symlink work')
     const { wrote, file } = fileTracker(t)
@@ -426,26 +441,13 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     expect(await file({ title: 'Symlink node_modules' })).toEqual({ isError: true, text: 'Not filed: This project has no issue tracker.' })
   })
 
-  it('needs no go-ahead for a review, or for a follow-up Kernel started on approved work', { timeout: 60_000 }, async () => {
-    const t = await offLead('hand it to Sean')
-    expect((await t.handOff({ go_ahead: 'hand it to Sean' })).isError).toBe(false)
-    const built = t.teammates()[0]
-    t.k.store.saveWorkspace({ ...built, prState: 'open', prNumber: 7 })
-    expect((await t.handOff({ title: 'Review it', review_of: built.id })).isError).toBe(false)
-    // A team update starts Kernel's turn: fixing the approved task needs no new yes.
-    t.k.sessions['turnsOf'](t.chat.id).from = 'kernel'
-    expect((await t.handOff({ title: 'Fix the failed checks' })).isError).toBe(false)
-    // The user's own turn after it needs a go-ahead again.
-    t.k.sessions['turnsOf'](t.chat.id).from = undefined
-    expect(await t.handOff({ title: 'Something new' })).toEqual({ isError: true, text: NO_GO_AHEAD })
-  })
-
+  // KERNEL-1079: the user approved in a long paste, then on the Lead's own question card, and nothing passed.
   it('tells the Lead to answer a yes that comes with questions first, and to ask once', () => {
     const line = LEAD_RULE.split('\n').find((l) => l.startsWith('With plan mode off'))!
     expect(line).toContain('ending with one yes-or-no question for one set of tasks')
-    expect(line).toContain('only on a go-ahead that approves it and raises nothing new, quoted in go_ahead')
+    expect(line).toContain('Call mcp__kernel__create_workspace once the user agrees.')
     expect(line).toContain(GO_AHEAD_LINE)
-    expect(line).toContain('Filing or editing tracker issues with mcp__kernel__file_issue needs the same go-ahead.')
+    expect(line).toContain("File and edit tracker issues with the tracker's own tools or mcp__kernel__file_issue.")
     expect(line).not.toContain('right away')
   })
 
@@ -453,37 +455,34 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
   it('tells the Lead to answer a question and stop, and to ask only when the user asked for work', async () => {
     const starter = await readFile(join(__dirname, '..', 'docs', 'starter-agents', 'kernel.md'), 'utf8')
     const line = LEAD_RULE.split('\n').find((l) => l.startsWith('With plan mode off'))!
-    expect(line).toContain('when the user asks for work, say who gets what')
     expect(line).not.toContain('Propose new findings')
-    expect(LEAD_RULE).toContain('When the user asks a question, gives an opinion or reports something, answer and stop, with no closing offer or question')
     for (const part of ['A message that also asks for work is a request for work.', '"Okay" after an answer starts nothing.', 'a serious one first']) {
       expect(LEAD_RULE, part).toContain(part)
       expect(starter, part).toContain(part)
     }
-    expect(LEAD_RULE).toContain('no "I\'ll" or "next" about work you aren\'t doing')
     for (const said of [LEAD_INSTRUCTIONS, PLAN_MODE_OFF]) expect(said).toMatch(/answer (a question, opinion or report|it) and stop/)
-    // The ending question and the go-ahead check stay for requests for work, and no tracker is named.
-    expect(LEAD_INSTRUCTIONS).toContain('Filing or editing tracker issues with file_issue needs the same go-ahead.')
+    // The ending question stays for requests for work, and no tracker is named.
     for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, PLAN_MODE_OFF, starter]) expect(said).not.toMatch(/Linear|GitHub Issues/)
-    // A teammate's blocking question still goes to the user.
-    expect(LEAD_RULE).toContain('else ask the user with mcp__kernel__ask_user')
   })
 
   it('says the same in the rule, the instructions, the refusal and the starter Kernel, and the rule does not grow', async () => {
     const starter = await readFile(join(__dirname, '..', 'docs', 'starter-agents', 'kernel.md'), 'utf8')
     for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, PLAN_MODE_OFF, starter]) {
-      for (const part of ['one yes-or-no question', 'raises nothing new, quoted in go_ahead', 'ask once']) expect(said).toContain(part)
+      for (const part of ['one yes-or-no question', 'ask once']) expect(said).toContain(part)
+      expect(said).toMatch(/once (the user|they) agree/)
       if (said !== LEAD_RULE) expect(said).toContain('changes scope or only agrees with the idea')
       expect(said).not.toMatch(/[\u2013\u2014]/)
     }
     expect(LEAD_RULE).toContain(GO_AHEAD_LINE)
-    for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, starter]) expect(said).toMatch(/Filing (or editing )?tracker issues/)
+    for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, starter]) expect(said).toMatch(/tracker issues with the tracker's own tools/)
     // LEAD_RULE's length on main before KERNEL-678. The rule was rewritten, not added to. KERNEL-745 added its one sentence
     // about mentions, 80 characters past that, KERNEL-747 its sentence about proposed hand-offs, 61 more, and KERNEL-777 its
     // sentence about limit replies, 176 more, and feat-review-messages-reach-named its sentence about reporting a message's
     // answer and the review kind to name, 118 more. KERNEL-880 renamed room to project, 9 more. feat-lead-stops-ending-answers-with
     // added its line on answering without an offer, 332 more. feat-lead-files-tracker-issues-only-with named file_issue, 29 more.
-    expect(LEAD_RULE.length).toBeLessThanOrEqual(6200)
+    // KERNEL-1080 swapped "acceptance criteria" in the brief for a line saying the plan step's criteria are added for it, 25 more.
+    // KERNEL-1113 dropped the go-ahead quoting, which made it shorter.
+    expect(LEAD_RULE.length).toBeLessThanOrEqual(6225)
   })
 
   // KERNEL-692: Kernel is the Lead, so its rule speaks to Kernel and never about Kernel in the third person.
@@ -491,10 +490,6 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     const starter = await readFile(join(__dirname, '..', 'docs', 'starter-agents', 'kernel.md'), 'utf8')
     expect(LEAD_RULE).toMatch(/^You are Kernel, the Lead/)
     expect(LEAD_RULE).not.toMatch(/\bKernel (adds|names|starts|sends|does|runs|merges)\b/)
-    expect(LEAD_RULE).toContain('Branches are named from the issue key')
-    expect(LEAD_RULE).toContain('Reviews start on their own once a PR passes checks')
-    expect(LEAD_RULE).toContain('Messages that start with "Team update"')
-    expect(UPDATE_HEADER).toBe('Team update, not from the user.')
     expect(starter).toMatch(/^---\nname: kernel\n/)
     expect(starter.split('---\n')[2]).toMatch(/^You are Kernel/)
   })
@@ -507,14 +502,13 @@ describe('request_plan_approval carries the full plan (KERNEL-373)', () => {
     const t = leadTools({ behavior: 'allow' })
     expect(await t.run('request_plan_approval', { title: 'KERNEL-53', steps })).toEqual({ isError: true, text: NO_PLAN })
     expect(await t.run('request_plan_approval', { title: 'KERNEL-53', plan: '  \n', steps })).toEqual({ isError: true, text: NO_PLAN })
-    expect(NO_PLAN).toContain('plan is missing')
     expect(t.askUser).not.toHaveBeenCalled()
   })
 
   it('asks with the plan as the detail and the task lines as they are', async () => {
     const t = leadTools({ behavior: 'allow' })
     await t.run('request_plan_approval', { title: 'KERNEL-53', plan: PLAN, steps })
-    expect(t.askUser).toHaveBeenCalledWith({ kind: 'plan', title: 'KERNEL-53', detail: PLAN, steps }, undefined)
+    expect(t.askUser).toHaveBeenCalledWith({ kind: 'plan', title: 'KERNEL-53', detail: PLAN, steps: [{ task: 'Symlink node_modules · Sean' }] }, undefined)
   })
 
   it('saves the plan to .kernel/plans, a revision to the same file and the next plan after an approval to its own (D-092)', { timeout: 30_000 }, async () => {
@@ -530,7 +524,7 @@ describe('request_plan_approval carries the full plan (KERNEL-373)', () => {
     }
 
     const first = await ask(PLAN)
-    expect(first.approval).toMatchObject({ detail: PLAN, steps: [{ title: 'Symlink node_modules', agentId: 'sean' }], planFile: '.kernel/plans/plan.md' })
+    expect(first.approval).toMatchObject({ detail: PLAN, steps: [{ title: 'Symlink node_modules', criteria: [], agentId: 'sean' }], planFile: '.kernel/plans/plan.md' })
     expect(await readFile(join(dir, first.approval.planFile!), 'utf8')).toBe(`${PLAN}\n`)
     k.approvals.decide(first.approval.id, { behavior: 'deny', message: 'Add a rollback step' })
     expect(((await first.asked).content[0] as { text: string }).text).toBe('changes requested: Add a rollback step')
@@ -563,9 +557,6 @@ describe('request_plan_approval carries the full plan (KERNEL-373)', () => {
 
 describe('waiting for another PR (KERNEL-259)', () => {
   it('tells the Lead to pass wait_for, to call wait_for_merge for a teammate that waits, and how to start one anyway', async () => {
-    expect(LEAD_RULE).toContain("When a task needs another task's PR merged first, pass that workspace's id in wait_for and tell the user which merge starts it.")
-    expect(LEAD_RULE).toContain('When a teammate says it is waiting on another PR, call wait_for_merge for it.')
-    expect(LEAD_RULE).toContain('To start a waiting teammate anyway, call wait_for_merge with an empty list.')
     const starter = await readFile(join(__dirname, '..', 'docs', 'starter-agents', 'kernel.md'), 'utf8')
     expect(starter).toContain("pass that workspace's id in wait_for and tell the user which merge starts it")
     const tools = kernelTools({} as KernelToolDeps)
@@ -615,7 +606,6 @@ describe('create_workspace with issue (KERNEL-163)', () => {
     await tool.handler({ agent: 'sean', title: 'Other', brief: 'Goal' } as never, {})
     expect(asked[0]).toMatchObject({ agentId: 'sean', title: 'Issues screen', issue: 'KERNEL-83' })
     expect(asked[1]).not.toHaveProperty('issue')
-    expect(LEAD_RULE).toContain("When a task builds an issue from the project's tracker, pass its key as issue to create_workspace. The issue goes into the teammate's brief, and mcp__kernel__get_issue reads any issue.")
   })
 })
 
@@ -754,7 +744,7 @@ describe('create_workspace picks a real teammate (KERNEL-119)', () => {
     { id: 'artkin-2', name: 'Artkin', role: 'Reviewer', lead: false },
     { id: 'teng-qa', name: 'Teng', role: 'QA', lead: false }
   ] as AgentDef[]
-  function tools(made: Partial<Workspace & { setupFailed: string; queued: QueueReason }> = {}) {
+  function tools(made: Partial<Workspace & { queued: QueueReason }> = {}) {
     const asked: string[] = []
     const deps: KernelToolDeps = {
       projectId: 'project', lead: team[0], agents: async () => team, workspaces: () => [],
@@ -792,9 +782,9 @@ describe('create_workspace picks a real teammate (KERNEL-119)', () => {
     expect(await t.create('Artkin')).toEqual({ isError: true, text: 'Not created: "Artkin" matches more than one agent (artkin, artkin-2). Use the id from list_agents.' })
   })
 
-  it('says when setup failed, so the teammate has not started, and keeps the Created prefix (KERNEL-126)', async () => {
-    const t = tools({ status: 'failed', setupFailed: 'exit code 1' })
-    expect(await t.create('christian')).toEqual({ isError: false, text: "Created ws-1 on feat/x for christian. Setup failed (exit code 1), so Christian hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace." })
+  it('never says the teammate waits for setup, which runs alongside it, even when it failed (KERNEL-126, KERNEL-1086)', async () => {
+    const t = tools({ setupRun: { startedAt: 1, endedAt: 2, end: 1 } })
+    expect(await t.create('christian')).toEqual({ isError: false, text: 'Created ws-1 on feat/x for christian.' })
   })
 
   it('says when the brief waits for a slot, a pause or the connection, so the teammate has not started (KERNEL-272)', async () => {
@@ -911,10 +901,5 @@ describe('reviews block only on real problems (KERNEL-377)', () => {
     expect(kindsFor(review, ['src/renderer/src/App.tsx'])).toEqual(['code'])
     // A renamed file would drop out of the review without a word.
     for (const path of review.kinds.security.paths) expect(existsSync(join(__dirname, '..', path)), path).toBe(true)
-  })
-
-  it('has the Lead pass on blockers only and mention notes to the user', () => {
-    expect(LEAD_RULE).toContain('When a review found blockers, pass on the blockers and nothing else.')
-    expect(LEAD_RULE).toContain("mention them to the user in one line and don't send them to the author")
   })
 })

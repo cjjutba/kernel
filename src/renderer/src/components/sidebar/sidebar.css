@@ -1,5 +1,6 @@
-/* The state icon in front of a workspace row. Muted by default, like every sidebar icon. Tokens only. */
+/* The state icon in front of a workspace row. Muted by default, like every sidebar icon. Tokens only. Status icons take an accent (KERNEL-1092, docs/decisions/KERNEL-1092.md): a running row's wave loader is the terminal blue, and the label of the state is the icon's tooltip. */
 .nav-glyph { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.nav-glyph[data-busy] { --spin-ink: var(--term-blue); }
 .nav-item .nav-glyph[data-tone='needs'] svg { color: var(--needs-fill); }
 .nav-item .nav-glyph[data-tone='plan'] svg { color: var(--plan); }
 .nav-item .nav-glyph[data-tone='add'] svg { color: var(--add); }
@@ -94,9 +95,9 @@ button.hc-pr:hover { color: var(--ink); }
    nested row carries its own length of it, from the 3px gap above the row to the row's bottom edge, so no length depends on the block's height and the line meets the next
    row's. The last row that isn't folding away ends it at its bottom edge. A row folding away in the middle keeps its length and shrinks with it, and the row before it runs
    on 3px to cover the gap its clip hides. A trailing row that is folding draws none, so the line already ends where it will once the row is gone. The line is --line-3, and
-   --line-4 in the block that holds the open row. A folded chat has no workspaces drawn and so no guide. */
+   --line-3 in the block that holds the open row. A folded chat has no workspaces drawn and so no guide. */
 .nav-group { --guide: var(--line-3); position: relative; display: flex; flex-direction: column; gap: 3px; margin-top: 5px; }
-.nav-group:has([aria-current='page']) { --guide: var(--line-4); }
+.nav-group:has([aria-current='page']) { --guide: var(--line-3); }
 .nav-group[data-guide]::before { content: ''; position: absolute; z-index: 1; left: 28px; top: 25px; height: 8px; width: 1px; background: var(--guide); pointer-events: none; }
 .nav-group[data-guide] > .ws-row::before { content: ''; position: absolute; z-index: 1; left: 28px; top: -3px; bottom: 0; width: 1px; background: var(--guide); pointer-events: none; }
 .nav-group[data-guide] > .ws-row:has(+ .row-fold)::before { bottom: -3px; }
@@ -136,7 +137,21 @@ button.hc-pr:hover { color: var(--ink); }
 .section-label.sb-projects-label { position: relative; margin-top: 8px; flex-shrink: 0; }
 .row.project-actions { position: absolute; right: 4px; top: 3px; gap: 2px; }
 
-/* The Search field above New chat: the Search settings box (.set-search) as a button that opens the ⌘K palette (KERNEL-930). */
-.sb-search { display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; padding: 0 10px 0 9px; border-radius: var(--r-sm); border: 1px solid var(--panel-line); background: var(--panel); color: var(--muted); text-align: left; margin-top: 8px; flex-shrink: 0; transition: border-color var(--dur-fast); }
+/* The Search field, with New chat beside it: the Search settings box (.set-search) as a button that opens the ⌘K palette (KERNEL-930). */
+.sb-search-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-shrink: 0; }
+.sb-search { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; height: 30px; padding: 0 10px 0 9px; border-radius: var(--r-sm); border: 1px solid var(--panel-line); background: var(--panel); color: var(--muted); text-align: left; flex-shrink: 0; transition: border-color var(--dur-fast); }
+/* New chat, a 30px icon beside Search. It rests on --surface and takes --surface-3 while New chat is open, as a selected row does. */
+.sb-new { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--r-sm); background: var(--surface); color: var(--ink-3); transition: color var(--dur-fast) var(--ease-out); }
+.sb-new:hover { color: var(--ink); }
+.sb-new[aria-current='page'] { background: var(--surface-3); color: var(--ink-2); }
 .sb-search svg { color: var(--faint); flex-shrink: 0; }
 .sb-search:hover { border-color: var(--line-3); }
+
+/* The Archived row above the footer opens History (Pen 12.4). It takes the free space above itself, so the footer under it keeps the bottom edge. */
+.sb-archived { flex-shrink: 0; display: flex; align-items: center; gap: 10px; height: 34px; margin: auto -8px 0 -10px; padding: 0 20px 0 20px; border: 0; background: transparent; color: var(--ink); font-size: var(--fs-meta); text-align: left; }
+.sb-archived + .sbf { margin-top: 0; }
+.sb-archived-label { flex-shrink: 0; }
+.sb-archived-rule { flex: 1; height: 1px; background: var(--line-2); }
+.sb-archived svg { flex-shrink: 0; color: var(--muted); transform: rotate(180deg); }
+.sb-archived:is(:hover, [aria-current='page']) svg { color: var(--ink); }
+.sb-archived:focus-visible { outline-offset: -2px; }

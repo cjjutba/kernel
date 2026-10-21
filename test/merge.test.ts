@@ -250,7 +250,7 @@ describe('reviews Kernel planned for the head commit (KERNEL-717)', () => {
   it('lists the PR as waiting for approval, not ready', () => {
     const w = { ...ws({ reviewRound: round(), projectId: 'project', agentId: 'christian', status: 'ready' }) } as Workspace
     const [row] = leadPrs([w], { leadId: undefined, projectId: 'project', prs: { w: info() }, rules: both, agents: [] })
-    expect(row).toMatchObject({ ready: false, state: { label: 'Waiting for approval' } })
+    expect(row).toMatchObject({ ready: false, state: { label: 'Waiting for review' } })
     expect(row.blockers).toBeUndefined()
     // Merge reads the same rule, so it offers no Merge, nor Merge anyway.
     expect(mergeView(w, info(), both)).toEqual({ kind: 'blocked', reason: expect.stringContaining("haven't approved the latest commit") })
@@ -576,7 +576,7 @@ describe('a local merge through the PR feature', () => {
   it("reads the branch as ready, merges it with the project's method, and marks the workspace merged", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false, autoReview: false } }))
     const k = new Kernel({ dataDir, home })
     kernels.push(k)
     await k.start()
@@ -611,7 +611,7 @@ describe('a local merge through the PR feature', () => {
   it('asks the agent to merge the base into a branch that fell behind it, and only then (KERNEL-478, KERNEL-886)', async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { autoReview: false } }))
     const k = new Kernel({ dataDir, home })
     kernels.push(k)
     await k.start()
@@ -655,7 +655,7 @@ describe("the project's merge method (KERNEL-468)", () => {
   async function kernel() {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false, autoReview: false } }))
     const k = new Kernel({ dataDir, home })
     kernels.push(k)
     await k.start()

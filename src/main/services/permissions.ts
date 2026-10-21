@@ -7,7 +7,7 @@ import { PERMISSION_MODES } from '@shared/types'
 import type { AppSettings } from './settings'
 import type { RunnerHost } from './providers/types'
 import { needsUser } from './approvals'
-import { bashVerdict, publishesWork, pushMightReach, projectRule, usesNetwork, writesGhIssue } from './bashGuard'
+import { bashVerdict, publishesWork, readsOnly, pushMightReach, projectRule, usesNetwork } from './bashGuard'
 import { checkedOutBranch } from './worktrees'
 import { isPlanFile } from './agentTools'
 import { sharesFile } from './sharedFiles'
@@ -83,11 +83,8 @@ export function pushOwnBranch(branches: string[], branch?: string): string {
   return `Kernel blocks pushes that might reach ${named} in Bypass permissions. Push your own branch by name${own}.`
 }
 
-/** What a Lead's gh issue write gets, in every mode (feat-lead-files-tracker-issues-only-with). */
-export const LEAD_GH_ISSUE = "Kernel writes tracker issues for the Lead. Call mcp__kernel__file_issue to file, edit, comment on or move one, instead of gh issue or gh api, with the user's go-ahead quoted in go_ahead. Reading issues with gh works as before."
-
-/** What a commit, push or pull request gets while Build here has no go-ahead (KERNEL-992). */
-export const BUILD_CLOSED = "Not done: the user hasn't approved a change yet. If their latest message asks for one clear change, call mcp__kernel__start_build with their words in go_ahead and go on. If it asks a question, offers options or only agrees, answer, recommend one approach and ask once."
+/** What a file change, commit, push or pull request gets in Build here while the chat is in plan mode (KERNEL-1113). */
+export const BUILD_CLOSED = "Not done: this chat is in plan mode. Plan the change and ask for approval with mcp__kernel__request_plan_approval, then build it."
 
 /** Why a command on Always ask goes to the user, for a CLI that takes a reason with an ask. */
 export const ALWAYS_ASK = 'On the Always ask list in Kernel.'
@@ -132,16 +129,16 @@ export interface Rules {
   branch?: string
   /** The project's reference folders, which a file edit may not touch (KERNEL-748). */
   references?: string[]
-  /** The step is the Lead's, which files and edits tracker issues with file_issue only (feat-lead-files-tracker-issues-only-with). */
-  lead?: boolean
-  /** A Build here Lead with no go-ahead now, read at each step: it commits, pushes and opens PRs only once this says so (KERNEL-992). */
+  /** The step is a review's: commands that only read run without asking, in every mode (KERNEL-1074). */
+  review?: boolean
+  /** A Build here Lead in plan mode now, read at each step: it commits, pushes and opens PRs once plan mode is off (KERNEL-1113). */
   buildClosed?: () => boolean
 }
 
 /** The rules for a runner's next step: Settings, Permissions and the project as they stand now, in `mode`, else the chat's mode now. */
 export function rulesOf(host: Pick<RunnerHost, 'settings' | 'projectAllow' | 'projectTools' | 'workspace' | 'mode'> & Partial<Pick<RunnerHost, 'agent' | 'leadMode' | 'buildOpen'>>, mode: RunMode = host.mode()): Rules {
   const buildClosed = host.agent?.lead && host.buildOpen ? () => host.leadMode?.() === 'build' && !host.buildOpen?.() : undefined
-  return { permissions: host.settings().permissions, mode, projectAllow: () => host.projectAllow(), projectTools: () => host.projectTools(), branch: host.workspace.branch, ...(host.agent?.lead ? { lead: true } : {}), ...(buildClosed ? { buildClosed } : {}) }
+  return { permissions: host.settings().permissions, mode, projectAllow: () => host.projectAllow(), projectTools: () => host.projectTools(), branch: host.workspace.branch, ...(host.workspace.reviewOf ? { review: true } : {}), ...(buildClosed ? { buildClosed } : {}) }
 }
 
 const ALLOW: Verdict = { behavior: 'allow' }
@@ -150,11 +147,9 @@ const ALLOW: Verdict = { behavior: 'allow' }
  * Kernel's lists on one command: Never allow and protected-branch pushes deny, a project's Always allow rule allows, Always ask
  * asks. In Bypass permissions only the denials hold, and a push that might reach a protected branch is one of them. That
  * denial also holds wherever Claude Code may still run in bypass (`mayBypass`), since nothing would ask there (KERNEL-447).
- * A push of `HEAD` from `cwd` goes through when the branch checked out there now is not protected (KERNEL-687). A Lead's
- * gh issue write (`writesGhIssue`) is denied in every mode, since it writes them with file_issue (feat-lead-files-tracker-issues-only-with).
+ * A push of `HEAD` from `cwd` goes through when the branch checked out there now is not protected (KERNEL-687).
  */
 export function guardVerdict(command: string, rules: Rules, cwd?: string): Verdict {
-  if (rules.lead && writesGhIssue(command)) return { behavior: 'deny', message: LEAD_GH_ISSUE }
   if (rules.buildClosed?.() && publishesWork(command)) return { behavior: 'deny', message: BUILD_CLOSED }
   const bypass = rules.mode === 'bypassPermissions'
   const branches = rules.permissions.protectedBranches ?? []
@@ -165,7 +160,7 @@ export function guardVerdict(command: string, rules: Rules, cwd?: string): Verdi
   if (v === 'deny') return { behavior: 'deny', message: neverAllowed(command) }
   if (v === 'allow') return ALLOW
   if (v === 'ask') return { behavior: 'ask', reason: ALWAYS_ASK }
-  return undefined
+  return rules.review && readsOnly(command) ? ALLOW : undefined
 }
 
 /**
@@ -189,8 +184,8 @@ export const REFERENCE_READ_ONLY = 'Reference folders are read-only.'
 const FILE_WRITES: Record<string, string> = { Edit: 'file_path', Write: 'file_path', MultiEdit: 'file_path', NotebookEdit: 'notebook_path' }
 
 /**
- * Denies Edit, Write, MultiEdit and NotebookEdit in a Build here chat that has no go-ahead (KERNEL-992), in every mode, Bypass
- * permissions included. A plan file and a file under `.kernel/shared` stay writable, as in Hand off. `open` is read at the call.
+ * Denies Edit, Write, MultiEdit and NotebookEdit in a Build here chat while it is in plan mode (KERNEL-1113), in every mode,
+ * Bypass permissions included. A plan file and a file under `.kernel/shared` stay writable, as in Hand off. `open` is read at the call.
  */
 export function buildWrite(step: Pick<Step, 'tool' | 'input' | 'cwd'>, open: () => boolean, plans?: string): Verdict {
   const key = FILE_WRITES[step.tool]

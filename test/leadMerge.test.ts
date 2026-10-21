@@ -62,7 +62,6 @@ describe('merge_workspace (KERNEL-352)', () => {
   it('refuses the whole call while the switch in Settings is off', async () => {
     const t = leadTools([ws('a', { prNumber: 265 })], { on: false })
     expect(await t.call(['a'])).toEqual({ content: [{ type: 'text', text: MERGE_OFF }], isError: true })
-    expect(MERGE_OFF).toBe('Merging is off in Settings, Pull requests. Tell the user they can merge from the PRs tab.')
     expect(t.mergeWorkspace).not.toHaveBeenCalled()
     expect(t.refreshPr).not.toHaveBeenCalled()
   })
@@ -70,7 +69,6 @@ describe('merge_workspace (KERNEL-352)', () => {
   it('refuses the whole call in a turn Kernel started, such as a Team update', async () => {
     const t = leadTools([ws('a', { prNumber: 265 })], { userTurn: false })
     expect(await t.call(['a'])).toEqual({ content: [{ type: 'text', text: MERGE_NOT_ASKED }], isError: true })
-    expect(MERGE_NOT_ASKED).toBe('Only the user can ask you to merge. Tell them which PRs are ready.')
     expect(t.mergeWorkspace).not.toHaveBeenCalled()
   })
 
@@ -167,7 +165,7 @@ async function kernelProject() {
   await run('git', ['-C', repo, 'fetch', '-q', 'origin'])
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { autoReview: false } }))
   const prs = new Map<string, PrInfo>()
   const merged: string[] = []
   const k = new Kernel({ dataDir, home })

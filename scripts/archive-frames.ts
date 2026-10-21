@@ -425,7 +425,8 @@ async function expand(page: Page) {
 }
 const openChat = async (page: Page, title: string) => { await expand(page); await chatRow(page, title).locator('button.nav-item').click(); await showing(page, title); await settleTabs(page) }
 const openWorkspace = async (page: Page, name: string) => { await expand(page); await workspaceRow(page, name).locator('button.nav-item').click(); await showing(page, name) }
-const openHistory = async (page: Page) => { await page.getByRole('button', { name: 'History', exact: true }).first().click(); await page.getByRole('heading', { name: 'History' }).waitFor() }
+// History has no button of its own any more (KERNEL-1101): it opens from the command palette, as it does for anyone without a project open.
+const openHistory = async (page: Page) => { await page.keyboard.press('Meta+k'); await page.keyboard.type('History'); await page.keyboard.press('Enter'); await page.getByRole('heading', { name: 'History' }).waitFor() }
 
 /** A chat reads its tabs from main the first time it opens, and the frames of an empty tab strip are not what this measures. */
 const settleTabs = (page: Page) => page.waitForFunction(() => !!document.querySelector('.ws-tabs [role="tab"]'), undefined, { timeout: 4000 }).catch(() => undefined)

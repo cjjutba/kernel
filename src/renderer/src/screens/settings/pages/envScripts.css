@@ -1,0 +1,52 @@
+/* Environment and project Scripts (Redesign 15): rows in a card, an aside at the right of a section heading, the script editors and the files to copy. Tokens only. */
+
+/* A muted line at the right of a section heading, before its button. */
+.rm-aside { font-size: var(--fs-meta); color: var(--muted); }
+.rm-aside-act { display: inline-flex; align-items: center; gap: 10px; }
+
+/* A variable or an env file: a mono name, and what Reveal shows under it. */
+.rm-var, .rm-envfile { padding-top: 11px; padding-bottom: 11px; }
+.rm-var .set-label, .rm-envfile .set-label { font-family: var(--mono); font-size: var(--fs-row); }
+.rm-var-acts { display: inline-flex; align-items: center; gap: 8px; }
+.rm-var-acts .btn.ghost { color: var(--muted); }
+.rm-var-acts .btn.ghost:hover:not(:disabled) { color: var(--ink); }
+
+/* Where an env file stands in the checkout: an icon and a word. */
+.rm-state { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-code); color: var(--muted); }
+.rm-state svg { color: var(--muted); }
+.rm-state[data-tone='absent'] svg { color: var(--faint); }
+
+/* Kernel's variables: a name, and what it is at the right. */
+.rm-kvar { font-family: var(--mono); font-size: var(--fs-row); color: var(--ink); }
+.rm-kdesc { flex: 1 1 260px; min-width: 0; text-align: right; font-size: var(--fs-code); color: var(--muted); }
+
+/* A script editor sits on the canvas inside its card, numbers in the gutter and no rule between them. */
+.rm-editor { overflow: hidden; }
+.rm-editor .code-lines { border: 0; border-radius: 0; background: var(--canvas); }
+.rm-editor .code-gutter { min-width: 48px; border-right: 0; padding-right: 14px; }
+.rm-editor .code-text { padding-left: 0; }
+.rm-editor-note { margin: 0; font-size: var(--fs-code); color: var(--muted); }
+.rm-badge { display: inline-flex; align-items: center; height: 16px; box-sizing: border-box; padding: 0 7px; border-radius: var(--r-pill); border: 1px solid var(--line-3); font-size: var(--fs-badge); font-weight: var(--fw-regular); color: var(--ink-3); white-space: nowrap; }
+.rm-badge-row { display: inline-flex; align-items: center; gap: 8px; }
+
+/* A suggested script: where it came from, the script and the one button that saves it. */
+.rm-offer { display: flex; align-items: center; gap: 16px; }
+.rm-offer-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.rm-offer-body .set-text { flex: none; }
+.rm-offer-code { margin: 0; padding: 10px 12px; border-radius: var(--r); background: var(--canvas); font: var(--fs-code)/var(--lh-loose) var(--mono); color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+
+/* A run script: its name in mono, and its first line. */
+.rm-run-name { font-family: var(--mono); font-size: var(--fs-row); }
+.rm-run-first { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--fs-code) var(--mono); color: var(--muted); }
+.rm-lead { margin: 0; font-size: var(--fs-code); color: var(--muted); }
+.rm-urlrow .set-desc { font-family: var(--mono); }
+
+/* Files to copy: the patterns, and what they match in the checkout under a rule. */
+.rm-matches { margin: 0; padding: 12px 16px 14px; list-style: none; display: flex; flex-direction: column; gap: 5px; border-top: 1px solid var(--line-2); font: var(--fs-meta) var(--mono); color: var(--ink-3); }
+.rm-match { display: flex; align-items: center; gap: 12px; min-height: 18px; }
+.rm-match-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rm-match-hint { flex-shrink: 0; display: inline-flex; align-items: center; gap: 8px; font: var(--fs-meta) var(--font); color: var(--muted); }
+.rm-matches-empty { margin: 0; padding: 12px 16px 14px; border-top: 1px solid var(--line-2); font-size: var(--fs-code); color: var(--muted); }
+
+/* A form in a dialog: a path or an address typed in mono, a command that grows with its lines. */
+.set-field textarea.rm-command { width: 100%; box-sizing: border-box; resize: none; padding: 7px 12px; min-height: 34px; font: var(--fs-code)/var(--lh-loose) var(--mono); white-space: pre; overflow: auto; }

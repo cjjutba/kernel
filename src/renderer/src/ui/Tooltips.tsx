@@ -9,12 +9,13 @@ const EDGE = 6
 
 const CANDIDATES = '[data-tip], button[aria-label], a[aria-label], [role="button"][aria-label]'
 
-interface Tip { el: HTMLElement; text: string; kbd?: string; hint?: string; start?: boolean }
+interface Tip { el: HTMLElement; text: string; kbd?: string; hint?: string; start?: boolean; above?: boolean; mono?: boolean }
 
 /**
  * What `target` shows on hover: the nearest element's `data-tip`, or the `aria-label` of a button or link with no visible text
  * (an icon button). `data-tip=""` turns it off, and `data-tip-kbd` adds a shortcut. `data-tip-hint` adds a second, muted line, and
- * `data-tip-align="start"` lines the tooltip up with the control's left edge instead of centering it. A disabled control, or one whose
+ * `data-tip-side="above"` puts it over the control instead of under it.
+ * `data-tip-mono` sets the text in the mono face, for a path. `data-tip-align="start"` lines the tooltip up with the control's left edge instead of centering it. A disabled control, or one whose
  * menu is open, shows none.
  */
 export function tipFor(target: EventTarget | null): Tip | null {
@@ -22,7 +23,7 @@ export function tipFor(target: EventTarget | null): Tip | null {
   const el = target.closest<HTMLElement>(CANDIDATES)
   if (!el || el.matches(':disabled, [aria-expanded="true"]')) return null
   const explicit = el.dataset.tip
-  const extra = { kbd: el.dataset.tipKbd, hint: el.dataset.tipHint, start: el.dataset.tipAlign === 'start' }
+  const extra = { kbd: el.dataset.tipKbd, hint: el.dataset.tipHint, start: el.dataset.tipAlign === 'start', above: el.dataset.tipSide === 'above', mono: el.dataset.tipMono !== undefined }
   if (explicit !== undefined) return explicit ? { el, text: explicit, ...extra } : null
   if (el.textContent?.trim()) return null
   const label = el.getAttribute('aria-label')
@@ -115,7 +116,7 @@ export function Tooltips() {
     const r = tip.el.getBoundingClientRect()
     const { offsetWidth: w, offsetHeight: h } = node
     const below = r.bottom + GAP
-    const top = below + h > window.innerHeight - EDGE ? r.top - GAP - h : below
+    const top = tip.above || below + h > window.innerHeight - EDGE ? r.top - GAP - h : below
     const left = Math.min(Math.max(tip.start ? r.left : r.left + r.width / 2 - w / 2, EDGE), window.innerWidth - w - EDGE)
     node.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`
     node.style.visibility = 'visible'
@@ -123,7 +124,7 @@ export function Tooltips() {
 
   if (!tip) return null
   return createPortal(
-    <div ref={ref} className="tooltip" data-hint={tip.hint ? '' : undefined} aria-hidden="true" style={{ visibility: 'hidden' }}>
+    <div ref={ref} className="tooltip" data-hint={tip.hint ? '' : undefined} data-mono={tip.mono || undefined} aria-hidden="true" style={{ visibility: 'hidden' }}>
       {tip.text}
       {tip.kbd && <span className="tooltip-kbd">{tip.kbd}</span>}
       {tip.hint && <span className="tooltip-hint">{tip.hint}</span>}

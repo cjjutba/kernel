@@ -1602,7 +1602,7 @@ describe('updates reach the Lead as soon as it can take them (KERNEL-637)', () =
   /** The delivery log's fields, the last line first. */
   const logged = (s: { logs: string[] }) => s.logs.filter((l) => l.startsWith('[lead-updates] delivered ')).map((l) => JSON.parse(l.slice('[lead-updates] delivered '.length)))
 
-  it("sends an update a paused, offline or setup-held Lead chat couldn't take the moment Sessions lifts the hold, and logs why it waited", async () => {
+  it("sends an update a paused, offline or held Lead chat couldn't take the moment Sessions lifts the hold, and logs why it waited", async () => {
     const t = await setup()
     // Sessions' own rule for what holds the Lead chat. Sending is the harness's, so nothing starts a real turn.
     const sessions = new Sessions({ store: t.store, approvals: new Approvals(t.store), settings: () => DEFAULT_SETTINGS('/home/cj'), agentFor: (ws) => (ws.agentId === 'kernel' ? kernel : undefined), mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {}, onFreed: () => t.u.flushSoon() })
@@ -1610,7 +1610,7 @@ describe('updates reach the Lead as soon as it can take them (KERNEL-637)', () =
     const holds: [string, () => void, () => void][] = [
       ['paused', () => sessions.pause('r'), () => sessions.resume('r')],
       ['offline', () => sessions.holdAll('offline'), () => sessions.releaseAll('offline')],
-      ['setup', () => sessions.hold('lc'), () => sessions.release('lc')]
+      ['held', () => sessions.hold('lc'), () => sessions.release('lc')]
     ]
     for (const [why, start, lift] of holds) {
       start()

@@ -18,7 +18,7 @@ async function leave(title: string) {
   } catch (e) { actions.ui.toast({ title, sub: cleanError(e) }) }
 }
 
-/** The avatar and name at the top of the sidebar, and its menu (AccountMenu.png). */
+/** The account switcher at the top of the sidebar, and its menu (Pen 14.3). It names the Claude account agents run on, so a switch shows where it landed (KERNEL-1101). */
 export function AccountButton() {
   const account = useStore((s) => s.account)
   const open = useStore((s) => s.ui.menu === 'account')
@@ -26,7 +26,7 @@ export function AccountButton() {
   const accounts = useStore((s) => s.accounts)
   const chats = useStore((s) => s.chats)
   const switching = useStore((s) => s.ui.switching ?? null)
-  const name = account?.name ?? account?.login ?? 'Kernel'
+  const name = accounts.find((a) => a.provider === 'claude' && a.active && a.signedIn)?.label ?? account?.name ?? account?.login ?? 'Kernel'
   const who = [account?.login ?? account?.email, account?.plan].filter(Boolean).join(' · ')
   const counts = Object.fromEntries(PROVIDERS.map((p) => [p.id, chatsPerAccount(chats, p.id)]))
   const multi = accounts.length > 2 || accounts.some((a) => a.provider === 'codex' && a.signedIn)
@@ -47,7 +47,7 @@ export function AccountButton() {
       ariaLabel: here ? `Switching ${provider} to ${a.label}` : !a.signedIn ? `${provider}, ${a.label}, signed out. Opens providers` : a.active ? `${provider}, ${a.label}, in use` : `Switch ${provider} to ${a.label}`,
       content: (
         <span className="acct-row">
-          <span className="acct-mark">{here ? <Spinner label={null} pattern="wave-back" /> : a.active ? <Icon name="check" size={14} /> : null}</span>
+          <span className="acct-mark">{here ? <Spinner label={null} pattern="ripple" /> : a.active ? <Icon name="check" size={14} /> : null}</span>
           <span className="acct-name ellipsis">{a.label}</span>
           <span className="acct-plan ellipsis">{meta}</span>
         </span>
@@ -69,7 +69,7 @@ export function AccountButton() {
       </button>
       {open && (
         <Menu
-          label="Account" anchorRef={anchor} onClose={actions.ui.closeMenu} style={{ left: 0, top: 'calc(100% + 6px)', width: multi ? 320 : 232 }}
+          label="Account" anchorRef={anchor} onClose={actions.ui.closeMenu} style={{ left: 0, top: 'calc(100% + 6px)', width: multi ? 348 : 232 }}
           items={multi
             ? [
                 ...groups,

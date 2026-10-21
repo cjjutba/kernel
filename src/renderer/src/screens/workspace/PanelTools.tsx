@@ -33,7 +33,7 @@ export function RefreshButton({ ids, label, failTitle }: { ids: string[]; label:
     const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
     if (failed) actions.ui.toast({ title: failTitle, sub: cleanError(failed.reason) })
   })
-  return <ToolButton icon="refresh" label={label} busy={busy === 'refresh'} busyPattern="rotate" busyLabel="Refreshing" onClick={refresh} />
+  return <ToolButton icon="refresh" label={label} busy={busy === 'refresh'} busyPattern="ripple" busyLabel="Refreshing" onClick={refresh} />
 }
 
 const NO_FOLDS = new Set<string>()
@@ -85,7 +85,7 @@ export function FilterButton({ filter, label }: { filter: PanelFilter; label: st
 }
 
 /** The field under the strip. Escape closes and clears it. The X clears the text and keeps the field, or closes it when there is no text. */
-export function FilterField({ filter, label }: { filter: PanelFilter; label: string }) {
+export function FilterField({ filter, label, placeholder = 'Filter by path' }: { filter: PanelFilter; label: string; placeholder?: string }) {
   const input = useRef<HTMLInputElement>(null)
   if (!filter.open) return null
   const empty = !filter.text
@@ -93,7 +93,7 @@ export function FilterField({ filter, label }: { filter: PanelFilter; label: str
     <div className="ffield">
       <div className="finput" onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); filter.close(true) } }}>
         <Icon name="search" size={14} />
-        <input ref={input} type="text" aria-label={label} placeholder="Filter by path" value={filter.text} onChange={(e) => filter.setText(e.target.value)} autoComplete="off" autoCapitalize="off" spellCheck={false} autoFocus />
+        <input ref={input} type="text" aria-label={label} placeholder={placeholder} value={filter.text} onChange={(e) => filter.setText(e.target.value)} autoComplete="off" autoCapitalize="off" spellCheck={false} autoFocus />
         <ToolButton icon="close" label={empty ? 'Close filter' : 'Clear filter'} onClick={() => { if (empty) filter.close(true); else { filter.setText(''); input.current?.focus() } }} />
       </div>
     </div>

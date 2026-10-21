@@ -52,7 +52,7 @@ async function setup(o: { sharing?: boolean; opened?: string[]; capture?: (f: Sh
   let k = await make()
   onTestFinished(() => k.stop())
   const project = await k.addProject(repo)
-  const lead = await k.leadChat(project.id)
+  const lead = await k.lead.newLeadChat(project.id, { prompt: '', baseRef: 'main' })
   const leadWs = k.store.workspace(lead.workspaceId)!
   const christian = await k.createWorkspace(project.id, { prompt: 'Build the checkout', agentId: 'christian', title: 'Checkout', leadChatId: lead.id })
   await git(christian.path, 'commit', '--allow-empty', '-qm', 'start')

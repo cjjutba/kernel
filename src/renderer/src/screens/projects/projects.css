@@ -1,30 +1,39 @@
 /* Projects, New project, Connect a repo, Open a folder, Project setup (KERNEL-20). Tokens only. */
-.rm-tabs { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-bottom: 1px solid var(--line); }
+.rm-tabs { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 16px; }
 .rm-tabs .pill { gap: 6px; font-size: var(--fs-ui); }
 .rm-n { font-size: var(--fs-meta); color: var(--muted); font-weight: var(--fw-regular); }
-.rm-table { flex: 1; min-height: 0; overflow: auto; padding: 0 12px; }
-.rm-head, .rm-row { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.6fr) 150px 130px 90px; align-items: center; gap: 16px; padding: 0 10px; }
-.rm-head { height: 40px; font-size: var(--fs-meta); color: var(--muted); }
-.rm-row { height: 60px; border-radius: var(--r-sm); cursor: pointer; }
+.rm-filter { display: inline-flex; align-items: center; gap: 7px; width: 240px; height: 30px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: var(--r-sm); color: var(--muted); }
+.rm-filter input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: var(--fs-code); }
+.rm-filter:focus-within { color: var(--muted); }
+.rm-table { flex: 1; min-height: 0; overflow: auto; margin-top: 4px; padding: 0 16px 16px; border-top: 1px solid var(--line); }
+.rm-head, .rm-row { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.6fr) 190px 130px 100px 90px; align-items: center; gap: 16px; padding: 0 12px; }
+.rm-head { height: 38px; font-size: var(--fs-meta); color: var(--muted); }
+.rm-row { height: 60px; border-bottom: 1px solid var(--line-2); cursor: pointer; }
 .rm-row:hover { background: var(--panel-hover); }
 .rm-row:has(.rm-link:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; }
 .rm-link:focus-visible { outline-style: none; }
 .rm-name { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.rm-letter { width: 28px; height: 28px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--surface-3); font-size: var(--fs-meta); font-weight: var(--fw-semibold); }
-.rm-link { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-weight: var(--fw-medium); text-align: left; }
+.rm-letter { width: 28px; height: 28px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-sm); background: var(--surface-3); font-size: var(--fs-meta); font-weight: var(--fw-semibold); color: var(--ink-2); }
+.rm-text { min-width: 0; gap: 3px; }
+.rm-link { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; border: 0; background: transparent; color: var(--ink); font-size: var(--fs-ui); font-weight: var(--fw-medium); text-align: left; }
+.rm-row[data-state='archived'] .rm-link { color: var(--ink-3); }
 .rm-desc { font-size: var(--fs-meta); color: var(--muted); }
-.rm-source { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--ink-2); }
-.rm-source svg { color: var(--muted); flex-shrink: 0; }
+.rm-source { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--ink-3); }
+.rm-source svg { color: var(--faint); flex-shrink: 0; }
 .rm-source .mono { font-size: var(--fs-meta); }
-.rm-team { display: flex; }
-.rm-team span { width: 20px; height: 20px; margin-right: -5px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 2px solid var(--panel); background: var(--surface-3); color: var(--ink-2); font-size: var(--fs-tile-xs); font-weight: var(--fw-semibold); }
-.rm-count { margin-left: 6px; font-size: var(--fs-meta); color: var(--muted); }
-.rm-status { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: var(--r-pill); border: 1px solid var(--line-3); font-size: var(--fs-meta); color: var(--ink-2); }
-.rm-status[data-state='you'] { border-color: var(--line-4); color: var(--ink); }
-.rm-status[data-state='idle'], .rm-status[data-state='archived'] { border-color: var(--line-2); color: var(--muted); }
-.rm-show { margin-left: auto; flex-shrink: 0; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: var(--fs-meta); text-decoration: underline; }
-.rm-show:hover { color: var(--ink); }
-.rm-updated { font-size: var(--fs-meta); color: var(--muted); text-align: right; }
+.rm-team { display: flex; gap: 2px; }
+.rm-agents { gap: 8px; }
+.rm-count { font-size: var(--fs-meta); color: var(--muted); }
+.rm-row > span { display: flex; align-items: center; min-width: 0; }
+.rm-status { display: flex; align-items: center; gap: 6px; line-height: var(--lh-snug); font-size: var(--fs-meta); color: var(--ink-3); }
+.rm-status[data-state='you'] { color: var(--needs); }
+.rm-status[data-state='you'] svg { color: var(--needs-fill); }
+.rm-status[data-state='idle'] { color: var(--muted); }
+.rm-status[data-state='archived'] { color: var(--ink-3); }
+.rm-updated { justify-content: flex-end; font-size: var(--fs-meta); color: var(--ink-3); }
+.rm-side { display: flex; justify-content: flex-end; }
+.rm-none { margin: 0; padding: 24px 12px; }
+.rm-empty { flex: 1; display: flex; align-items: center; justify-content: center; }
 
 /* New project */
 .nr-crumbs { display: flex; align-items: center; gap: 6px; height: 44px; padding: 0 10px 0 18px; font-size: var(--fs-meta); color: var(--muted); }
@@ -38,18 +47,18 @@
 .nr-sources { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .nr-source { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 12px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: var(--panel); color: var(--ink-2); text-align: left; }
 .nr-source:hover { background: var(--surface); }
-.nr-source[aria-checked='true'] { border-color: var(--line-4); background: var(--surface-3); }
+.nr-source[aria-checked='true'] { border-color: var(--line-3); background: var(--surface-3); }
 .nr-source svg { color: var(--ink-2); }
 .nr-source-title { font-size: var(--fs-ui); font-weight: var(--fw-medium); }
 .nr-source-sub { font-size: var(--fs-meta); color: var(--muted); line-height: var(--lh-snug); }
 .nr-tick { position: absolute; top: 10px; right: 10px; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--ink); color: var(--on-ink); }
 .nr-tick svg { color: var(--on-ink); }
 .nr-fields { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: 8px; }
-.nr-field { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 6px 0 10px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--panel); }
+.nr-field { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 6px 0 10px; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--panel); }
 .nr-field-value { flex: 1; min-width: 0; font-size: var(--fs-code); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nr-field-input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; font-size: var(--fs-code); }
 .nr-branch { padding: 0 10px; font-size: var(--fs-code); outline: none; color: var(--ink-2); }
-.nr-branch:focus, .nr-field:focus-within { border-color: var(--ink-3); }
+.nr-branch:focus, .nr-field:focus-within { border-color: var(--line-3); }
 .nr-change { height: 24px; padding: 0 9px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: var(--surface); color: var(--ink-2); font-size: var(--fs-meta); }
 .nr-change:hover { background: var(--surface-3); }
 .nr-member { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 8px; border-radius: var(--r-pill); border: 1px solid var(--line-2); background: transparent; color: var(--muted); font-size: var(--fs-code); font-weight: var(--fw-medium); }
@@ -67,8 +76,8 @@
 .cr-sub { font-size: var(--fs-meta); color: var(--muted); }
 .cr-search { position: relative; }
 .cr-search svg { position: absolute; left: 11px; top: 10px; color: var(--muted); }
-.cr-search input { width: 100%; height: 34px; padding: 0 12px 0 32px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--panel); outline: none; font-size: var(--fs-ui); }
-.cr-search input:focus { border-color: var(--ink-3); }
+.cr-search input { width: 100%; height: 34px; padding: 0 12px 0 32px; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--panel); outline: none; font-size: var(--fs-ui); }
+.cr-search input:focus { border-color: var(--line-3); }
 /* The list bleeds to the modal's edge, past .rm-pad's 18px, and pads itself back, so its thumb sits on the edge and rows stay put (KERNEL-602). The gutter is
    held, as in the sidebar's .sb-scroll, so rows are the same width whether or not the list scrolls: 18px less the 6px thumb. OpenFolder sets its own margin-top. */
 .cr-list { display: flex; flex-direction: column; gap: 2px; max-height: 276px; overflow-y: auto; scrollbar-gutter: stable; margin-right: -18px; padding-right: 12px; }
@@ -99,17 +108,19 @@
 .rs-fail .banner { align-items: flex-start; }
 .rs-out { margin: 10px 0 0; }
 .ob-check[data-state='wait'] .ob-detail { color: var(--muted); }
-.rm-box { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: var(--r); background: var(--code-bg); font-size: var(--fs-meta); }
+.rm-box { display: flex; align-items: center; gap: 9px; padding: 13px 12px; border-radius: var(--r); border: 1px solid var(--line-2); background: var(--canvas); font-size: var(--fs-code); color: var(--ink-2); }
+.rm-box svg { flex-shrink: 0; color: var(--muted); }
 .nr-name:focus-visible, .nr-desc:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .cr-search input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 
 /* Narrow screens drop Source, then Agents (D-080). */
 @container panel (max-width: 900px) {
-  .rm-head, .rm-row { grid-template-columns: minmax(0, 1fr) 150px 130px 90px; }
+  .rm-head, .rm-row { grid-template-columns: minmax(0, 1fr) 150px 130px 100px 90px; }
   .rm-head > :nth-child(2), .rm-row > :nth-child(2) { display: none; }
 }
 @container panel (max-width: 600px) {
-  .rm-head, .rm-row { grid-template-columns: minmax(0, 1fr) 110px 80px; }
+  .rm-head, .rm-row { grid-template-columns: minmax(0, 1fr) 110px 90px; }
+  .rm-head > :nth-child(4), .rm-row > :nth-child(4), .rm-head > :nth-child(5), .rm-row > :nth-child(5) { display: none; }
   .rm-head > :nth-child(3), .rm-row > :nth-child(3) { display: none; }
 }
 
@@ -134,7 +145,6 @@
 .cr-list.of-list { margin-top: -6px; }
 .cr-sub.of-dirty { color: var(--ink-2); }
 .header.pj-header { padding-right: 12px; }
-.pj-empty { margin: 0; padding: 24px; }
 .ob-link.ps-all { align-self: flex-start; margin-top: 12px; }
 .np-hint { font-size: var(--fs-ui); color: var(--ink-2); }
 .np-gap-6 { gap: 6px; }
@@ -146,12 +156,14 @@
 /* Clone a GitHub repo (KERNEL-945): a URL, your repos with their owner's avatar, and the folder it lands in. */
 .cl-body { display: flex; flex-direction: column; gap: 18px; padding-top: 4px; position: relative; }
 .cl-acct { position: absolute; top: -40px; right: 34px; display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px 0 3px; border: 1px solid var(--line-3); border-radius: var(--r-pill); font-size: var(--fs-meta); color: var(--ink-2); }
+.cl-acct-note { color: var(--ink-3); }
+.cl-sub { margin: 0; font-size: var(--fs-ui); color: var(--ink-2); }
 .cl-av { flex-shrink: 0; border-radius: 50%; object-fit: cover; background: var(--surface-3); }
 .cl-av-none { display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-tile-sm); font-weight: var(--fw-semibold); color: var(--ink-2); text-transform: lowercase; }
 .cl-field { display: flex; flex-direction: column; gap: 6px; }
 .cl-label { font-size: var(--fs-meta); color: var(--ink-3); }
-.cl-input { height: 36px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--input-bg); color: var(--ink); font-size: var(--fs-code); outline: none; }
-.cl-input:focus { border-color: var(--ink-3); }
+.cl-input { height: 36px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--input-bg); color: var(--ink); font-size: var(--fs-code); outline: none; }
+.cl-input:focus { border-color: var(--line-3); }
 .cl-list { display: flex; flex-direction: column; gap: 2px; height: 232px; overflow-y: auto; scrollbar-gutter: stable; margin: 2px -8px 0; }
 .cl-repo { display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 6px 12px 6px 8px; border: 0; border-radius: var(--r); background: transparent; color: var(--ink); text-align: left; }
 .cl-repo:hover { background: var(--nav-hover); }
@@ -167,7 +179,7 @@
 
 /* Open a folder (KERNEL-946): one list with the pick in place, and what opening does under it. No drop box: the whole dialog takes a dropped folder. */
 .of-body2 { display: flex; flex-direction: column; padding: 0 18px 4px; }
-.of-body2[data-over] { outline: 1px dashed var(--line-4); outline-offset: -4px; border-radius: var(--r-lg); }
+.of-body2[data-over] { outline: 1px dashed var(--line-3); outline-offset: -4px; border-radius: var(--r-lg); }
 .of-head { display: flex; align-items: center; gap: 12px; }
 .of-sub { flex: 1; margin: 0; padding: 0; }
 .of-list2 { display: flex; flex-direction: column; gap: 2px; margin: 12px -8px 0; max-height: 236px; overflow-y: auto; scrollbar-gutter: stable; }
@@ -201,8 +213,8 @@
 .rn-status .mono { color: var(--ink-2); }
 .rn-status > svg { color: var(--ink-3); }
 .rn-label { font-size: var(--fs-meta); color: var(--ink-3); }
-.rn-input { height: 36px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--input-bg); color: var(--ink); outline: none; }
-.rn-input:focus { border-color: var(--ink-3); }
+.rn-input { height: 36px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--input-bg); color: var(--ink); outline: none; }
+.rn-input:focus { border-color: var(--line-3); }
 .of-err { margin: 10px 0 0; font-size: var(--fs-meta); }
 
 /* New project from scratch (KERNEL-947): name, location and its private GitHub repo. */

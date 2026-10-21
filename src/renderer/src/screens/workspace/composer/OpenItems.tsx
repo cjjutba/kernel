@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Chat, OpenItem } from '@shared/types'
 import { call, onPush } from '../../../api'
-import { useStore } from '../../../store'
-import { Button, Icon, useBusy } from '../../../ui'
+import { go, useStore } from '../../../store'
+import { Button, Icon, LinkButton, useBusy, type IconName } from '../../../ui'
 import './composer.css'
 
 /** A question or task is cut to this in a row. The Lead has it whole. */
@@ -28,6 +28,10 @@ const SHORT: Record<OpenItem['kind'], (i: OpenItem) => string> = {
 }
 export const openItemsLine = (items: OpenItem[]) => `${items.length} open: ${items.map((i) => SHORT[i.kind](i)).join(', ')}`
 
+/** A row's mark and the one word of its button (Pen 10.8, 10.12): a question is answered where it was asked, blockers are opened and a proposed hand-off is reviewed. */
+const ROW: Record<OpenItem['kind'], { icon: IconName; act: string }> = { question: { icon: 'question', act: 'Answer' }, blockers: { icon: 'info', act: 'Open' }, 'handoff.proposed': { icon: 'fork', act: 'Review' }, mention: { icon: 'info', act: 'Open' } }
+const upper = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
+
 /**
  * What the Lead chat still owes (KERNEL-749), above the composer of its tabs: one line, opening to a row per item with Dismiss.
  * Shows nothing when nothing is owed. The list is `openItems.list` for the chat, read again on each `openItems.changed` for it.
@@ -51,15 +55,18 @@ export function OpenItems({ chat }: { chat: Chat }) {
   return (
     <section className="open-items" aria-label="Open">
       <button type="button" className="open-items-head" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span className="open-items-line ellipsis">{openItemsLine(items)}</span>
+        <Icon name="info" size={16} />
+        <span className="open-items-line ellipsis">{open ? `${items.length} open` : openItemsLine(items)}</span>
         <Icon name="chevron" size={12} />
       </button>
       {open && (
         <ul className="open-items-list">
           {items.map((i) => (
             <li key={i.id} className="open-items-row">
-              <span className="open-items-text">{openItemText(i)}</span>
-              <Button variant="ghost" busy={busy === i.id} busyLabel="Dismissing" disabled={busy !== null} aria-label={`Dismiss: ${SHORT[i.kind](i)}`} onClick={() => void dismiss(i)}>Dismiss</Button>
+              <Icon name={ROW[i.kind].icon} size={14} />
+              <span className="open-items-text" data-tip={openItemText(i)}>{upper(SHORT[i.kind](i))}</span>
+              {i.workspaceId && <Button size="sm" aria-label={`${ROW[i.kind].act}: ${SHORT[i.kind](i)}`} disabled={busy !== null} onClick={() => go({ name: 'workspace', workspaceId: i.workspaceId as string })}>{ROW[i.kind].act}</Button>}
+              <LinkButton variant="quiet" size="ui" busy={busy === i.id} busyLabel="Dismissing" disabled={busy !== null} aria-label={`Dismiss: ${SHORT[i.kind](i)}`} onClick={() => void dismiss(i)}>Dismiss</LinkButton>
             </li>
           ))}
         </ul>

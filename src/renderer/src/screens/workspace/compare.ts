@@ -27,6 +27,13 @@ export const targetKey = (t: CompareTarget) => JSON.stringify(t)
 
 export const shortSha = (sha: string) => sha.slice(0, 7)
 
+/** What the Changes toolbar says it compares (Pen 9.17): "Against main", Uncommitted, or the commit. */
+export function compareLabel(ws: { baseRef: string }, c: Compare): string {
+  if (c.only?.kind === 'uncommitted') return 'Uncommitted'
+  if (c.only) return `Commit ${shortSha(c.only.sha)}`
+  return `Against ${(c.branch ?? ws.baseRef).replace(/^origin\//, '')}`
+}
+
 /** What the count line adds after "3 files changed" for a target that isn't the default. Empty for the default. */
 export function compareNote(c: Compare): string {
   if (c.only?.kind === 'uncommitted') return 'since the last commit'

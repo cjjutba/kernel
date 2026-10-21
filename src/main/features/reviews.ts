@@ -1,15 +1,14 @@
-import { REVIEW_KINDS, type AgentDef, type Chat, type ChatPart, type Provider, type ReviewConfig, type ReviewKind, type BaseUpdate, type ReviewRound, type ReviewVerdict, type RoleModel, type TeamConfig, type Workspace } from '@shared/types'
+import { REVIEW_KINDS, type AgentDef, type Chat, type ChatPart, type Provider, type ReviewConfig, type ReviewKind, type BaseUpdate, type ReviewRound, type ReviewVerdict, type ResolvedPick, type TeamConfig, type Workspace } from '@shared/types'
 import { kindStates, lensOf, reviewsText, reviewVerdicts, sameHeads } from '@shared/merge'
 import { KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
 import { providerOf } from '@shared/providers'
-import { rolePick } from '@shared/rolePick'
 import { buildsHere } from '@shared/leadMode'
 import { bus } from '../bus'
 import type { ReviewState } from '../services/leadUpdates'
 import type { ReviewInput } from '../services/reviewMcp'
 import { reviewRule } from '../services/handoff'
 import { remoteOf, reviewPolicyOf, saveAlwaysReview, saveReviewSettings } from '../services/settings'
-import { fetchOrigin, resolveBaseRef } from '../services/worktrees'
+import { fetchOrigin, resolveBaseRef, revParse } from '../services/worktrees'
 import { exec } from '../services/exec'
 import { isUnreadable } from '../services/agents'
 import { inPaths, kindLabel, kindsFor, lensAgent } from '../services/lenses'
@@ -49,14 +48,9 @@ export class Reviews extends Feature {
     const of = ws.reviewOf ? this.store.workspace(ws.reviewOf) : undefined
     if (!of) return undefined
     const author = this.agentsSync(ws.projectId).find((a) => a.id === of.agentId)?.name ?? of.agentId
-    // With a PR, the review is of what the PR holds on GitHub, the commit verdicts are checked against. Before one, it is
-    // of the author's local branch, or the remote's copy when the local one was gone (reviewBase).
-    const project = this.store.project(ws.projectId)
-    const remote = remoteOf({ workspace: { remote: project && this.k.config['projectRemotes'].get(project.path) } }, this.settings)
-    const resetTo = of.prNumber ? `${remote}/${of.branch}` : ws.baseRef
     const lens = chat?.lens?.kind
     const others = lens ? [...new Set(this.chatTabs(ws.id).flatMap((c) => (c.lens && c.lens.kind !== lens ? [c.lens.kind] : [])))] : []
-    return reviewRule({ author, task: of.title ?? of.name, workspaceId: of.id, branch: of.branch, resetTo, base: of.baseRef, ...(of.prNumber ? { pr: { number: of.prNumber, url: of.prUrl } } : {}), ...(lens ? { lens, others } : {}) }, remote)
+    return reviewRule({ author, task: of.title ?? of.name, workspaceId: of.id, branch: of.branch, ...(of.prHead ? { head: of.prHead } : {}), base: of.baseRef, ...(of.prNumber ? { pr: { number: of.prNumber, url: of.prUrl } } : {}), ...(lens ? { lens, others } : {}) })
   }
 
   /**
@@ -158,7 +152,7 @@ export class Reviews extends Feature {
       const files = await this.filesBetween(of, last.head, head)
       kept = files ? plan.filter((p) => before.approved.includes(p.kind) && !touches(p.paths, files)).map((p) => p.kind) : []
     }
-    const skipped = plan.filter((p) => !kept.includes(p.kind) && p.optional && !!this.k.account.nearLimit(this.modelFor(p).provider)).map((p) => p.kind)
+    const skipped = plan.filter((p) => !kept.includes(p.kind) && p.optional && !!this.k.account.nearLimit(this.modelFor(p, of).provider)).map((p) => p.kind)
     const runs = plan.length - kept.length - skipped.length
     const optional = plan.filter((p) => p.optional).map((p) => p.kind)
     return { n: (last?.n ?? 0) + (runs ? 1 : 0), rounds, head, prNumber: of.prNumber!, kinds: plan.map((p) => p.kind), ...(kept.length ? { kept } : {}), ...(skipped.length ? { skipped } : {}), ...(optional.length ? { optional } : {}) }
@@ -199,10 +193,10 @@ export class Reviews extends Feature {
    * until the round is saved, the workspace's `reviewPending` names the head, so a PR waiting for its reviewer's approval
    * doesn't merge before Kernel knows which reviews it gets (KERNEL-717). A plan that comes back empty clears it.
    */
-  async onReady(workspaceId: string): Promise<void> {
+  async onReady(workspaceId: string, asked = false): Promise<void> {
     const of = this.store.workspace(workspaceId)
     if (!of || of.status === 'archived' || of.reviewOf || of.prState !== 'ready' || !of.prNumber || (this.isLeadWorkspace(of) && !buildsHere(of))) return
-    if (this.settings.pr.autoReview === false) {
+    if (this.settings.pr.autoReview === false && !asked) {
       if (of.reviewPending !== undefined) this.updateWs(of.id, { reviewPending: undefined })
       await this.noteNotStarted(of)
       return this.noReview(of.id)
@@ -256,6 +250,25 @@ export class Reviews extends Feature {
       this.starting.delete(of.id)
       // A stopped Kernel's database is closed. The marker stays, and `start` takes it up at the next start.
       if (!this.stopped && this.store.workspace(of.id)?.reviewPending !== undefined) this.updateWs(of.id, { reviewPending: undefined })
+    }
+  }
+
+  /**
+   * The user asked for a review of the PR (KERNEL-1072), by the Lead or by turning automatic review on: the round the setting
+   * would have started, with the setting off or on. Starts nothing for a PR that isn't ready, was reviewed at its head, or
+   * has a review open. Returns the PR's open review workspace once the round has started, else undefined.
+   */
+  async requestReview(workspaceId: string): Promise<Workspace | undefined> {
+    await this.onReady(workspaceId, true)
+    const of = this.store.workspace(workspaceId)
+    return of ? this.openReview(of) : undefined
+  }
+
+  /** Automatic review was just turned on: the ready PRs that never had a round get one now (KERNEL-1072). */
+  async reviewReady(): Promise<void> {
+    for (const ws of this.store.workspaces()) {
+      if (ws.status === 'archived' || ws.reviewOf || ws.prState !== 'ready' || !ws.prNumber || this.roundOf(ws) || this.openReview(ws)) continue
+      void this.onReady(ws.id).catch(() => undefined)
     }
   }
 
@@ -371,15 +384,46 @@ export class Reviews extends Feature {
     return round.kinds.filter((k) => !round.skipped?.includes(k) && !current.some((v) => lensOf(v) === k))
   }
 
-  /** The review workspace for a PR: one worktree and one setup run, with a chat per kind, each held until setup passes. */
+  /**
+   * The commit a review round reads (KERNEL-1083): the PR's head as Kernel knows it, else the branch's tip on the remote, after
+   * a fresh fetch from the project's folder when it has the remote. Throws when the fetch fails or the commit isn't here, so no round starts on a stale tree.
+   */
+  private async reviewHead(of: Workspace): Promise<string> {
+    const project = this.mustProject(of.projectId)
+    const remote = remoteOf({ workspace: { remote: this.k.config['projectRemotes'].get(project.path) } }, this.settings)
+    // A folder without that remote has nothing to fetch, and reads the commits it has.
+    if ((await exec('git', ['-C', project.path, 'remote', 'get-url', remote])).code === 0) {
+      const fetched = await fetchOrigin(project.path, remote, { fresh: true })
+      if (!fetched.ok) throw new Error(`Fetching ${remote} failed (${fetched.error}), so the review of ${of.branch} has nothing current to read.`)
+    }
+    for (const ref of [of.prHead, `${remote}/${of.branch}`, of.branch]) {
+      const sha = ref ? await revParse(project.path, ref) : undefined
+      if (sha) return sha
+    }
+    throw new Error(`${of.branch} is not on ${remote} or in this repo, so there is nothing to review.`)
+  }
+
+  /** Puts the review worktree at `sha`. Nobody edits there, so the reset loses nothing. */
+  private async putOnHead(path: string, sha: string): Promise<void> {
+    const r = await exec('git', ['-C', path, 'reset', '--hard', '--quiet', sha])
+    if (r.code !== 0) throw new Error(`Couldn't put the review worktree on ${sha.slice(0, 7)}: ${r.stderr.trim() || `git exited with code ${r.code}`}`)
+  }
+
+  /** The review workspace for a PR: one worktree and one setup run, with a chat per kind, each held until the worktree's files are copied. */
   private async startReview(of: Workspace, plan: PlannedReview[]): Promise<Workspace> {
     const [first] = plan
     const agent = first.agent ?? lensAgent(first.kind)
     // The verdicts go where the PR's news goes: the chat that handed it off, or the Build here chat it came from (KERNEL-778).
     const leadChatId = of.leadChatId ?? this.k.lead.buildTab(of)
+    // Fetched before the workspace exists, so a fetch that fails leaves nothing behind (KERNEL-1083).
+    const head = await this.reviewHead(of)
     const { ws, project, repo, chat } = await this.k.workspaces.cutWorkspace(of.projectId, {
       prompt: this.brief(of, first.kind), title: `Review PR #${of.prNumber}`, agentId: agent.id, agent, reviewOf: of.id, ...(leadChatId ? { leadChatId } : {})
     })
+    try { await this.putOnHead(ws.path, head) } catch (e) {
+      await this.k.archive.archiveWorkspace(ws.id).catch(() => undefined)
+      throw e
+    }
     const chats = plan.map((p, i) => this.lensChat(ws, p, i === 0 ? chat : undefined))
     for (const [i, c] of chats.entries()) this.sessions.hold(c.id, this.briefParts(of, plan[i].kind), { from: 'kernel' })
     return this.k.workspaces.setUpWorkspace(ws, project, repo, chats[0])
@@ -387,10 +431,13 @@ export class Reviews extends Feature {
 
   /**
    * A new review round with the PR's review workspace open (KERNEL-552): each kind the round runs that has no chat gets one,
-   * and each that has is asked to review again. A review workspace still setting up, or whose setup failed, holds the
-   * messages until setup passes. A kind that turned required or optional since its chat started reads as the round has it.
+   * and each that has is asked to review again. A review workspace still being made, or one an older Kernel failed for setup,
+   * holds the messages until it is ready. A kind that turned required or optional since its chat started reads as the round has it.
    */
   private async reviewAgain(rws: Workspace, of: Workspace, run: PlannedReview[]) {
+    // Before any message goes out, so a fetch or checkout that fails starts no round on a stale tree (KERNEL-1083).
+    const head = await this.reviewHead(of)
+    await this.putOnHead(rws.path, head)
     const tabs = this.chatTabs(rws.id).filter((c) => c.kind === 'chat')
     for (const p of run) {
       // A review chat from before review kinds runs the code review.
@@ -405,14 +452,14 @@ export class Reviews extends Feature {
         const { optional: _optional, ...lens } = chat.lens
         this.saveChat({ ...chat, lens: { ...lens, ...(p.optional ? { optional: true as const } : {}) } })
       }
-      const text = `PR #${of.prNumber} has new commits${of.prHead ? `, up to ${of.prHead.slice(0, 7)}` : ''}. Review it again as your rule says, and call submit_review again.`
+      const text = `PR #${of.prNumber} has new commits. Your worktree is now on its head commit ${head}. Review it again as your rule says, and call submit_review again.`
       await this.sessions.send(chat.id, [{ type: 'text', text }], { from: 'kernel' })
     }
   }
 
   /** A review chat for one kind: `chat` made over, or a new one in the review workspace. */
   private lensChat(rws: Workspace, p: PlannedReview, chat?: Chat): Chat {
-    const pick = this.modelFor(p)
+    const pick = this.k.team.announce(rws, this.modelFor(p, rws.reviewOf ? this.store.workspace(rws.reviewOf) : undefined))
     const title = `${kindLabel(p.kind)} review`
     const lens: NonNullable<Chat['lens']> = { kind: p.kind, ...(p.agent ? { agent: p.agent.id } : {}), ...(p.optional ? { optional: true as const } : {}) }
     const base = chat ?? this.newChat(rws.id, title, { ...pick, plan: false })
@@ -420,18 +467,36 @@ export class Reviews extends Feature {
     return this.saveChat({ ...rest, title, ...(pick.provider !== 'claude' ? { provider: pick.provider } : {}), model: pick.model, effort: pick.effort, plan: false, lens })
   }
 
-  /** What a review chat runs on: its kind's `model`, else its agent's pin, else the reviewer role's from Settings, Models. */
-  private modelFor(p: PlannedReview): RoleModel {
-    const role = this.settings.models.roles.reviewer
-    const base = p.agent ? rolePick(p.agent, role) : role
+  /**
+   * What a review chat runs on: its kind's `model`, else its agent's pin, else the reviewer role's from Settings, Models. A kind
+   * with no `provider` and no `model` runs on the provider that didn't build the PR when that one is signed in, has room
+   * (no usage read yet counts) and its last usage read didn't fail, else on the builder's (KERNEL-1059).
+   */
+  private modelFor(p: PlannedReview, of?: Workspace): ResolvedPick {
+    const side = p.provider ?? (p.model ? undefined : this.otherThanBuilder(of))
+    const base = p.agent ? this.k.team.pickFor(p.agent, { role: 'reviewer', ...(side ? { chatProvider: side } : {}) }) : this.k.team.pickRole('reviewer', side ? { chatProvider: side } : {})
     if (!p.model) return base
-    return { provider: p.provider ?? providerOf(p.model), model: p.model, effort: base.effort }
+    const want = p.provider ?? providerOf(p.model)
+    const { use, fellBack } = this.k.team.route(want)
+    if (!fellBack) return { provider: want, model: p.model, effort: base.effort }
+    return { ...this.k.team.pickRole('reviewer', { chatProvider: use }), fellBack }
+  }
+
+  /** The provider that didn't run the PR's builder, when it can take a review now: signed in, not at or near its limit. No usage read yet counts as room; a failed read doesn't. */
+  private otherThanBuilder(of?: Workspace): Provider | undefined {
+    if (!of) return undefined
+    const built = this.chatTabs(of.id).find((c) => c.kind === 'chat' && !c.lens)?.provider ?? 'claude'
+    const other: Provider = built === 'claude' ? 'codex' : 'claude'
+    const { providers, account } = this.k
+    return providers.hasRoom(other) && !providers.usageReadFailed(other) && !account.nearLimit(other) ? other : undefined
   }
 
   /** The first message a review chat gets. Its rule says the rest: where the work is and how to report. */
   private brief(of: Workspace, kind: ReviewKind): string {
     const author = this.agentsSync(of.projectId).find((a) => a.id === of.agentId)?.name ?? of.agentId
+    const criteria = this.k.evidence.criteriaOf(of)
     return `Run ${reviewsText([kind]).replace(/^The/, 'the')} of PR #${of.prNumber}${of.prTitle ? ` "${of.prTitle}"` : ''} by ${author}.`
+      + (criteria.length ? `\nAcceptance criteria for this task, numbered from 1. Judge each one you can check in submit_review's criteria, by its number:\n${criteria.map((c, i) => `${i + 1}. ${c}`).join('\n')}` : '')
   }
 
   private briefParts(of: Workspace, kind: ReviewKind): ChatPart[] { return [{ type: 'text', text: this.brief(of, kind) }] }
@@ -456,7 +521,9 @@ export class Reviews extends Feature {
     const verdict: ReviewVerdict = {
       workspaceId: rws.id, agentId: lens ? lens.agent ?? KERNEL_REVIEWER : rws.agentId, verdict: review.verdict, summary: review.summary.trim(),
       ...(review.verdict === 'blockers' && review.blockers?.length ? { blockers: review.blockers } : {}),
+      ...(review.criteria?.length ? { criteria: review.criteria } : {}),
       ...(/^[0-9a-f]{40}$/.test(sha) ? { sha } : {}), ...(fresh.prNumber ? { prNumber: fresh.prNumber } : {}),
+      provider: (chatId ? this.store.chat(chatId)?.provider : undefined) ?? 'claude',
       ...(lens ? { lens: lens.kind } : {}), ...(lens?.optional ? { optional: true as const } : {}),
       ...(running ? { checksRunning: true as const } : {}), ...(retried ? { checksRetried: true as const } : {}), ts: Date.now()
     }

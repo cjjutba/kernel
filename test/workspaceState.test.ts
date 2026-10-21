@@ -17,7 +17,7 @@ async function setup(o: { files?: Record<string, string>; settings?: object } = 
   const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/christian.md': CHRISTIAN, ...o.files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...o.settings }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...o.settings, pr: { autoReview: false, ...(o.settings as { pr?: object } | undefined)?.pr } }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   k.sessions.send = async () => ({ queued: false })

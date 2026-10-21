@@ -1,8 +1,8 @@
 import type { ProjectSettings, TrackerKind } from '@shared/types'
 import { Select } from '../../../ui'
-import { Row, projectValue } from '../kit'
 import { patchProjectSettings } from '../useSettings'
 import { useMenuOpen } from './projectMenu'
+import { SourcedRow } from './projectSource'
 
 type Kind = TrackerKind | 'none'
 
@@ -11,7 +11,7 @@ const CHOICES: Kind[] = ['linear', 'github', 'none']
 const LABEL: Record<Kind, string> = { linear: 'Linear', github: 'GitHub Issues', none: 'None' }
 /** What the row says when the project has no `[tracker] kind` and detection decided. */
 const DETECTED: Partial<Record<Kind, string>> = {
-  linear: 'Detected from your Linear connection.',
+  linear: 'Detected from the Linear connection.',
   github: 'Detected from the github.com remote.',
   none: 'None detected. Choose one to list issues for this project.'
 }
@@ -22,20 +22,19 @@ const DETECTED: Partial<Record<Kind, string>> = {
  */
 export function ProjectTrackerRow({ projectId, rs, detected }: { projectId: string; rs: ProjectSettings; detected: Kind }) {
   const menu = useMenuOpen('projectTracker')
-  const chosen = rs.tracker?.kind
-  const current = chosen ?? detected
+  const current = rs.tracker?.kind ?? detected
   return (
-    <Row
+    <SourcedRow
       id="tracker"
       label="Issue tracker"
-      desc={chosen ? undefined : DETECTED[detected]}
-      {...projectValue(rs, 'tracker.kind', () => void patchProjectSettings(projectId, { tracker: { kind: null } }))}
+      rs={rs} path="tracker.kind" app={DETECTED[detected]}
+      onReset={() => void patchProjectSettings(projectId, { tracker: { kind: null } })}
     >
       <Select
         label="Issue tracker" value={current} align="right" {...menu}
         options={CHOICES.map((kind) => ({ value: kind, label: LABEL[kind], description: kind === detected ? 'Detected' : undefined }))}
         onChange={(v) => { if (v !== current) void patchProjectSettings(projectId, { tracker: { kind: v as Kind } }) }}
       />
-    </Row>
+    </SourcedRow>
   )
 }

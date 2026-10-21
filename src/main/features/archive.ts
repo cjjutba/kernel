@@ -1,6 +1,7 @@
 import { basename, dirname } from 'node:path'
 import { stat } from 'node:fs/promises'
 import type { Project, Thread, Workspace } from '@shared/types'
+import { buildsHere } from '@shared/leadMode'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { bus } from '../bus'
 import { cleanupSwitch, loadRepoSettings, type RepoSettings } from '../services/settings'
@@ -46,6 +47,7 @@ export class Archive extends Feature {
     const ws = this.mustWs(workspaceId)
     if (ws.mode === 'current') throw new Error('Discard is off on the current branch, because it would throw away your own changes too. Revert to a checkpoint instead.')
     if (ws.worktreePending) throw new Error("This chat's worktree isn't made yet.")
+    if (ws.shared) throw new Error('This chat works in the shared main folder, which Kernel never discards changes in.')
     const chats = this.store.chats(workspaceId)
     if (chats.some((c) => this.sessions.isRunning(c.id))) throw new Error('The agent is still working. Stop it first, then discard.')
     const chat = chats.find((c) => c.kind !== 'terminal')
@@ -113,7 +115,6 @@ export class Archive extends Feature {
 
   /** The quick part of an archive: everything that stops work in the workspace, then the record says archived (KERNEL-702). */
   private async archiveNow(id: string, deleteBranch?: boolean, o: { keepWorktree?: boolean; removingProject?: boolean; noScript?: boolean } = {}) {
-    this.k.setup.setupFailures.delete(id)
     // The branch the work is on now: archive deletes it, and restore brings it back. It is read here because `syncBranch`
     // leaves an archived workspace alone. A Lead chat whose worktree isn't made yet keeps the branch it picked (KERNEL-542).
     const ws = await this.k.prs.syncBranch(id)
@@ -182,7 +183,8 @@ export class Archive extends Feature {
     if (ws?.status !== 'archived') return
     const project = this.store.project(ws.projectId)
     if (!project) return
-    const unmade = !!ws.worktreePending
+    // A chat on the shared main folder has no folder, branch or script of its own to clean up (KERNEL-1050).
+    const unmade = !!ws.worktreePending || !!ws.shared
     const repo = await loadRepoSettings(project.path)
     // A folder deleted outside Kernel has nothing to run the script in, and counts as removed (KERNEL-109).
     const gone = unmade || await folderGone(ws.path)
@@ -282,6 +284,15 @@ export class Archive extends Feature {
     const project = this.mustProject(ws.projectId)
     const repo = await loadRepoSettings(project.path)
     let moved: Partial<Workspace> = {}
+    // A chat on the shared main folder comes back on it, which is made again when it is gone (KERNEL-1050).
+    if (ws.shared) {
+      const path = await this.k.mainFolder.ensure(ws.projectId)
+      const back = this.updateWs(id, { path, archivedAt: undefined, status: 'ready', folderGone: undefined, stat: undefined }, { archived: true })
+      this.markThread(back.threadId!, undefined)
+      this.k.autoArchive.unmarkReviews(id)
+      bus.activity({ kind: 'workspace.restored', projectId: ws.projectId, workspaceId: id, agentId: ws.agentId, text: 'restored', object: ws.name })
+      return back
+    }
     if (ws.mode === 'worktree') {
       const path = await stat(ws.path).then(() => undefined, () => ws.path)
       if (!path) throw new Error(`The folder ${ws.path} is back in use, so ${ws.name} cannot be restored there.`)
@@ -297,7 +308,7 @@ export class Archive extends Feature {
         moved = { branch, baseRef: base }
       } else await restoreWorktree({ repo: project.path, path, branch: ws.branch, remote })
       if (repo.files.symlinkNodeModules) await linkNodeModules(project.path, path)
-    } else if (this.settings.workspace.oneCurrentBranchPerProject && !ws.lead && this.store.workspaces(ws.projectId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== ws.agentId)) {
+    } else if (this.settings.workspace.oneCurrentBranchPerProject && (!ws.lead || buildsHere(ws)) && this.k.workspaces.onCheckout(ws.projectId, { id, agentId: ws.agentId, lead: buildsHere(ws) })) {
       throw new Error('Another workspace is already working on the current branch in this project.')
     }
     const status = ws.mode === 'worktree' ? 'setup' as const : 'ready' as const
@@ -319,7 +330,7 @@ export class Archive extends Feature {
     let tabs = this.chatTabs(ws.id).filter((c) => c.kind !== 'terminal')
     if (!tabs.length) {
       const agent = this.agentsSync(ws.projectId).find((a) => a.id === ws.agentId)
-      const pick = { ...(agent ? this.k.team.pickFor(agent) : this.settings.models.roles.engineers), plan: false }
+      const pick = { ...this.k.team.pickIn(ws, agent), plan: false }
       tabs = [this.saveChat(ws.lead ? this.k.lead.leadTab(ws, NEW_TAB, pick) : this.newChat(ws.id, NEW_CHAT, pick))]
     }
     void this.k.workspaces.setUpWorkspace(ws, project, repo, tabs[0], { checkpoint: false }).then((done) => {
@@ -421,7 +432,7 @@ export class Archive extends Feature {
       'workspaces.gitStatus': async ({ workspaceId }) => {
         const ws = await this.k.prs.syncBranch(workspaceId)
         // A Lead chat whose worktree isn't made yet has nothing on its branch (KERNEL-542).
-        if (ws.worktreePending) return { branch: ws.branch, ahead: 0, behind: 0, dirty: { files: 0, added: 0, removed: 0 } }
+        if (ws.worktreePending || ws.shared) return { branch: ws.branch, ahead: 0, behind: 0, dirty: { files: 0, added: 0, removed: 0 } }
         return gitStatus(ws.path, ws.branch, ws.baseRef, await this.k.config.remoteOfWs(ws))
       },
       'workspaces.discard': async ({ workspaceId }) => { await this.discard(workspaceId); return { ok: true } }

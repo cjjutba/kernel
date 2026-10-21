@@ -2,7 +2,7 @@ import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, BuiltinCommand, ChangedFile, Chat, ChatItem, ChatRunMode,
   ChatPart, Checkpoint, CheckpointPreview, ClaudeAccount, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubAuth, GitHubStatus, HookStatus, Hunk,
   GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, LeadMode, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewProjectRequest, Notification, OpenApp, OpenItem, Overlap, PreflightCheck, PushCheck, PrBlocked, PrInfo, PrPending, PrState,
-  PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, GitHubOwner, RepoSummary, ResolvedPath, ReviewPatch, Project, ProjectSettings, ProjectSettingsPatch, ProjectSetupStep, ProjectTracker, ScriptKind, ScriptLine, ScriptSuggestion, ChatArchivePreview, MoveChoice, MoveNotice, SharedAnchor, SwitchMove, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
+  PermissionMode, PlanAttention, PrEvidence, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, GitHubOwner, RepoSummary, ResolvedPath, ReviewPatch, Project, ProjectSettings, ProjectSettingsPatch, ProjectSetupStep, ProjectTracker, ScriptKind, ScriptLine, ScriptSuggestion, ChatArchivePreview, MoveChoice, MoveNotice, SharedAnchor, SwitchMove, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 import type { TelemetryEvent, TelemetryRecord } from './telemetry'
@@ -132,6 +132,11 @@ export interface KernelApi {
    * they are now, and the chat up to `itemId` (the whole chat when unset). Answers once the workspace and its chat exist; setup goes on.
    */
   'workspaces.fork': { req: { chatId: string; itemId?: string }; res: Workspace }
+  /**
+   * Try again on a chat whose worktree git couldn't make (KERNEL-1086): makes it again, then sends the messages that wait in the
+   * chat, not sent. A chat that started on the shared main folder makes its working copy again. Answers once the try has started.
+   */
+  'workspaces.retryWorktree': { req: { workspaceId: string }; res: Workspace }
   'workspaces.archive': { req: { workspaceId: string; deleteBranch?: boolean; push?: boolean }; res: Ok }
   /** History > Restore: a fresh worktree on the archived branch, chats kept. */
   'workspaces.restore': { req: { workspaceId: string }; res: Workspace }
@@ -281,6 +286,12 @@ export interface KernelApi {
   /** The plan's file, written again from the approval if it was deleted. `relative` is from the workspace folder. */
   'approvals.planFile': { req: { id: string }; res: { path: string; relative: string } }
 
+  /** What an approved plan cost the user so far, from the Inbox events of its workspaces (KERNEL-1060). */
+  'attention.plan': { req: { approvalId: string }; res: PlanAttention }
+
+  /** The evidence against each acceptance criterion of the plan step a workspace's PR was handed (KERNEL-1065). Null when there is no PR to read. */
+  'evidence.pr': { req: { workspaceId: string }; res: PrEvidence | null }
+
   // tasks (KERNEL-18)
   'tasks.list': { req: { projectId: string }; res: Task[] }
 
@@ -298,7 +309,7 @@ export interface KernelApi {
    * The new workspace modal: the prompt goes to the Lead in a new chat, which takes its title from the first message (KERNEL-148). The
    * chat gets its own worktree, on a branch from `baseRef` or the latest default branch (KERNEL-405). It answers once the chat, its
    * tab and its workspace are saved, before the fetch and the worktree, which the workspace's `worktreePending` covers. The prompt
-   * waits in the tab's queue until the worktree exists, then for setup when Wait for setup says so (KERNEL-542). `clientId` is
+   * waits in the tab's queue until the worktree exists, never for setup (KERNEL-542, KERNEL-1086). `clientId` is
    * the prompt's id while it waits and its row's once it goes, as in `chats.send` (KERNEL-894).
    */
   'lead.start': { req: { projectId: string; prompt: string; parts?: ChatPart[]; clientId?: string; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode; leadMode?: LeadMode }; res: Chat }
@@ -310,9 +321,24 @@ export interface KernelApi {
   /**
    * Switches a chat with Kernel to Hand off or Build here, by its workspace (KERNEL-770). It applies from the next turn: a running
    * turn finishes in the mode it started in. The chat's transcript gets a `leadMode` divider. Refuses a workspace that isn't a
-   * chat with Kernel.
+   * chat with Kernel. On a chat on the shared main folder (`Workspace.shared`) it only records `leadMode` and makes nothing: the
+   * working copy, by Settings, Git and worktrees, Workspace type, is made when the first message is sent in Build here (KERNEL-1053,
+   * amending KERNEL-1051). It throws a sentence, and the chat stays in Hand off, when the copy couldn't be made: a current-branch
+   * copy while another workspace is on the checkout.
    */
   'lead.setMode': { req: { workspaceId: string; mode: LeadMode }; res: Workspace }
+  /**
+   * Makes the working copy again for a chat whose copy failed (KERNEL-1053): its record has `worktreePending.error` with
+   * `fromShared`, and its first message is still held. Answers at once. The held message goes out in the new copy once it is
+   * ready, and a failure records the new error. Refuses a chat that has no failed copy.
+   */
+  'lead.retryCopy': { req: { workspaceId: string }; res: Workspace }
+  /**
+   * Gives up the working copy of a chat whose copy failed (KERNEL-1053) and sends its held message in Hand off on the shared
+   * main folder. The chat is shared again, `leadMode` is `handoff`, and nothing of the failed copy is left. Refuses a chat that
+   * has no failed copy.
+   */
+  'lead.sendAsHandoff': { req: { workspaceId: string }; res: Workspace }
   /** The Lead chats, each holding one or more Lead tabs, in every project or in `projectId`, oldest first (KERNEL-337). */
   'threads.list': { req: { projectId?: string }; res: Thread[] }
   /** Names a Lead chat. Kernel stops naming it after its first tab from then on. */
@@ -353,7 +379,10 @@ export interface KernelApi {
   'scripts.run': { req: { workspaceId: string; kind: ScriptKind; name?: string }; res: Ok }
   /** Stops the named run script, or every run script in the workspace without a name. */
   'scripts.stop': { req: { workspaceId: string; kind: 'run' | 'setup'; name?: string }; res: Ok }
-  /** Send anyway: a failed setup is skipped and the messages waiting for it go out (KERNEL-430). */
+  /**
+   * Send anyway on a workspace an older Kernel failed with its brief held for setup: the messages waiting there go out (KERNEL-430).
+   * Nothing waits for setup since KERNEL-1086, so no new workspace gets there.
+   */
   'scripts.skipSetup': { req: { workspaceId: string }; res: Ok }
   /** Pushes the workspace's script output, exit codes and URLs as one `script.state`, for a window that wasn't there to see them (KERNEL-340). */
   'scripts.replay': { req: { workspaceId: string }; res: Ok }
@@ -675,6 +704,11 @@ export type PushEvent =
   | { type: 'project'; project: Project }
   | { type: 'project.setup'; projectId: string; steps: ProjectSetupStep[] }
   /**
+   * A step of a new project's setup failed (KERNEL-1086). `skipped`: the steps after it ran anyway, and the step reads `skip`.
+   * Otherwise setup stopped at it, as only a step the rest needs does (the clone). `projects.retrySetup` runs it again.
+   */
+  | { type: 'project.setupFailed'; projectId: string; step: ProjectSetupStep['id']; title: string; error: string; skipped: boolean }
+  /**
    * A project's .kernel/settings.toml or settings.local.toml changed on disk outside Kernel: by hand, from Open settings.toml or a
    * git pull. `settings` is what `settings.project` reads now. Kernel's own saves and a file that stops parsing send none (KERNEL-723).
    */
@@ -696,6 +730,17 @@ export type PushEvent =
    */
   | { type: 'script.data'; workspaceId: string; kind: ScriptKind; name?: string; data: string }
   | { type: 'script.exit'; workspaceId: string; kind: ScriptKind; name?: string; code: number | null }
+  /**
+   * A workspace's setup script ended without passing (KERNEL-1086): it `failed` with exit `code`, was `stopped`, by hand or by a
+   * quit, or ran past its `timeout`. Nothing waits for setup, so the agent keeps working. Sent once per run. `chatId` is the chat
+   * its brief went to, and `line` the last line the script printed. The setup line on the workspace (`setupRun`) says the same.
+   */
+  | { type: 'setup.failed'; workspaceId: string; chatId?: string; kind: 'failed' | 'stopped' | 'timeout'; code?: number; line?: string }
+  /**
+   * git couldn't make a new chat's worktree, or its working copy (KERNEL-1086). The messages wait in the chat, not sent, and
+   * `workspaces.retryWorktree` makes it again and sends them. `error` is git's line, also kept in `worktreePending.error`.
+   */
+  | { type: 'worktree.failed'; workspaceId: string; chatId?: string; error: string }
   /** The first local URL a run script printed, and null when it starts or exits (KERNEL-246). */
   | { type: 'script.url'; workspaceId: string; name: string; url: string | null }
   /**
@@ -723,6 +768,11 @@ export type PushEvent =
   | { type: 'account'; account: ClaudeAccount }
   /** Accounts changed: one added, removed, signed out or switched to (KERNEL-406). */
   | { type: 'accounts'; accounts: AccountProfile[] }
+  /**
+   * New work in `workspaceId` started on `to` because every signed-in subscription on `from`, the provider its role or agent
+   * prefers, was at its limit (KERNEL-1055). Sent when the pick is made, never from a timer.
+   */
+  | { type: 'providerFellBack'; workspaceId: string; from: Provider; to: Provider }
   /**
    * The provider's account in use changed, from `from` to `to` (account ids, `cli` for the CLI's own login), and `reason`
    * says who switched. `limit` is the window the old account hit, on a switch from the limit banner or by Kernel at a limit

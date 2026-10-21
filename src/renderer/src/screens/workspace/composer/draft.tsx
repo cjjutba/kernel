@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type HTMLAttributes, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import type { ChatPart } from '@shared/types'
+import { Icon } from '../../../ui'
 import { attachFiles, clipboardImages, Held, pastedText } from './attach'
-import { ComposerChip } from './Chip'
+import { ComposerChip, isToken } from './Chip'
 import { chatsLoaded, getState, isFixture, subscribe } from '../../../store'
 import { dropProjectDrafts, loadDraft, loadPosition, persistDrafts, pruneDrafts, saveDraft, savePosition, type DraftPosition } from './draftStore'
 
@@ -194,9 +195,10 @@ const caretAfter = (node: Node) => {
 /** What a chip reads as outside the box, for a copy. */
 const chipText = (p: ChatPart) => (p.type === 'text' ? p.text : p.type === 'skill' ? `/${p.name}` : p.type === 'file' ? p.path ?? p.text ?? p.name : p.name)
 
-/** A chip's slot. `fresh` is a chip that just landed and fades in. */
-interface Slot { id: string; el: HTMLElement; part: ChatPart; fresh?: boolean }
-interface View { parts: ChatPart[]; before: string; after: string; first: boolean; slots: Slot[]; pending: number }
+/** A chip's slot. `fresh` is a chip that just landed and fades in, and `pending` one whose file is still being read. */
+interface Slot { id: string; el: HTMLElement; part: ChatPart; fresh?: boolean; pending?: boolean }
+interface View { parts: ChatPart[]; before: string; after: string; first: boolean; slots: Slot[]; pending: number; tokens: boolean }
+
 
 /** The chat pane a draft's box sits in: what shows the drop overlay and takes a drop anywhere on it. */
 const PANE = '.ws-main, .lead-new'
@@ -234,7 +236,7 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
   /** The pane the box sits in, and whether files are being dragged over it. */
   const [pane, setPane] = useState<HTMLElement | null>(null)
   const [over, setOver] = useState(false)
-  const [view, setView] = useState<View>(() => ({ parts: initial, ...atEnd(initial), slots: [], pending: 0 }))
+  const [view, setView] = useState<View>(() => ({ parts: initial, ...atEnd(initial), slots: [], pending: 0, tokens: false }))
 
   const read = () => (input.current ? readParts(input.current, chips.current) : view.parts)
 
@@ -251,7 +253,7 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
         if (seen.has(id)) { s.remove(); continue }
         seen.add(id)
         if (!drawn.current.has(s)) { s.replaceChildren(); drawn.current.add(s) }
-        slots.push({ id, el: s, part: wait, fresh: fresh.current.has(id) })
+        slots.push({ id, el: s, part: wait, fresh: fresh.current.has(id), pending: true })
         continue
       }
       const part = chips.current.get(id)
@@ -267,7 +269,7 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
     const parts = readParts(el, chips.current)
     if (shown.current) saveDraft(shown.current, parts, workspaceOf(shown.current))
     const caret = caretIn(el, chips.current) ?? (toEnd ? atEnd(parts) : null)
-    setView((v) => ({ ...v, ...caret, parts, slots, pending: pending.current.size }))
+    setView((v) => ({ ...v, ...caret, parts, slots, pending: pending.current.size, tokens: slots.some((s) => isToken(s.part)) }))
   }
 
   /** Focuses the box with the caret where it was, or at the end. */
@@ -583,6 +585,8 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
     message: () => (pending.current.size ? [] : messageOf(read())),
     /** How many files are still being read. */
     pending: view.pending,
+    /** The box holds a token, so its lines are 30px apart and the tokens don't touch (`data-tokens`). */
+    tokens: view.tokens,
     /** Files are being dragged over the pane the box sits in. */
     over,
     pane,
@@ -628,8 +632,8 @@ export function DraftInput({ d, className, placeholder, disabled, onKeyDown, onI
         onPaste={d.onPaste} onCopy={d.onCopy} onCut={d.onCut}
         onDragStart={(e) => e.preventDefault()}
       />
-      {d.slots.map((s) => createPortal(<ComposerChip part={s.part} entering={s.fresh} onRemove={() => d.removeChip(s.id)} />, s.el, s.id))}
-      {d.over && d.pane && createPortal(<div className="drop-veil" aria-hidden="true"><div className="drop-frame">Drop to attach</div></div>, d.pane)}
+      {d.slots.map((s) => createPortal(<ComposerChip part={s.part} entering={s.fresh} pending={s.pending} onRemove={() => d.removeChip(s.id)} />, s.el, s.id))}
+      {d.over && d.pane && createPortal(<div className="drop-veil" aria-hidden="true"><div className="drop-frame"><span className="drop-ico"><Icon name="clip" size={20} /></span><span className="drop-title">Drop to attach</span><span className="drop-sub">Images, PDFs and text files up to 50 MB each</span></div></div>, d.pane)}
     </>
   )
 }

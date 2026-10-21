@@ -3,7 +3,7 @@ import type { FileEntry } from '@shared/types'
 import { FileIcon } from '../../components/FileIcon'
 import { Icon, listKeyAction } from '../../ui'
 import { gitDecoration } from './gitStatus'
-import { folderStatus, visibleRows } from './tree'
+import { visibleRows } from './tree'
 
 /** Each level steps in 12px, and the guide for a level runs down the middle of its folder's 16px chevron. */
 const PAD = 4
@@ -21,7 +21,6 @@ export function FileTree({ label, entries, expanded, onToggle, onOpen, activePat
   /** Drawn before a file's status letter, as the Changes tree's +/- counts. */ trailing?: (entry: FileEntry) => ReactNode
 }) {
   const rows = useMemo(() => visibleRows(entries, expanded), [entries, expanded])
-  const folders = useMemo(() => folderStatus(entries), [entries])
   const [focused, setFocused] = useState<string>()
   const refs = useRef(new Map<string, HTMLButtonElement>())
   const at = (path?: string) => (path === undefined ? -1 : rows.findIndex((r) => r.entry.path === path))
@@ -46,7 +45,8 @@ export function FileTree({ label, entries, expanded, onToggle, onOpen, activePat
     <div className="file-tree" role="tree" aria-label={label}>
       {rows.map(({ entry, depth, name, ancestors }, i) => {
         const open = entry.dir && expanded.has(entry.path)
-        const deco = gitDecoration(entry.dir ? folders.get(entry.path) : entry.status)
+        // A folder keeps its own color: only a file's name and letter show its git status, as A green, D red and M muted, with no dots (KERNEL-1096).
+        const deco = entry.dir ? undefined : gitDecoration(entry.status)
         return (
           <button
             key={entry.path} ref={(el) => { if (el) refs.current.set(entry.path, el); else refs.current.delete(entry.path) }}
@@ -57,9 +57,9 @@ export function FileTree({ label, entries, expanded, onToggle, onOpen, activePat
             {ancestors.map((a, level) => <span key={a} className="tree-guide" data-lit={a === lit || undefined} style={{ left: guideX(level) }} />)}
             <span className="tree-chev" data-open={open || undefined}>{entry.dir && <Icon name="right" size={12} />}</span>
             <FileIcon path={entry.path} dir={entry.dir} open={open} />
-            <span className="tree-name ellipsis" data-struck={(!entry.dir && deco?.struck) || undefined} style={deco ? { color: deco.color } : undefined}>{name}</span>
+            <span className="tree-name ellipsis" data-struck={deco?.struck || undefined} data-status={deco?.letter} style={deco ? { color: deco.nameColor } : undefined}>{name}</span>
             {!entry.dir && trailing?.(entry)}
-            {!entry.dir && deco && <span className="tree-letter" style={{ color: deco.color }} aria-label={deco.label}>{deco.letter}</span>}
+            {deco && <span className="tree-letter" style={{ color: deco.color }} aria-label={deco.label}>{deco.letter}</span>}
           </button>
         )
       })}

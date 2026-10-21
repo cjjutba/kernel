@@ -1,5 +1,11 @@
-/* The failure banner above the composer (WorkspaceSessionLimit.png): canvas sizes on top of the shared Banner. */
-.composer-inner > .banner { gap: 12px; padding: 10px 10px 10px 14px; font-size: var(--fs-ui); line-height: var(--lh-ui); }
-.composer-inner > .banner .muted { font-size: var(--fs-code); }
+/* The limit banner above the composer (Pen 14.4, 14.7): a `surface` card on a `line-3` outline with a 28px glyph tile, its words and the choice as buttons. Tokens only. */
+.composer-inner > .banner { gap: 14px; padding: 14px 14px 14px 16px; margin-bottom: 10px; background: var(--surface); border-color: var(--line-3); font-size: var(--fs-ui); line-height: var(--lh-ui); }
+.banner.lb .banner-title { font-size: var(--fs-chat); font-weight: var(--fw-semibold); line-height: var(--lh-compact); }
+.lb-sub { margin-top: 3px; font-size: var(--fs-ui); color: var(--ink-2); }
+.lb-glyph { flex-shrink: 0; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-sm); background: var(--surface-3); color: var(--ink-3); }
+/* A hard limit with nowhere to go is red, one with a choice offered is amber. The tile stays neutral, so the banner never reads as an alarm. */
+.lb-glyph[data-tone='needs'] { color: var(--needs-fill); }
+.lb-glyph[data-tone='del'] { color: var(--del-fill); }
 .wsb-actions { display: flex; gap: 8px; flex-shrink: 0; }
-.wsb-btn { height: 30px; }
+.wsb-btn { height: 30px; border-radius: var(--r-sm); }
+.composer-inner > .wsb-fell { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; padding: 2px 4px; font-size: var(--fs-row); line-height: var(--lh-ui); color: var(--muted); }

@@ -98,12 +98,12 @@ describe('fork into new workspace (KERNEL-346)', () => {
     await until(() => k.store.workspace(again.id)?.status === 'ready')
   })
 
-  it("holds the fork's chat until setup passes", async () => {
+  it("holds the fork's chat until its files are copied, not for setup (KERNEL-1086)", async () => {
     const { k, chat } = await setup()
     const ws = await k.workspaces.forkWorkspace(chat.id)
     const fork = k.store.chats(ws.id)[0]
-    // During setup a message waits, the way a brief does.
-    expect(k.sessions.waitsFor(fork.id)).toBe('setup')
+    // While the fork is made a message waits, the way a brief does.
+    expect(k.sessions.waitsFor(fork.id)).toBe('worktree')
     await until(() => k.store.workspace(ws.id)?.status === 'ready')
     expect(k.sessions.waitsFor(fork.id)).toBeUndefined()
   })

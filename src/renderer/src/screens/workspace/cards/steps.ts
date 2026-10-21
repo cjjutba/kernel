@@ -72,6 +72,22 @@ export function permissionTitle(a: Pick<Approval, 'toolName' | 'input'>, who: st
   return String(input.file_path ?? input.path ?? '') ? `${who} wants to edit a file` : `${who} wants to use ${a.toolName ?? 'a tool'}`
 }
 
+/** A tool permission: not a question, a plan, or a hire. */
+export const isPermission = (a: Pick<Approval, 'kind' | 'toolName' | 'agentFile'>) => a.kind !== 'question' && a.kind !== 'plan' && a.kind !== 'agent' && !a.agentFile && a.toolName !== 'ExitPlanMode'
+
+/**
+ * The permissions waiting in the same chat as `a`, oldest first, from the approvals that really arrived. The first one draws the
+ * pager card and the others draw nothing, so several waiting permissions are one card that pages through them (KERNEL-1114).
+ */
+export function permissionQueue(approvals: Approval[], a: Pick<Approval, 'workspaceId' | 'chatId'>): Approval[] {
+  return approvals.filter((x) => x.status === 'pending' && isPermission(x) && x.workspaceId === a.workspaceId && x.chatId === a.chatId).sort((x, y) => x.createdAt - y.createdAt)
+}
+
+/** The queue's title: "Ivy wants to run 2 commands", or "Ivy wants to use 3 tools" when they are not all commands. */
+export function queueTitle(queue: Pick<Approval, 'toolName'>[], who: string): string {
+  return queue.every((q) => q.toolName === 'Bash') ? `${who} wants to run ${queue.length} commands` : `${who} wants to use ${queue.length} tools`
+}
+
 /** The plan waiting on you in this chat, if any. Its Copy and Approve go on the composer. */
 export function waitingPlan(approvals: Approval[], chat: { id: string; workspaceId: string }): Approval | undefined {
   return approvals.find((a) => a.status === 'pending' && isPlanApproval(a) && (a.chatId ? a.chatId === chat.id : a.workspaceId === chat.workspaceId))

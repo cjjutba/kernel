@@ -48,8 +48,10 @@ export function ComposerToolbar({ lead, agent, model, mode, context, plus, send,
       <span ref={plusAnchor} className="cmp-plus">
         <PlusMenu anchorRef={plusAnchor} {...plus} />
       </span>
-      {send.stop && <button type="button" className="icon-btn send stop" aria-label={send.stopping ? 'Stopping' : 'Stop'} aria-busy={send.stopping || undefined} disabled={send.stopping} onClick={send.onStop}>{send.stopping ? <Spinner label={null} pattern="ripple-out" /> : <span />}</button>}
-      {!compact && (!send.stop || send.ready || send.busy) && <IconButton className="send" icon="up" size={14} label={send.label} busy={send.busy} busyPattern="arrow-right" busyLabel={send.busyLabel} disabled={send.disabled} data-ready={send.ready} onClick={send.onSend} />}
+      {send.stop && (send.stopping
+        ? <span className="stop-pill" role="status" aria-label="Stopping"><Spinner label={null} pattern="ripple" />Stopping</span>
+        : <button type="button" className="icon-btn send stop" aria-label="Stop" onClick={send.onStop}><span /></button>)}
+      {!compact && (!send.stop || send.ready || send.busy) && <IconButton className="send" icon="up" size={13} label={send.label} busy={send.busy} busyPattern="ripple" busyLabel={send.busyLabel} disabled={send.disabled} data-ready={send.ready} onClick={send.onSend} />}
     </>
   )
 }

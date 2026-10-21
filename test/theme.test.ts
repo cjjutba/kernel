@@ -44,7 +44,7 @@ const SURFACES = ['canvas', 'panel', 'surface', 'surface-2', 'surface-3', 'hover
 const BORDERED = SURFACES.filter((s) => s !== 'hover')
 const TIERS = ['ink', 'ink-2', 'ink-3', 'muted']
 const LADDER = [...TIERS, 'faint']
-const STATUS = ['add', 'del', 'mod', 'merged', 'needs']
+const STATUS = ['add', 'del', 'merged', 'needs']
 const TERM = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'].map((n) => `term-${n}`)
 // Pairs allowed under AA. Empty since KERNEL-611 moved dark del up to pass on hover.
 const BELOW_AA = new Set<string>()
@@ -74,6 +74,10 @@ describe('theme contrast', () => {
     const main = ['canvas', 'panel', 'surface', 'surface-2', 'code-bg', 'aside']
     expect([...under('light', light, ['danger', ...TERM], SURFACES, 4.5), ...under('dark', dark, TERM.filter((n) => n !== 'term-black'), main, 4.5)]).toEqual([])
   })
+  it('every kind color reaches 3:1 on surface-3 in both themes', () => {
+    const kinds = ['branch'].map((n) => `kind-${n}`)
+    expect(themes(both).flatMap(([name, theme]) => under(name, theme, kinds, ['surface-3'], 3))).toEqual([])
+  })
   it('faint is non-text and reaches 3:1 on every surface in both themes', () => {
     expect(themes(both).flatMap(([name, theme]) => under(name, theme, ['faint'], SURFACES, 3))).toEqual([])
   })
@@ -88,14 +92,13 @@ describe('theme contrast', () => {
   it('the dark neutrals are grey with a slight cool lean: red equals green, blue 0 to 3 above (KERNEL-611)', () => {
     const rgb = (v: string) => [1, 3, 5].map((i) => parseInt(v.slice(i, i + 2), 16))
     const lean = Object.entries(dark).filter(([k, v]) => {
-      if (![...SURFACES, 'hover', 'aside', ...LADDER, 'line', 'line-2', 'line-3', 'line-4', 'input-line'].includes(k)) return false
+      if (![...SURFACES, 'hover', 'aside', ...LADDER, 'line', 'line-2', 'line-3'].includes(k)) return false
       const [r, g, b] = rgb(v)
       return r !== g || b - r < 0 || b - r > 3
     })
     expect(lean).toEqual([])
   })
-  it('an input border reaches 3:1 on every surface it sits on, and line-2 stays a hairline', () => {
-    expect(themes(both).flatMap(([name, theme]) => under(name, theme, ['input-line'], BORDERED, 3))).toEqual([])
+  it('line-2 stays a hairline', () => {
     for (const theme of [light, dark]) expect(contrast(theme['line-2'], theme.panel)).toBeLessThan(1.5)
   })
   it('a container edge or row divider stays visibly apart from the fill it sits on, in both themes (KERNEL-1038)', () => {
@@ -125,14 +128,11 @@ describe('theme contrast', () => {
     expect(contrast(light['on-solid'], light['merged-solid'])).toBeGreaterThanOrEqual(4.5)
     expect(contrast(light['on-ink'], light.ink)).toBeGreaterThanOrEqual(4.5)
   })
-  it('PR header bands keep their label, link and button text readable in both themes', () => {
+  it('the PR state text colors (the chips, the notes and the Work words) stay readable on the panel and on a chip in both themes', () => {
     const fails: string[] = []
-    for (const [name, theme] of themes(both)) for (const t of ['merged', 'ready', 'fail']) {
-      for (const fg of ['text', 'fg']) for (const bg of ['band', 'soft']) {
-        const c = contrast(theme[`pr-${t}-${fg}`], theme[`pr-${t}-${bg}`])
-        if (c < 4.5) fails.push(`${name} pr-${t}-${fg} on pr-${t}-${bg}: ${c.toFixed(2)}`)
-      }
-      if (theme[`pr-${t}-solid`] && contrast('#ffffff', theme[`pr-${t}-solid`]) < 4.5) fails.push(`${name} white on pr-${t}-solid`)
+    for (const [name, theme] of themes(both)) for (const t of ['merged', 'ready', 'fail']) for (const bg of ['panel', 'surface-3']) {
+      const c = contrast(theme[`pr-${t}-text`], theme[bg])
+      if (c < 4.5) fails.push(`${name} pr-${t}-text on ${bg}: ${c.toFixed(2)}`)
     }
     expect(fails).toEqual([])
   })
@@ -155,7 +155,7 @@ describe('prefers-contrast: more', () => {
   const normal = { light: tokens("[data-theme='light']"), dark: tokens(":root, [data-theme='dark']") }
   const more = { light: { ...normal.light, ...hexes(lightBody) }, dark: { ...normal.dark, ...hexes(darkBody) } }
   const bodies = { light: lightBody, dark: darkBody }
-  const LINES = ['line', 'line-2', 'line-3', 'line-4', 'input-line', 'panel-line', 'card-line', 'chip-line', 'pill-line']
+  const LINES = ['line', 'line-2', 'line-3', 'panel-line', 'card-line', 'chip-line', 'pill-line']
   const DIVIDERS = ['line', 'panel-line']
   it('sets the same tokens in both themes', () => {
     expect(Object.keys(hexes(lightBody)).sort()).toEqual(Object.keys(hexes(darkBody)).sort())
@@ -181,10 +181,10 @@ describe('prefers-contrast: more', () => {
     for (const [name, theme] of themes(more)) LADDER.slice(1).forEach((tier, i) => { if (contrast(theme[tier], theme.panel) > contrast(theme[LADDER[i]], theme.panel)) fails.push(`${name} ${tier} is above ${LADDER[i]}`) })
     expect(fails).toEqual([])
   })
-  it('strengthens every line: dividers reach 2:1, the rest 3:1, and line-4 and the input border 4.5:1', () => {
+  it('strengthens every line: dividers reach 2:1 and the rest 3:1', () => {
     const fails: string[] = []
     for (const [name, theme] of themes(more)) for (const l of LINES) {
-      const min = DIVIDERS.includes(l) ? 2 : ['line-4', 'input-line'].includes(l) ? 4.5 : 3
+      const min = DIVIDERS.includes(l) ? 2 : 3
       if (contrast(theme[l], theme.panel) <= contrast(normal[name][l], normal[name].panel)) fails.push(`${name} ${l} is no stronger than normal`)
       for (const s of DIVIDERS.includes(l) ? ['panel'] : BORDERED) if (contrast(theme[l], theme[s]) < min) fails.push(`${name} ${l} on ${s}: ${contrast(theme[l], theme[s]).toFixed(2)}`)
     }

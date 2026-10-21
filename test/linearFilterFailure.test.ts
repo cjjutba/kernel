@@ -46,12 +46,13 @@ describe('a failed Linear filter change (KERNEL-882)', () => {
     await act(async () => { pill(host, 'All').click() })
     await settle()
     expect(titles(host)).toEqual([])
-    expect(host.textContent).toContain('No issues are shown for this filter.')
+    // The rows were for another filter, so the page says the issues didn't load, and the toast carries the error (KERNEL-1098).
+    expect(host.textContent).toContain("Issues didn't load")
 
     calls.failAll = false
     await act(async () => { pill(host, 'Mine').click() })
     await settle()
     expect(titles(host)).toEqual(['Mine issue'])
-    expect(host.textContent).not.toContain('No issues are shown for this filter.')
+    expect(host.textContent).not.toContain("Issues didn't load")
   })
 })

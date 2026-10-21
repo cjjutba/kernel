@@ -21,6 +21,7 @@ import { chatWaits } from './chatWaits'
 import { ChatCard, LeadCard, WorkspaceCard, useHoverCard } from './HoverCard'
 import { ProjectMenu } from './ProjectMenu'
 import { ProjectsMenu } from './ProjectsMenu'
+import { useSidebarProjects } from './projectOrder'
 import { liveWorkspaces, mergeChatList, openRow, rowHolder, sidebarRows, slotKey, slotsFor, workspaceSlotsFor, type Slot } from './slots'
 import { useLocalMerge } from '../../screens/workspace/pr/useLocalMerge'
 import { useShown, type Fate, type Shown } from './leaving'
@@ -92,7 +93,7 @@ function NavItem({ route, icon, label, right, sub, nested, slot, unread, onOpen,
 /** A row's state icon. Its state is the accessible name. While the row runs (`busy`), the loader takes the icon's box, so nothing moves when the run starts or stops. */
 function Glyph({ g, busy }: { g: WorkspaceGlyph & { icon: IconName }; busy?: boolean }) {
   return (
-    <span className="nav-glyph" data-tone={g.tone} role="img" aria-label={g.label}>
+    <span className="nav-glyph" data-tone={g.tone} data-busy={busy || undefined} data-tip={g.label || undefined} role="img" aria-label={g.label}>
       {busy ? <Spinner label={null} /> : <Icon name={g.icon} />}
     </span>
   )
@@ -165,7 +166,7 @@ function ChatItemRow({ projectId, thread, ws, tabs, owned, folded, slot, leaving
         className="nav-item nav-sub" aria-current={current && !leaving ? 'page' : undefined} data-was-current={current && leaving ? '' : undefined} data-arrive={arrive ? '' : undefined} aria-label={unread ? `${name}, Unread` : name} data-unread={unread ? '' : undefined}
         aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => openRow(projectId, { kind: 'chat', thread, tabs, owned, folded })}
       >
-        <span className="nav-glyph" data-tone={shown.tone} data-owned={owned.length ? '' : undefined} data-plan={planning ? '' : undefined} aria-hidden="true">{busy ? <Spinner label={null} /> : <Icon name={shown.icon} />}</span>
+        <span className="nav-glyph" data-tone={shown.tone} data-owned={owned.length ? '' : undefined} data-plan={planning ? '' : undefined} data-busy={busy || undefined} data-tip={g.label || undefined} aria-hidden="true">{busy ? <Spinner label={null} /> : <Icon name={shown.icon} />}</span>
         <span className="grow ellipsis">{thread.title}</span>
         {slot?.hint ? <KeyHint n={slot.n} /> : ws?.prNumber ? <span className="mono muted ws-right ws-pr">#{ws.prNumber}</span> : null}
       </button>
@@ -394,7 +395,7 @@ function inboxCount(s: State): number {
  * The frame (Sidebar.tsx) owns the `<nav>`, the width and the resize edge, so these are its direct flex children.
  */
 export function AppSidebar() {
-  const projects = useStore((s) => s.projects.filter((r) => !r.hidden && !r.archived))
+  const projects = useSidebarProjects()
   const inbox = useStore(inboxCount)
   const [workTab] = useWorkTab()
   const route = useStore((s) => s.ui.route)
@@ -456,19 +457,23 @@ export function AppSidebar() {
       <div className="row sb-switch-row">
         <AccountButton />
       </div>
-      {/* Search looks like the Search settings field but is a button: it opens the ⌘K palette, the one place you search. */}
-      <button type="button" className="sb-search" aria-keyshortcuts="Meta+K" onClick={() => actions.ui.openModal({ name: 'search' })}>
-        <Icon name="search" size={14} /><span className="grow">Search</span><span className="muted nav-hint">⌘K</span>
-      </button>
+      {/* Search looks like the Search settings field but is a button: it opens the ⌘K palette, the one place you search. New chat sits beside it as an icon (Pen 18.2). */}
+      <div className="sb-search-row">
+        <button type="button" className="sb-search" aria-keyshortcuts="Meta+K" onClick={() => actions.ui.openModal({ name: 'search' })}>
+          <Icon name="search" size={14} /><span className="grow">Search</span><span className="muted nav-hint">⌘K</span>
+        </button>
+        <button type="button" className="sb-new" aria-label="New chat" aria-current={route.name === 'leadNew' ? 'page' : undefined} aria-keyshortcuts="Meta+N" data-tip="New chat" data-tip-kbd="⌘N" onClick={() => openNewChat(openProject)}>
+          <Icon name="pen" size={14} />
+        </button>
+      </div>
       <div className="nav-list sb-top-list">
-        <button className="nav-item" onClick={() => openNewChat(openProject)}><Icon name="pen" /><span className="grow">New chat</span><span className="muted nav-hint">⌘N</span></button>
         <NavItem route={{ name: 'inbox' }} icon="inbox" label="Inbox" right={inbox ? <span className="nav-count">{inbox}</span> : null} />
         <NavItem route={{ name: workTab }} icon="issues" label="Work" />
       </div>
       <div className="sb-rule" role="separator" />
       <div ref={projectsAnchor} className="section-label hv sb-projects-label">
         <span>My projects</span>
-        <button className="icon-btn more" style={{ width: 24, height: 24, opacity: projectsMenu ? 1 : undefined }} aria-label="Projects menu" aria-haspopup="menu" aria-expanded={projectsMenu} onClick={() => actions.ui.toggleMenu('projects')}><Icon name="more" size={14} /></button>
+        <button className="icon-btn" style={{ width: 24, height: 24 }} aria-label="Add or sort projects" aria-haspopup="menu" aria-expanded={projectsMenu} onClick={() => actions.ui.toggleMenu('projects')}><Icon name="plus" size={14} /></button>
         {projectsMenu && <ProjectsMenu anchorRef={projectsAnchor} />}
       </div>
       {/* A project's menu is placed once, so scrolling the list closes it rather than leave it behind. */}

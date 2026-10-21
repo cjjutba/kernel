@@ -1,0 +1,16 @@
+/* A project's Agents page (Redesign 15): agent rows with the model they run on, the Kernel role row and a project with no team. Tokens only. */
+.rm-agent { padding-top: 11px; padding-bottom: 11px; }
+.rm-agent .set-text { flex: 1 1 200px; }
+.rm-pill { display: inline-flex; align-items: center; height: 22px; box-sizing: border-box; padding: 0 8px; border-radius: var(--r-xs); background: var(--tint-muted); font-size: var(--fs-meta); color: var(--ink-3); }
+.rm-kernel .set-text { flex-basis: 200px; }
+.rm-noteam { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 30px 24px 28px; text-align: center; }
+.rm-stack { display: inline-flex; margin-bottom: 6px; }
+.rm-stack .agent-avatar { margin-left: -6px; }
+.rm-stack .agent-avatar:first-child { margin-left: 0; }
+.rm-noteam-title { margin: 0; font-size: var(--fs-ui); font-weight: var(--fw-semibold); color: var(--ink); }
+.rm-noteam-text { margin: 0 0 8px; max-width: 420px; font-size: var(--fs-code); line-height: var(--lh); color: var(--muted); }
+.rm-skill { padding-top: 11px; padding-bottom: 11px; }
+.rm-skill .set-label { font-family: var(--mono); }
+.rm-skeleton { min-height: 56px; }
+/* The mode menu's rows carry a line each, so it is wider than its button. */
+[data-row='mode'] .select-pop { width: 320px; }

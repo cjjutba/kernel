@@ -1,18 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AgentDef, AppSettings, LeadMode, TeamPatch } from '@shared/types'
+import { type AgentDef, type AppSettings, type LeadMode, type TeamPatch } from '@shared/types'
 import { KERNEL_LEAD, reviewerChoice } from '@shared/team'
 import { leadModeName, newChatLeadMode } from '@shared/leadMode'
 import { call, cleanError } from '../../../api'
 import { actions, go, loadProject, useStore } from '../../../store'
-import { KernelMark } from '../../../icons'
-import { Button, ConfirmDialog, Icon, Menu, Select, Toggle, useBusy } from '../../../ui'
+import { AgentAvatar, Button, ConfirmDialog, Icon, LinkButton, Menu, Select, Toggle, useBusy } from '../../../ui'
 import { ReviewerPicker } from '../../projects/ReviewerPicker'
 import './projects.css'
+import './teamRows.css'
+import './envScripts.css'
 import { shortFile, warningText } from '../../agent/model'
+import { ModelTag } from '../../agent/ModelTag'
 import { STARTER_TEAMMATES } from '../../projects/draft'
-import { NoProject, Row, ProjectPage, projectValue, Section, SettingsLink, useProjectPage } from '../kit'
+import { NoProject, Row, ProjectPage, Section, SettingsLink, useProjectPage } from '../kit'
 import { patchProjectSettings } from '../useSettings'
-import { agentGroup, cleanDescription, shownRole } from './agentRows'
+import { agentGroup, shownRole } from './agentRows'
+import { RowMenu } from './RowMenu'
 import { TeamPermissions } from './TeamPermissions'
 import { TeamSkills } from './TeamSkills'
 
@@ -22,17 +25,19 @@ const NO_AGENTS: AgentDef[] = []
 function openWorkspaceOptions(saved: number | undefined, appLimit: number) {
   const counts = [...new Set([1, 2, 3, 4, 5, 6, 7, 8, ...(saved ? [saved] : []), ...(appLimit > 0 ? [appLimit] : [])])].sort((a, b) => a - b)
   return [
+    { value: 'app', label: `App default (${appLimit > 0 ? appLimit : 'No limit'})` },
     ...counts.map((n) => ({ value: String(n), label: String(n) })),
     { value: '0', label: 'No limit' }
   ]
 }
 
-/** An agent's description, then what Kernel noticed in its file (KERNEL-397), one line each. */
+/** What an agent's row says under its name: its role, then what Kernel noticed in its file (KERNEL-397), one line each. */
 function rowDesc(a: AgentDef) {
-  if (!a.description && !a.warnings?.length) return undefined
+  const role = shownRole(a)
+  if (!role && !a.warnings?.length) return undefined
   return (
     <>
-      {a.description && <span className="set-clamp">{cleanDescription(a.description)}</span>}
+      {role && <span>{role}</span>}
       {a.warnings?.map((w, i) => <span key={i} className="set-warn"><Icon name="warning" size={12} />{warningText(w)}</span>)}
     </>
   )
@@ -128,6 +133,7 @@ export function Team({ projectId, s }: { projectId?: string; s: AppSettings }) {
   const reviewerPick = reviewerChoice(team, rs?.team)
   const repoAgents = team.filter((a) => agentGroup(a) === 'repo' && a.builtIn !== 'lead')
   const outside = team.filter((a) => a.builtIn !== 'lead').length - repoAgents.length
+  const retire = (a: AgentDef) => actions.ui.openModal({ name: 'confirm', kind: 'retire', projectId, agentId: a.id })
   const repoActions = (
     <span className="set-actions">
       {!!files.length && !!starters.length && (
@@ -139,32 +145,58 @@ export function Team({ projectId, s }: { projectId?: string; s: AppSettings }) {
       <Button variant="primary" icon="plus" disabled={busy !== null} onClick={hire}>New agent</Button>
     </span>
   )
-  const edit = (a: AgentDef) => <Button aria-label={`Edit ${a.name}`} onClick={() => go({ name: 'settings', page: 'project', projectId, section: 'agents', agentId: a.id })}>Edit</Button>
+  const openEditor = (a: AgentDef) => go({ name: 'settings', page: 'project', projectId, section: 'agents', agentId: a.id })
   const agentRow = (a: AgentDef) => {
     const reviewsOnly = a.id === reviewerPick && !a.member && !a.lead
     return (
-      <Row key={a.id} lead={<span className="rm-avatar" aria-hidden="true">{a.name.charAt(0)}</span>} label={<>{a.name}{shownRole(a) && <span className="rm-role">{shownRole(a)}</span>}</>} desc={rowDesc(a)}>
-        {a.lead
-          ? <span className="set-desc">Hands out tasks</span>
-          : reviewsOnly
-            ? <span className="set-desc">Reviews only</span>
-            : <Toggle label={`${a.name} takes tasks`} checked={!!a.member} disabled={busy !== null} onChange={(on) => void takesTasks(a, on)} />}
-        {edit(a)}
+      <Row key={a.id} className="rm-agent" lead={<AgentAvatar name={a.name} size={28} />} label={a.name} desc={rowDesc(a)}>
+        <ModelTag agent={a} />
+        <RowMenu box="sm" label={`More for ${a.name}`} items={[
+          { id: 'edit', label: 'Edit', icon: 'pen', onSelect: () => openEditor(a) },
+          { id: 'retire', label: 'Retire', icon: 'archive', danger: true, disabled: a.lead, onSelect: () => retire(a) }
+        ]} />
+        {reviewsOnly
+          ? <span className="set-desc">Reviews only</span>
+          : <Toggle label={`${a.name} takes tasks`} checked={!!a.member} disabled={busy !== null} onChange={(on) => void takesTasks(a, on)} />}
       </Row>
     )
   }
+  // A project with no agent files: what the team could be, and how to start it.
+  if (files.length === 0) {
+    return (
+      <ProjectPage project={project} rs={rs} title="Agents" desc="Who works in Kernel. Kernel leads every project." shared>
+        <div className="set-card rm-noteam">
+          <span className="rm-stack" aria-hidden="true">{['Kai', 'Noor', 'Rio', 'Ivy'].map((n) => <AgentAvatar key={n} name={n} size={26} />)}</span>
+          <h2 className="rm-noteam-title">No agents in this project yet</h2>
+          <p className="rm-noteam-text">Add the {preset}, or bring your own from .claude/agents. Kernel leads either way.</p>
+          <span className="set-actions">
+            <Button variant="primary" busy={busy === 'seed'} busyLabel="Adding" disabled={busy !== null} onClick={() => void seed()}>Add the {preset}</Button>
+            {!!sources.length && (
+              <span className="set-starters" ref={copyAnchor}>
+                <Button aria-haspopup="menu" aria-expanded={copying} busy={busy === 'copy'} busyLabel="Copying" disabled={busy !== null} onClick={() => setCopying((o) => !o)}>Copy from another project<Icon name="chevron" size={12} /></Button>
+                {copying && <Menu label="Copy from another project" anchorRef={copyAnchor} onClose={() => setCopying(false)} style={{ left: 0, top: 34, width: 220 }} items={sources.map((r) => ({ id: r.id, label: r.name, onSelect: () => { setCopying(false); void copyFrom(r.id) } }))} />}
+              </span>
+            )}
+            <Button disabled={busy !== null} onClick={hire}>New agent</Button>
+          </span>
+        </div>
+      </ProjectPage>
+    )
+  }
+  const kernelAction = elsewhere
+    ? <><Button disabled={busy !== null} onClick={openFile}>Open file</Button><Button busy={busy === 'move'} busyLabel="Moving" disabled={busy !== null} onClick={() => void move()}>Move to kernel.md</Button></>
+    : customized
+      ? <Button variant="ghost" disabled={busy !== null} onClick={() => setResetting(true)}>Reset</Button>
+      : <Button busy={busy === 'customize'} busyLabel="Copying" disabled={busy !== null} onClick={() => void customize()}>Customize</Button>
   return (
-    <ProjectPage project={project} rs={rs} title="Agents" shared>
+    <ProjectPage project={project} rs={rs} title="Agents" desc="The team in this repo, and what it may do without asking." shared>
       <Section title="Roles">
-        <Row id="lead" lead={<span className="rm-avatar" aria-hidden="true"><KernelMark size={14} /></span>} label="Kernel" labelId="rm-lead" className="rm-kernel" desc="Plans with you and hands out tasks.">
-        <span className="set-actions">
-          <span className="set-desc" role="status">{elsewhere ? `Customized in ${leadFile}` : customized ? 'Customized' : 'Default'}</span>
-          {elsewhere
-            ? <><Button disabled={busy !== null} onClick={openFile}>Open file</Button><Button busy={busy === 'move'} busyLabel="Moving" disabled={busy !== null} onClick={() => void move()}>Move to kernel.md</Button></>
-            : customized
-            ? <><Button disabled={busy !== null} onClick={openFile}>Open file</Button><Button disabled={busy !== null} onClick={() => setResetting(true)}>Reset to default</Button></>
-            : <Button busy={busy === 'customize'} busyLabel="Copying" disabled={busy !== null} onClick={() => void customize()}>Customize</Button>}
-        </span>
+        <Row id="lead" lead={<AgentAvatar name="Kernel" size={22} />} label="Kernel" labelId="rm-lead" className="rm-kernel"
+          desc={customized || elsewhere ? <LinkButton variant="quiet" size="meta" disabled={busy !== null} onClick={openFile}>{elsewhere ? `Customized in ${leadFile}` : shortFile(lead!.file)}</LinkButton> : 'Plans with you and hands out tasks.'}>
+          <span className="set-actions">
+            <span className={customized || elsewhere ? 'rm-pill' : 'set-desc'} role="status">{elsewhere ? 'Customized' : customized ? 'Customized' : 'Default'}</span>
+            {kernelAction}
+          </span>
         </Row>
         <Row id="lead-mode" setting="agents.leadMode" label="New chats with Kernel" labelId="rm-lead-mode" desc="Overrides Settings, Agents for this project.">
           <Select label="New chats with Kernel" align="right" value={rs?.agents?.leadMode ?? 'app'} disabled={busy !== null} options={[
@@ -173,50 +205,30 @@ export function Team({ projectId, s }: { projectId?: string; s: AppSettings }) {
             { value: 'build', label: leadModeName('build') }
           ]} onChange={(v) => void patchProjectSettings(projectId, { agents: { leadMode: v === 'app' ? null : (v as LeadMode) } })} />
         </Row>
-        {!!files.length && (
-          <Row id="reviewer" label="Reviewer" labelId="rm-reviewer" desc="Reviews each pull request.">
-            <ReviewerPicker value={reviewerPick} agents={files.filter((a) => !a.lead)} disabled={busy !== null} labelledBy="rm-reviewer" onChange={(id) => void setTeam('reviewer', { reviewer: id })} />
-          </Row>
-        )}
+        <Row id="reviewer" label="Reviewer" labelId="rm-reviewer" desc="Reviews each pull request.">
+          <ReviewerPicker value={reviewerPick} agents={files.filter((a) => !a.lead)} disabled={busy !== null} labelledBy="rm-reviewer" onChange={(id) => void setTeam('reviewer', { reviewer: id })} />
+        </Row>
       </Section>
-      {files.length === 0 && (
-        <Section title="In this repo">
-          <Row label="No agents yet" desc={`Add the ${preset} (the default team in Settings, General), or add a file to .claude/agents.`}>
-            <span className="set-actions">
-              <Button busy={busy === 'seed'} busyLabel="Adding" disabled={busy !== null} onClick={() => void seed()}>Add the team</Button>
-              {!!sources.length && (
-                <span className="set-starters" ref={copyAnchor}>
-                  <Button aria-haspopup="menu" aria-expanded={copying} busy={busy === 'copy'} busyLabel="Copying" disabled={busy !== null} onClick={() => setCopying((o) => !o)}>Copy from another project<Icon name="chevron" size={12} /></Button>
-                  {copying && <Menu label="Copy from another project" anchorRef={copyAnchor} onClose={() => setCopying(false)} style={{ right: 0, top: 34, width: 220 }} items={sources.map((r) => ({ id: r.id, label: r.name, onSelect: () => { setCopying(false); void copyFrom(r.id) } }))} />}
-                </span>
-              )}
-              <Button variant="primary" icon="plus" disabled={busy !== null} onClick={hire}>New agent</Button>
-            </span>
-          </Row>
-        </Section>
-      )}
       {repoAgents.length > 0 && (
         <Section
-          title="In this repo" count={repoAgents.length} note="Switches pick who takes tasks." action={repoActions}
+          title="In this repo" action={<span className="rm-aside-act"><span className="rm-aside">.claude/agents</span><span className="rm-aside">Switches pick who takes tasks.</span>{repoActions}</span>}
           footnote={outside > 0 ? <>Your own and plugin agents are on <SettingsLink to={{ page: 'agents' }}>Settings, Agents</SettingsLink>.</> : undefined}
         >
           {repoAgents.map(agentRow)}
         </Section>
       )}
-      {!!files.length && (
-        <Section label="Limits">
-          <Row id="open-workspaces" label="Open workspaces" {...projectValue(rs, 'agents.openWorkspaces', () => void patchProjectSettings(projectId, { agents: { openWorkspaces: null } }), { to: { page: 'models' }, label: 'Settings, Models and effort' })} desc={`Workspaces ${lead?.name ?? 'Kernel'} keeps open here. Reviews don’t count.`}>
-            <Select label="Open workspaces" align="right" value={String(rs?.agents?.openWorkspaces ?? s.models.agentLimit)} disabled={busy !== null} options={openWorkspaceOptions(rs?.agents?.openWorkspaces, s.models.agentLimit)} onChange={(v) => void patchProjectSettings(projectId, { agents: { openWorkspaces: Number(v) } })} />
-          </Row>
-        </Section>
-      )}
+      <Section title="Limits">
+        <Row id="open-workspaces" label="Open workspaces" desc={`Workspaces ${lead?.name ?? 'Kernel'} keeps open here. Reviews don’t count.`}>
+          <Select label="Open workspaces" align="right" value={rs?.agents?.openWorkspaces === undefined ? 'app' : String(rs.agents.openWorkspaces)} disabled={busy !== null} options={openWorkspaceOptions(rs?.agents?.openWorkspaces, s.models.agentLimit)} onChange={(v) => void patchProjectSettings(projectId, { agents: { openWorkspaces: v === 'app' ? null : Number(v) } })} />
+        </Row>
+      </Section>
       <TeamPermissions projectId={projectId} />
       <TeamSkills projectId={projectId} rs={rs} />
       {!!retired.length && (
         <Section title="Retired" count={retired.length} collapsible>
           {retired.map((a) => (
-            <Row key={a.id} lead={<span className="rm-avatar" aria-hidden="true">{a.name.charAt(0)}</span>} label={<>{a.name}{a.role.trim() && <span className="rm-role">{a.role}</span>}</>} desc={`Kept in ${shortFile(a.file)}.`}>
-              <Button aria-label={`Restore ${a.name}`} busy={busy === a.id} busyPattern="wave-back" busyLabel="Restoring" disabled={busy !== null} onClick={() => void restore(a)}>Restore</Button>
+            <Row key={a.id} lead={<AgentAvatar name={a.name} size={28} />} label={a.name} desc={`Kept in ${shortFile(a.file)}.`}>
+              <Button aria-label={`Restore ${a.name}`} busy={busy === a.id} busyPattern="ripple" busyLabel="Restoring" disabled={busy !== null} onClick={() => void restore(a)}>Restore</Button>
             </Row>
           ))}
         </Section>
@@ -224,7 +236,7 @@ export function Team({ projectId, s }: { projectId?: string; s: AppSettings }) {
       {resetting && (
         <ConfirmDialog
           title="Reset Kernel to default?" body={<>This deletes <span className="mono">{lead?.file ? shortFile(lead.file) : '.claude/agents/kernel.md'}</span>. Kernel goes back to the instructions it ships with.</>}
-          confirmLabel="Reset to default" danger busy={busy === 'reset'} busyPattern="wave-back" busyLabel="Resetting" onConfirm={() => void reset()} onCancel={() => setResetting(false)}
+          confirmLabel="Reset to default" danger busy={busy === 'reset'} busyPattern="ripple" busyLabel="Resetting" onConfirm={() => void reset()} onCancel={() => setResetting(false)}
         />
       )}
     </ProjectPage>

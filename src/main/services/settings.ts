@@ -4,7 +4,7 @@ import { join, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
 import { bus } from '../bus'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import { COMPACT_WINDOWS, EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, PORT_BLOCK, RUN_SCRIPT_NAME, type AppSettings, type AutoMerge, type ClaudePlan, type CompactWindow, type DeepPartial, type Effort, type HookBuild, type LeadMode, type MergeMethod, type PermissionMode, type Role, type RoleModel, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type ProjectSettingSource, type ProjectSettings, type ProjectSettingsPatch, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools, REVIEW_KINDS } from '@shared/types'
+import { COMPACT_WINDOWS, EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, PORT_BLOCK, RUN_SCRIPT_NAME, type AppSettings, type AutoMerge, type ClaudePlan, type CompactWindow, type DeepPartial, type Effort, type HookBuild, type LeadMode, type MergeMethod, type PermissionMode, type Provider, type Role, type RoleChoice, type RoleSide, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type ProjectSettingSource, type ProjectSettings, type ProjectSettingsPatch, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools, REVIEW_KINDS } from '@shared/types'
 import { effortMemory } from '@shared/effort'
 import { LEAD_MODES } from '@shared/leadMode'
 import { terminalSettingsOf } from './terminalPresets'
@@ -33,6 +33,9 @@ export function runHookPort(env: NodeJS.ProcessEnv = process.env): number {
   return Number.isInteger(first) && first > 0 && first + PORT_BLOCK <= 65536 ? first + PORT_BLOCK - 1 : HOOK_PORTS.dev + PORT_BLOCK
 }
 
+/** The model a role's Codex side starts on until the user picks one. Codex lists its models at run time, so Settings, Models can change it (KERNEL-1055). */
+const CODEX_DEFAULT_MODEL = 'gpt-6-astra'
+
 export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSettings => ({
   hookPort: build === 'run' ? runHookPort() : HOOK_PORTS[build],
   worktreeRoot: join(home, 'kernel', 'worktrees'),
@@ -43,27 +46,27 @@ export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSet
   // Kernel moves to an account with room ahead of a limit unless the user turns it off (KERNEL-941, amends KERNEL-568).
   // Chats keep the account that holds their cache, and a long one is summarized before it moves (KERNEL-841).
   accounts: { switchAtLimit: { claude: true, codex: true }, keepChatsOnAccount: true, longChatMove: { claude: 'summarize', codex: 'summarize' }, longChatTokens: 50_000 },
-  workspace: { mode: 'worktree', baseRef: DEFAULT_BASE_REF, remote: 'origin', branchPattern: '{type}/{task}-{slug}', deleteBranchOnArchive: false, archiveOnMerge: true, baselineCurrentBranch: true, oneCurrentBranchPerProject: true, leadBranchPattern: '{lead}/{slug}', leadWaitForSetup: false, archiveChatWorkspaces: true },
+  workspace: { mode: 'worktree', baseRef: DEFAULT_BASE_REF, remote: 'origin', branchPattern: '{type}/{task}-{slug}', deleteBranchOnArchive: false, archiveOnMerge: true, baselineCurrentBranch: true, oneCurrentBranchPerProject: true, leadBranchPattern: '{lead}/{slug}', archiveChatWorkspaces: true },
   scripts: { setupOnCreate: true, runAfterSetup: false, archiveOnArchive: true, timeoutMinutes: 15 },
   models: {
     roles: {
-      lead: { provider: 'claude', model: 'claude-opus-5-5', effort: 'high' },
-      frontend: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' },
-      engineers: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' },
-      qa: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' },
-      reviewer: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' }
+      lead: { prefer: 'claude', claude: { model: 'claude-opus-5-5', effort: 'high' }, codex: { model: CODEX_DEFAULT_MODEL, effort: 'high' } },
+      frontend: { prefer: 'claude', claude: { model: 'claude-sonnet-5-5', effort: 'high' }, codex: { model: CODEX_DEFAULT_MODEL, effort: 'medium' } },
+      engineers: { prefer: 'claude', claude: { model: 'claude-sonnet-5-5', effort: 'high' }, codex: { model: CODEX_DEFAULT_MODEL, effort: 'medium' } },
+      qa: { prefer: 'claude', claude: { model: 'claude-sonnet-5-5', effort: 'high' }, codex: { model: CODEX_DEFAULT_MODEL, effort: 'medium' } },
+      reviewer: { prefer: 'claude', claude: { model: 'claude-sonnet-5-5', effort: 'high' }, codex: { model: CODEX_DEFAULT_MODEL, effort: 'high' } }
     },
     // The Lead and engineers hold long work, so they keep the model's window. A QA run or a review is short (feat-compact-window-per-role-with-plan).
     compact: { lead: 'full', frontend: 'full', engineers: 'full', qa: '200k', reviewer: '200k' },
     leadPlanMode: true, agentLimit: 0, agentTeams: false, leadUpdates: true, workspacePlanMode: false, effortByModel: {}
   },
-  providers: { claude: { path: '', useSystem: false }, codex: { path: '', useSystem: false, personality: 'pragmatic' } },
+  providers: { claude: { path: '', useSystem: false }, codex: { path: '', useSystem: false, personality: 'pragmatic' }, fallback: true },
   team: { defaultTemplate: 'starter', leadMode: 'handoff' },
   permissions: { mode: 'auto', bypassOnlyInWorktrees: true, network: true, alwaysAsk: ['rm -rf', 'git push --force'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
   pr: {
-    mergeMethod: 'squash', draft: false, requireGreen: true, requireReviewer: true, leadMerge: false,
-    // Each review is a full extra agent run on every PR, so it starts off on every plan (feat-automatic-review-off-by-default).
-    autoReview: false,
+    mergeMethod: 'squash', draft: false, requireGreen: true, requireReviewer: true, leadMerge: false, evidenceComment: false,
+    // On for everyone who never chose, so a new user gets the cross-model review without finding a setting (KERNEL-1075).
+    autoReview: true,
     // Nothing merges by itself until the user turns this on (KERNEL-556).
     autoMerge: { on: false, maxLines: 400, alwaysReview: [], withoutReview: false },
     // Create PR sends this fitted to the repo's PR template, contributing guide and commitlint (KERNEL-468).
@@ -75,18 +78,19 @@ export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSet
   hooks: { requireTestOutput: true, keepTeammatesWorking: false },
   terminal: { enabled: true, preset: 'claude', onlyInWorktrees: true, custom: [] },
   experimental: { sharing: true },
-  privacy: { telemetry: 'ask' }
+  privacy: { telemetry: 'ask' },
+  onboarding: { done: false, out: [], reviewer: 'artkin' }
 })
 
 /**
  * The settings a Claude plan sets a default for. One the user never set follows the plan (KERNEL-225). The Lead's and the
  * reviewer's models and every role's effort live in `models.roles` since KERNEL-406. No plan sets `pr.autoReview` any more
- * (feat-automatic-review-off-by-default). It stays here so `planDefaulted` still says whether the user chose it. Each role's
+ * (feat-automatic-review-off-by-default, KERNEL-1075). It stays here so `planDefaulted` still says whether the user chose it. Each role's
  * compact window follows the plan too (feat-compact-window-per-role-with-plan).
  */
 export const PLAN_KEYS = [
-  'models.roles.lead.model', 'models.roles.reviewer.model',
-  'models.roles.lead.effort', 'models.roles.frontend.effort', 'models.roles.engineers.effort', 'models.roles.qa.effort', 'models.roles.reviewer.effort',
+  'models.roles.lead.claude.model', 'models.roles.reviewer.claude.model',
+  'models.roles.lead.claude.effort', 'models.roles.frontend.claude.effort', 'models.roles.engineers.claude.effort', 'models.roles.qa.claude.effort', 'models.roles.reviewer.claude.effort',
   'models.agentLimit', 'pr.autoReview',
   'models.compact.lead', 'models.compact.frontend', 'models.compact.engineers', 'models.compact.qa', 'models.compact.reviewer'
 ] as const
@@ -94,11 +98,10 @@ export const PLAN_KEYS = [
 /**
  * What every launch saved for the plan keys, and for the PR texts, before KERNEL-225. A saved value in its key's list was
  * never a choice, so an existing file's value counts as unset and the plan's default, or the new text, applies. A user who chose Opus for the reviewer back then can't be told
- * from the default Kernel pinned, and moves to the plan's default too (D-094). `pr.autoReview` keeps its `true`: an old file's
- * `true` was the default of its day, so it reads as unset and follows today's default, off (feat-automatic-review-off-by-default).
+ * from the default Kernel pinned, and moves to the plan's default too (D-094).
  */
 const SAVED_BEFORE: Record<string, unknown[]> = {
-  'models.lead': ['claude-opus-5-5'], 'models.reviewer': ['claude-opus-5-5'], 'models.effort': ['high'], 'models.engineers': ['claude-sonnet-5-5'], 'models.qa': ['claude-sonnet-5-5'], 'models.agentLimit': [0], 'pr.autoReview': [true],
+  'models.lead': ['claude-opus-5-5'], 'models.reviewer': ['claude-opus-5-5'], 'models.effort': ['high'], 'models.engineers': ['claude-sonnet-5-5'], 'models.qa': ['claude-sonnet-5-5'], 'models.agentLimit': [0],
   // Address review's text before it told the agent to act only on the comments listed (KERNEL-222), and the texts of Address
   // review, Resolve conflicts and Fix checks before they put the repo's own steps first and named the branch (KERNEL-564).
   'pr.addressReviewInstructions': [
@@ -129,20 +132,20 @@ export function planOf(subscriptionType: unknown): ClaudePlan {
  * What the plan changes about the app's defaults. Pro has a much lower 5-hour and weekly limit, so it gets Sonnet for the Lead
  * and the reviewer, medium effort, two teammates at a time and a 200k compact window for every role
  * (feat-compact-window-per-role-with-plan). Every other plan, and one Kernel can't read, keeps the defaults
- * but for a Sonnet reviewer (KERNEL-225). Automatic review is off on every plan, in the defaults themselves
- * (feat-automatic-review-off-by-default).
+ * but for a Sonnet reviewer (KERNEL-225). Automatic review is on for every plan, in the defaults themselves
+ * (KERNEL-1075).
  */
 export function planDefaults(plan: ClaudePlan | undefined): DeepPartial<AppSettings> {
   if (plan === 'pro') {
     return {
       models: {
-        roles: { lead: { model: 'claude-sonnet-5-5', effort: 'medium' }, reviewer: { model: 'claude-sonnet-5-5', effort: 'medium' }, frontend: { effort: 'medium' }, engineers: { effort: 'medium' }, qa: { effort: 'medium' } },
+        roles: { lead: { claude: { model: 'claude-sonnet-5-5', effort: 'medium' } }, reviewer: { claude: { model: 'claude-sonnet-5-5', effort: 'medium' } }, frontend: { claude: { effort: 'medium' } }, engineers: { claude: { effort: 'medium' } }, qa: { claude: { effort: 'medium' } } },
         compact: { lead: '200k', frontend: '200k', engineers: '200k', qa: '200k', reviewer: '200k' },
         agentLimit: 2
       }
     }
   }
-  return { models: { roles: { reviewer: { model: 'claude-sonnet-5-5' } } } }
+  return { models: { roles: { reviewer: { claude: { model: 'claude-sonnet-5-5' } } } } }
 }
 
 const at = (o: unknown, dotted: string): unknown => dotted.split('.').reduce<unknown>((v, k) => (v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined), o)
@@ -241,6 +244,8 @@ export async function loadAppSettings(file: string, home: string, plan: ClaudePl
   if (workspace?.branchPattern === 'feat/{slug}') delete workspace.branchPattern
   // Nothing ever read setUpstream, so it went (KERNEL-460). A file that still has it loads without it.
   if (workspace) delete workspace.setUpstream
+  // Nothing waits for setup any more, so Wait for setup before agents start went (KERNEL-1086). A file that still has it loads without it.
+  if (workspace) delete workspace.leadWaitForSetup
   // Rooms are projects (KERNEL-880): the switch saved under its old name keeps its value, and the next save writes the new one.
   if (workspace && 'oneCurrentBranchPerRoom' in workspace) {
     workspace.oneCurrentBranchPerProject ??= workspace.oneCurrentBranchPerRoom
@@ -277,10 +282,9 @@ export async function loadAppSettings(file: string, home: string, plan: ClaudePl
   }
   const sparseFile = typeof version === 'number' && version >= SPARSE_SINCE
   const saved: DeepPartial<AppSettings> = (sparseFile ? s : sparse(s, defaults)) ?? {}
-  // An old file's `false` was a choice, back when the default was on. It equals today's default, so `sparse` dropped it (feat-automatic-review-off-by-default).
-  if (!sparseFile && group('pr')?.autoReview === false) saved.pr = { ...saved.pr, autoReview: false }
   migrateRoles(saved)
   if (!(typeof version === 'number' && version >= SAVED_VERSION)) splitEngineers(saved)
+  migrateSides(saved)
   migratePermissions(saved)
   return { saved, resolved: resolveSettings(defaults, saved, plan) }
 }
@@ -362,19 +366,41 @@ function splitEngineers(saved: DeepPartial<AppSettings>) {
 }
 
 /**
- * Each role keeps a known provider, a model and an effort, else the fallback's. A Claude role needs one of Claude's models
- * and efforts. Codex lists its models at run time, so any id stands, with any of its efforts.
+ * Before KERNEL-1055 a role held one pick, `{ provider, model, effort }`. It becomes the preferred side of the role's choice, and
+ * the other side is left unset, so the defaults apply to it. A file with no `provider` was Claude's, as the default was. A role
+ * that already has `prefer` or a side is the new shape and stays as it is.
  */
-export function roleModels(v: unknown, fallback: Record<Role, RoleModel>): Record<Role, RoleModel> {
-  const given = v && typeof v === 'object' ? (v as Record<string, Partial<RoleModel> | undefined>) : {}
+function migrateSides(saved: DeepPartial<AppSettings>) {
+  const roles = (saved.models as Record<string, unknown> | undefined)?.roles
+  if (!isTable(roles)) return
+  for (const [role, v] of Object.entries(roles)) {
+    if (!isTable(v) || 'prefer' in v || 'claude' in v || 'codex' in v) continue
+    const { provider, model, effort, ...rest } = v
+    if (provider === undefined && model === undefined && effort === undefined) continue
+    const side = provider === 'codex' ? 'codex' : 'claude'
+    roles[role] = { ...rest, ...(side === 'codex' ? { prefer: 'codex' } : {}), [side]: { ...(model !== undefined ? { model } : {}), ...(effort !== undefined ? { effort } : {}) } }
+  }
+}
+
+/**
+ * Each role keeps a known preferred provider, and a model and effort on each provider, else the fallback's. A Claude side needs
+ * one of Claude's models and efforts. Codex lists its models at run time, so any id that isn't Claude's stands, with any of
+ * its efforts.
+ */
+export function roleModels(v: unknown, fallback: Record<Role, RoleChoice>): Record<Role, RoleChoice> {
+  const given = v && typeof v === 'object' ? (v as Record<string, Partial<Record<keyof RoleChoice, unknown>> | undefined>) : {}
   return Object.fromEntries(ROLES.map((r) => {
     const g = given[r]
-    const provider = g?.provider === 'codex' || g?.provider === 'claude' ? g.provider : fallback[r].provider
-    const model = typeof g?.model === 'string' && g.model.trim() && (provider === 'codex' ? !g.model.startsWith('claude-') : MODELS.some((m) => m.id === g.model)) ? g.model : undefined
-    const effort = (provider === 'claude' ? EFFORTS.some((e) => e.id === g?.effort) : typeof g?.effort === 'string' && g.effort in EFFORT_LABELS) ? (g!.effort as Effort) : undefined
-    if (!model) return [r, provider === fallback[r].provider ? { ...fallback[r], ...(effort ? { effort } : {}) } : fallback[r]]
-    return [r, { provider, model, effort: effort ?? fallback[r].effort }]
-  })) as Record<Role, RoleModel>
+    const prefer = g?.prefer === 'codex' || g?.prefer === 'claude' ? g.prefer : fallback[r].prefer
+    return [r, { prefer, claude: roleSideOf(g?.claude, fallback[r].claude, 'claude'), codex: roleSideOf(g?.codex, fallback[r].codex, 'codex') }]
+  })) as Record<Role, RoleChoice>
+}
+
+function roleSideOf(v: unknown, fallback: RoleSide, provider: Provider): RoleSide {
+  const g = v && typeof v === 'object' ? (v as Partial<RoleSide>) : {}
+  const model = typeof g.model === 'string' && g.model.trim() && (provider === 'codex' ? !g.model.startsWith('claude-') : MODELS.some((m) => m.id === g.model)) ? g.model : fallback.model
+  const effort = (provider === 'claude' ? EFFORTS.some((e) => e.id === g.effort) : typeof g.effort === 'string' && g.effort in EFFORT_LABELS) ? (g.effort as Effort) : fallback.effort
+  return { model, effort }
 }
 
 /** `models.compact` as Kernel reads it: each role's window when it is one of the two choices, else the fallback's (feat-compact-window-per-role-with-plan). */
@@ -588,7 +614,7 @@ export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
  * A Cleanup switch with the project's own value first (KERNEL-114, KERNEL-370). The project's file keeps the raw TOML value,
  * so only `true` or `false` counts, and anything else falls back to the app's.
  */
-export function cleanupSwitch(repo: RepoSettings | undefined, app: AppSettings['workspace'], key: 'archiveOnMerge' | 'deleteBranchOnArchive' | 'leadWaitForSetup' | 'archiveChatWorkspaces'): boolean {
+export function cleanupSwitch(repo: RepoSettings | undefined, app: AppSettings['workspace'], key: 'archiveOnMerge' | 'deleteBranchOnArchive' | 'archiveChatWorkspaces'): boolean {
   const own = repo?.workspace[key]
   return typeof own === 'boolean' ? own : app[key]
 }

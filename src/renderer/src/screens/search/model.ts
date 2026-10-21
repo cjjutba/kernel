@@ -45,6 +45,10 @@ export interface PaletteItem {
   also?: string
   /** One muted fact on the right: when a chat last moved, or what a shared file is. */
   meta?: string
+  /** A muted fact right after the label, such as when archived work was archived. */
+  note?: string
+  /** What Enter does, said at the right end of the highlighted row only: "↵ Restore" on archived work. */
+  hint?: string
   /** The heading of the group this item opens, when it isn't the section's name: "Chats in Client A". */
   group?: string
   run: () => void
@@ -234,7 +238,7 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
     // Typing "archived" lists them all. Picking one restores it and opens it, the way Restore does in History.
     ...archivedList(workspaces).map((w) => {
       const name = historyName(w, i.threads ?? {})
-      return item(`archived-${w.id}`, 'Archived', 'history', name, () => act.restore?.(w, name), { meta: `Archived · ${projects.find((r) => r.id === w.projectId)?.name ?? ''} · ${whenLabel(endedAt(w))}`, also: `archived history restore ${w.branch}` })
+      return item(`archived-${w.id}`, 'Archived', 'archive', name, () => act.restore?.(w, name), { note: `Archived ${whenLabel(endedAt(w))}`, hint: '↵ Restore', also: `archived history restore ${w.branch} ${projects.find((r) => r.id === w.projectId)?.name ?? ''}` })
     }),
     goto('go-projects', 'All projects', { name: 'projects' }, {}, 'projects'),
     ...visible.flatMap((r) => {
@@ -278,9 +282,11 @@ export function visibleItems(items: PaletteItem[], more: PaletteItem[], query: s
   const all = [...items, ...more].filter(inScope).filter((x) => { const key = x.section === 'Shared' || x.section === 'Chats' || x.section === 'Archived' ? x.id : x.label; return seen.has(key) ? false : (seen.add(key), true) })
   const ranked = rank(all, query)
   const only = scope === 'all' && ranked.length > 0 && ranked.every((x) => x.section === 'Accounts')
+  // Results that are all archived work say so in their heading, as the accounts do (Pen 12.7, SearchArchived).
+  const archived = scope === 'all' && ranked.length > 0 && ranked.every((x) => x.section === 'Archived')
   const list = only ? all.filter((x) => ranked.includes(x)) : ranked
-  const title = only ? 'Accounts' : scope === 'all' ? 'Results' : scopeLabel(scope)
-  return list.length ? [{ section: only ? 'Accounts' : 'Results', title, list }] : []
+  const title = only ? 'Accounts' : archived ? 'Archived' : scope === 'all' ? 'Results' : scopeLabel(scope)
+  return list.length ? [{ section: only ? 'Accounts' : archived ? 'Archived' : 'Results', title, list }] : []
 }
 
 /** The character ranges of `text` that `query` matched, for drawing them in full ink. A whole-text hit is one range, else each query character. */

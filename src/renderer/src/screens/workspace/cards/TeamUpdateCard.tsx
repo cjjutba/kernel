@@ -2,11 +2,13 @@ import { Fragment, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { ChatItem, TeamUpdate, TeamUpdateRow, Workspace } from '@shared/types'
 import { mergeableState } from '@shared/merge'
 import { call } from '../../../api'
-import { go, useStore } from '../../../store'
-import { LinkButton, Icon } from '../../../ui'
+import { actions, go, useStore } from '../../../store'
+import { AgentAvatar, Button, LinkButton, Icon } from '../../../ui'
 import { KernelNote } from '../KernelNote'
 import { SharedRow } from './SharedCard'
 import { MergeButton } from '../pr/MergeButton'
+import { prDisplayTitle } from '../pr/model'
+import { TokenBody, tokenAttrs } from '../composer/Chip'
 import { notReviewedTip } from '../pr/leadPrList'
 import { useFileLinks } from '../fileLinks'
 import { inline } from '../markdown'
@@ -60,7 +62,7 @@ function UpdateView({ update: data, itemId, legacy, quiet, workspaceOf, useNewes
   return (
     <div className="msg tucard-wrap">
       <section className="card tcard tucard" data-compact={compact || undefined} aria-label={compact ? 'Review' : 'Team update'}>
-        {!compact && <header className="tucard-head"><h3 className="tucard-title">Team update</h3><span className="muted">from Kernel</span></header>}
+        {!compact && <header className="tucard-head"><AgentAvatar name="Kernel" size={18} /><h3 className="tucard-title">Team update</h3><span className="muted">from Kernel</span></header>}
         {sections(data.rows).map((s, i) => (
           <div key={i} className="tucard-section">
             {s.fromChat && <div className="tucard-from">From "{s.fromChat}", {s.fromTab ? 'a tab you closed' : 'a Lead chat that is now closed'}</div>}
@@ -78,7 +80,7 @@ function Row({ row, itemId, compact, workspaceOf, useNewest, useAutoReview = () 
   // "Not reviewed" explains itself on hover when automatic review is off (KERNEL-1000).
   const autoReview = useAutoReview()
   const tipProps = (e: TeamUpdateRow['events'][number]) => {
-    const tip = e.kind === 'pr.review' ? notReviewedTip(e.text, autoReview) : undefined
+    const tip = e.kind === 'pr.review' ? notReviewedTip(e.text, autoReview, target?.prState === 'merged') : undefined
     return tip ? { 'data-tip': tip, 'aria-description': tip } : {}
   }
   // A reviewer's row merges the PR it reviewed. Once that workspace is archived the PR is over, and the row says In History.
@@ -95,35 +97,49 @@ function Row({ row, itemId, compact, workspaceOf, useNewest, useAutoReview = () 
   const parts = taskParts(row.task)
   const key = parts.key ?? (ws?.source?.kind === 'issue' ? ws.source.id : undefined)
   const title = parts.title
+  // Merge and Open sit at the right of the row's first line (Pen 10.7): Merge is the green one, and Open a quiet link with an arrow.
+  // A PR that merged leaves its workspace until you archive it (Pen 10.12, TeamUpdateMerged): Archive takes Open's place, and the line says so.
+  const keeps = target?.prState === 'merged' && target.status !== 'archived' && !compact
+  const rowActions = ws && (
+    <span className="tucard-act">
+      {stuck ? <span className="tucard-why">Needs you</span> : merge && !keeps && <MergeButton ws={merge} short />}
+      {keeps && target
+        ? <Button size="sm" aria-label={`Archive ${row.name}'s workspace for ${row.task}`} onClick={() => actions.ui.openModal({ name: 'confirm', kind: 'archive', workspaceId: target.id })}>Archive</Button>
+        : (
+          <LinkButton variant="quiet" size="ui" className="tucard-open" data-to={archived ? 'history' : 'workspace'} aria-label={archived ? `Find ${row.name}'s workspace for ${row.task} in History` : `Open ${row.name}'s workspace for ${row.task}`}
+            onClick={() => (archived ? go({ name: 'history' }) : go({ name: 'workspace', workspaceId: ws.id }))}>
+            {archived ? 'In History' : <>Open<Icon name="arrowRight" size={12} /></>}
+          </LinkButton>
+        )}
+    </span>
+  )
   return (
     <div className="tucard-row">
       <div className="tucard-line">
+        <AgentAvatar name={row.name} size={20} />
         <span className="tucard-name">{row.name}</span>
         {key && <span className="tucard-key">{key}</span>}
         <span className="tucard-task ellipsis">{compact ? reviewed(row, target) : title}</span>
         {compact && row.events.map((e, i) => <Fragment key={i}><span className="tucard-sep" aria-hidden="true">·</span><span className="tucard-ev" data-tone={eventTone(e)} {...tipProps(e)}>{verdictText(e.text)}</span></Fragment>)}
         {compact && <span className="tucard-fill" />}
-        {ws && (
-          <span className="tucard-act">
-            {stuck ? <span className="tucard-why">Needs you</span> : merge && <MergeButton ws={merge} />}
-            <LinkButton variant="quiet" size="meta" className="tucard-open" data-to={archived ? 'history' : 'workspace'} aria-label={archived ? `Find ${row.name}'s workspace for ${row.task} in History` : `Open ${row.name}'s workspace for ${row.task}`}
-              onClick={() => (archived ? go({ name: 'history' }) : go({ name: 'workspace', workspaceId: ws.id }))}>
-              {archived ? 'In History' : 'Open'}
-            </LinkButton>
-          </span>
-        )}
+        {rowActions}
       </div>
-      {/* The events as one line of text between dots, colored only for what failed, merged or passed (KERNEL-274). */}
+      {/* The events as one line of text between dots, colored only for what failed, merged or passed (KERNEL-274). A question and a proposed hand-off say so in a few words, and what they say is the text under it (Pen 10.12). */}
       {!compact && row.events.length > 0 && (
         <p className="tucard-events">
           {row.events.map((e, i) => (
             <Fragment key={i}>
               {i > 0 && <span className="tucard-sep" aria-hidden="true">·</span>}
               {/* A screen reader hears a full stop between events, unless one already ends the sentence. */}
-              <span className="tucard-ev" data-tone={eventTone(e)} {...tipProps(e)}>{e.text.replace(/\.$/, '')}<span className="sr-only">{/[!?…]$/.test(e.text) ? ' ' : '. '}</span></span>
+              <span className="tucard-ev" data-tone={eventTone(e)} {...tipProps(e)}>{asked(e).words.replace(/\.$/, '')}<span className="sr-only">{/[!?…]$/.test(e.text) ? ' ' : '. '}</span></span>
             </Fragment>
           ))}
+          {keeps && <><span className="tucard-sep" aria-hidden="true">·</span><span className="tucard-ev" data-tone="muted">Workspace stays until you archive it</span></>}
         </p>
+      )}
+      {!compact && row.events.some((e) => asked(e).said) && <p className="tucard-ask">{row.events.map((e) => asked(e).said).find(Boolean)}</p>}
+      {!compact && ws && row.events.some((e) => e.kind === 'question') && !archived && (
+        <div className="tucard-asked"><Button variant="primary" size="sm" onClick={() => go({ name: 'workspace', workspaceId: ws.id })}>Answer</Button></div>
       )}
       {open.length > 0 && (
         <ul className="tucard-items" aria-label="Still open">
@@ -133,8 +149,35 @@ function Row({ row, itemId, compact, workspaceOf, useNewest, useAutoReview = () 
       )}
       {row.reply ? <Reply text={row.reply} link={link} workspaceId={row.workspaceId} /> : link && <p className="tucard-quote"><PrLink {...link} lone /></p>}
       {row.shared?.map((f) => <SharedRow key={f.sharedId} sharedId={f.sharedId} version={f.version} title={f.title} kind={f.kind} />)}
+      {!compact && !link && target?.prNumber ? <PrChip ws={target} /> : null}
     </div>
   )
+}
+
+/** The pull request a row is about as a token under its reply (Pen 10.7): its glyph in the state's color, its number in mono and its title, and a way to the PR on GitHub. */
+function PrChip({ ws }: { ws: Workspace }) {
+  const part = { type: 'pr' as const, name: `#${ws.prNumber}`, number: ws.prNumber as number, title: prDisplayTitle(ws), ...(ws.prUrl ? { url: ws.prUrl } : {}) }
+  const state = ws.prState === 'merged' || ws.prState === 'closed' ? ws.prState : undefined
+  const body = <><TokenBody part={part} /><Icon name="ext" size={12} /></>
+  return ws.prUrl
+    ? <a className="msg-chip tucard-chip" href={ws.prUrl} aria-label={`Open PR #${ws.prNumber} on GitHub`} {...tokenAttrs(part, { prState: state })} onClick={(e) => { e.preventDefault(); void call('system.openExternal', { url: ws.prUrl as string }).catch(() => undefined) }}>{body}</a>
+    : <span className="msg-chip tucard-chip" {...tokenAttrs(part, { prState: state })}>{body}</span>
+}
+
+/**
+ * An event as the card says it: a question reads "Asks a question" with its text under the line, a proposed hand-off "Proposes a hand-off" with who it names. Every other event
+ * says itself and has nothing under it (Pen 10.12).
+ */
+function asked(e: TeamUpdateRow['events'][number]): { words: string; said?: string } {
+  if (e.kind === 'question') {
+    const text = /^Asks:\s*(.+)$/s.exec(e.text)?.[1]
+    return text ? { words: 'Asks a question', said: text } : { words: e.text }
+  }
+  if (e.kind === 'handoff.proposed') {
+    const m = /^Proposes (.+?) for: (.+)$/s.exec(e.text)
+    return m ? { words: 'Proposes a hand-off', said: `Hand “${m[2]}” to ${m[1]}?` } : { words: e.text }
+  }
+  return { words: e.text }
 }
 
 /** "Reviewed PR #7", the number from the row, the PR it reviewed, or the review's task. */

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { AgentDef, ChatItem, PrInfo, Workspace } from '@shared/types'
 import { leadModeOf, leadModeSwitched, newChatLeadMode } from '@shared/leadMode'
-import { ALREADY_HANDOFF, BUILD_HERE_REFUSAL, BUILD_IN_HANDOFF, BUILD_NO_GO_AHEAD, BUILD_PLAN_MODE_OFF, BUILD_PLAN_MODE_ON, buildOpen, kernelTools, uncommittedNote, type KernelToolDeps } from '../src/main/services/kernelMcp'
+import { ALREADY_HANDOFF, BUILD_HERE_REFUSAL, BUILD_IN_HANDOFF, BUILD_PLAN_MODE_OFF, BUILD_PLAN_MODE_ON, buildOpen, kernelTools, uncommittedNote, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import { HANDOFF_NO_EDIT, HANDOFF_SWITCHED, toolPolicy } from '../src/main/services/agentTools'
 import { forProvider, GO_AHEAD_LINE, LEAD_BUILD_RULE, LEAD_RULE, leadRule } from '../src/main/services/handoff'
 import { agentPrompt } from '../src/main/services/sessions'
@@ -32,14 +32,14 @@ async function setup(o: { app?: Record<string, unknown>; files?: Record<string, 
   const repo = await tempRepo({ ...REPO, ...o.files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...o.app }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...o.app, pr: { autoReview: false, ...(o.app?.pr as object | undefined) } }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   onTestFinished(() => k.stop())
   k.sessions.send = async () => ({ queued: false })
   const project = await k.addProject(repo)
   const chat = async () => {
-    const c = await k.lead.newLeadChat(project.id, { prompt: '' })
+    const c = await k.lead.newLeadChat(project.id, { prompt: '', baseRef: 'main' })
     await setUp(k, c.id, 'settled')
     return k.store.chat(c.id)!
   }
@@ -306,7 +306,6 @@ describe("Kernel's tools in each mode (KERNEL-770)", () => {
   it('create_workspace refuses a task in Build here and still starts a review', async () => {
     const t = tools({ leadMode: 'build' })
     expect(await t.call('create_workspace', { agent: 'christian', title: 'Padding', brief: 'Fix it' })).toEqual({ text: BUILD_HERE_REFUSAL, isError: true })
-    expect(BUILD_HERE_REFUSAL).toContain('Switch this chat to Hand off to give tasks to teammates.')
     expect(t.created).toEqual([])
     const review = await t.call('create_workspace', { agent: 'artkin', title: 'Review padding', brief: 'Review it', review_of: 'w-christian' })
     expect(review.isError).toBe(false)
@@ -368,11 +367,9 @@ describe("the Lead's prompt and tools in each mode (KERNEL-770)", () => {
     expect(LEAD_BUILD_RULE).not.toContain('Never build a task yourself.')
     expect(LEAD_BUILD_RULE).not.toContain('the approval means "hand it off now"')
     for (const part of ['open a pull request', 'fix your own PR', 'never call mcp__kernel__create_workspace, except with review_of', 'bigger than one PR', 'mcp__kernel__suggest_hand_off']) expect(LEAD_BUILD_RULE, part).toContain(part)
-    // One go-ahead rule in both modes, and Build here builds only after start_build (KERNEL-992).
+    // One go-ahead line in both modes, and Build here builds what the user asked for, with no quote to pass (KERNEL-1113).
     for (const rule of [LEAD_RULE, LEAD_BUILD_RULE]) expect(rule).toContain(GO_AHEAD_LINE)
-    expect(LEAD_BUILD_RULE).toContain('mcp__kernel__start_build')
-    expect(LEAD_RULE).not.toContain('start_build')
-    expect(LEAD_BUILD_RULE).toContain('"not checked on screen"')
+    for (const rule of [LEAD_RULE, LEAD_BUILD_RULE]) expect(rule).not.toContain('start_build')
     for (const part of ['Team update', 'Never use em dashes', 'mcp__kernel__read_plans', 'Never leave a teammate waiting', 'answer and stop, with no closing offer or question']) {
       expect(LEAD_RULE, part).toContain(part)
       expect(LEAD_BUILD_RULE, part).toContain(part)
@@ -620,25 +617,10 @@ describe("a Build here chat's pull requests (KERNEL-778)", () => {
   })
 })
 
-describe("a Build here chat's go-ahead (KERNEL-992)", () => {
-  const open = { planMode: false, userTurn: true, branch: 'feat/x', userAt: 100, planAts: [] as number[] }
-
-  it('is open for a user turn only when the go-ahead is for their latest message or a plan came after it, and closed in plan mode', () => {
-    expect(buildOpen(open)).toBe(false)
-    expect(buildOpen({ ...open, goAhead: { at: 100, branch: 'feat/x' } })).toBe(true)
-    expect(buildOpen({ ...open, goAhead: { at: 99, branch: 'feat/x' } })).toBe(false)
-    expect(buildOpen({ ...open, planAts: [101] })).toBe(true)
-    expect(buildOpen({ ...open, planAts: [100] })).toBe(false)
-    expect(buildOpen({ ...open, planMode: true, goAhead: { at: 100, branch: 'feat/x' }, planAts: [101] })).toBe(false)
-  })
-
-  it('is open for a turn Kernel started on the go-ahead branch or with an approved plan, and closed once the branch moved', () => {
-    const kernel = { ...open, userTurn: false }
-    expect(buildOpen(kernel)).toBe(false)
-    expect(buildOpen({ ...kernel, goAhead: { at: 1, branch: 'feat/x' } })).toBe(true)
-    expect(buildOpen({ ...kernel, goAhead: { at: 1, branch: 'feat/old' } })).toBe(false)
-    expect(buildOpen({ ...kernel, planAts: [1] })).toBe(true)
-    expect(buildOpen({ ...kernel, planMode: true, planAts: [1] })).toBe(false)
+describe("a Build here chat's gate (KERNEL-1113)", () => {
+  it('is open unless the chat is in plan mode, with no go-ahead to quote', () => {
+    expect(buildOpen({ planMode: false })).toBe(true)
+    expect(buildOpen({ planMode: true })).toBe(false)
   })
 
   const kernel = { id: 'kernel', name: 'Kernel', role: 'Lead', description: '', lead: true, prompt: '' } as AgentDef
@@ -662,35 +644,6 @@ describe("a Build here chat's go-ahead (KERNEL-992)", () => {
     expect(t.recorded).toEqual(['Fix  it'])
   })
 
-  it("start_build refuses a quote that isn't in the latest message, an empty one, plan mode and Hand off", async () => {
-    const t = tools({})
-    expect(await t.call({ go_ahead: 'remove those' })).toEqual({ text: BUILD_NO_GO_AHEAD, isError: true })
-    expect(await t.call({ go_ahead: '  ' })).toEqual({ text: BUILD_NO_GO_AHEAD, isError: true })
-    expect(t.recorded).toEqual([])
-    expect(t.tracked).toEqual([{ name: 'build.refused', reason: 'go-ahead' }, { name: 'build.refused', reason: 'go-ahead' }])
-    expect(await tools({ planMode: () => true }).call({ go_ahead: 'fix it' })).toEqual({ text: BUILD_PLAN_MODE_ON, isError: true })
-    const handoff = tools({ leadMode: 'handoff' })
-    expect(await handoff.call({ go_ahead: 'fix it' })).toEqual({ text: BUILD_IN_HANDOFF, isError: true })
-    expect(handoff.recorded).toEqual([])
-    expect(handoff.tracked).toEqual([{ name: 'build.refused', reason: 'handoff' }])
-  })
-
-  it('start_build needs no new quote when the gate is already open', async () => {
-    const t = tools({ buildOpen: () => true, userSaid: () => ({ text: 'also, what about X?', at: 9 }) })
-    expect(await t.call({ go_ahead: 'whatever' })).toEqual({ text: 'Go ahead: build it', isError: false })
-    expect(t.recorded).toEqual([])
-  })
-
-  it("a quote from an earlier message doesn't pass once the user wrote again", async () => {
-    const t = tools({ userSaid: () => ({ text: 'what do you think?', at: 9 }) })
-    expect((await t.call({ go_ahead: 'fix it' })).isError).toBe(true)
-  })
-
-  it('the instructions and the refusals name start_build', () => {
-    for (const said of [BUILD_NO_GO_AHEAD, BUILD_PLAN_MODE_OFF]) expect(said).toContain('mcp__kernel__start_build')
-    expect(GO_AHEAD_LINE).toContain('even as a question')
-  })
-
   async function building() {
     const t = await setup()
     const c = await t.chat()
@@ -700,72 +653,4 @@ describe("a Build here chat's go-ahead (KERNEL-992)", () => {
     return { ...t, c, say }
   }
 
-  it("opens for the user's turn once start_build recorded their message, and closes at their next one", async () => {
-    const { k, c, say } = await building()
-    say('can we just fix this? or what?', 10)
-    expect(k.lead.buildOpen(c.id)).toBe(false)
-    k.lead.recordGoAhead(c.id, 'fix this')
-    expect(k.store.workspace(c.workspaceId)?.buildGoAhead).toMatchObject({ quote: 'fix this', at: 10 })
-    expect(k.lead.buildOpen(c.id)).toBe(true)
-    say('thanks. what about the margins?', 20)
-    expect(k.lead.buildOpen(c.id)).toBe(false)
-  })
-
-  it('stays open for a Team update on the same branch and closes when a merge moves the branch', async () => {
-    const { k, c, say } = await building()
-    say('fix it', 10)
-    k.lead.recordGoAhead(c.id, 'fix it')
-    k.sessions['turnsOf'](c.id).from = 'kernel'
-    expect(k.lead.buildOpen(c.id)).toBe(true)
-    const ws = k.store.workspace(c.workspaceId)!
-    k.store.saveWorkspace({ ...ws, branch: 'kernel/next' })
-    expect(k.lead.buildOpen(c.id)).toBe(false)
-  })
-
-  it('opens after a plan approved in Build here, keeps the go-ahead on disk, and a mode switch clears it', async () => {
-    const { k, c, say } = await building()
-    say('plan the fix', 10)
-    await k.sessions.planApproved(c.id)
-    expect(k.store.workspace(c.workspaceId)?.buildGoAhead).toMatchObject({ quote: 'plan approved', branch: k.store.workspace(c.workspaceId)!.branch })
-    expect(k.lead.buildOpen(c.id)).toBe(true)
-    k.lead.setMode(c.workspaceId, 'handoff')
-    expect(k.store.workspace(c.workspaceId)?.buildGoAhead).toBeUndefined()
-    k.lead.setMode(c.workspaceId, 'build')
-    expect(k.lead.buildOpen(c.id)).toBe(false)
-  })
-
-  it('a restart keeps the go-ahead: it is read back from the saved workspace', async () => {
-    const { k, c, say } = await building()
-    say('fix it', 10)
-    k.lead.recordGoAhead(c.id, 'fix it')
-    const saved = JSON.parse(JSON.stringify(k.store.workspace(c.workspaceId)))
-    expect(saved.buildGoAhead).toMatchObject({ quote: 'fix it', at: 10 })
-    k.store.saveWorkspace(saved)
-    expect(k.lead.buildOpen(c.id)).toBe(true)
-  })
-
-  it("Claude's hooks deny an edit, a commit, a push and a pull request until the go-ahead, in Bypass permissions too, and follow it at each call", async () => {
-    const { k, c, say } = await building()
-    k.store.saveWorkspace({ ...k.store.workspace(c.workspaceId)!, status: 'ready' })
-    await Sessions.prototype.send.call(k.sessions, c.id, [{ type: 'text', text: 'hello' }])
-    const options = calls.at(-1)!.options as { hooks: Record<string, { matcher?: string; hooks: ((i: unknown, id: string, o: { signal: AbortSignal }) => Promise<Record<string, any>>)[] }[]>; cwd: string }
-    const run = async (matcher: string, tool_name: string, tool_input: unknown) => {
-      const outs = []
-      for (const m of options.hooks.PreToolUse.filter((h) => h.matcher === matcher)) for (const h of m.hooks) outs.push(await h({ hook_event_name: 'PreToolUse', tool_name, tool_input, tool_use_id: 't', session_id: 's', transcript_path: '', cwd: options.cwd }, 't', { signal: new AbortController().signal }))
-      return outs.map((o) => o.hookSpecificOutput?.permissionDecision)
-    }
-    const edit = (file_path: string) => run('Edit|Write|MultiEdit|NotebookEdit', 'Edit', { file_path })
-    const bash = (command: string) => run('Bash', 'Bash', { command })
-    say('can we just fix this? or what?', 10)
-    expect(await edit('src/a.ts')).toContain('deny')
-    expect(await edit('.kernel/shared/mock.html')).not.toContain('deny')
-    for (const command of ['git commit -m x', 'pnpm test && git push', 'gh pr create --fill']) expect(await bash(command), command).toContain('deny')
-    for (const command of ['git status', 'pnpm test']) expect(await bash(command), command).not.toContain('deny')
-    k.lead.recordGoAhead(c.id, 'fix this')
-    expect(await edit('src/a.ts')).not.toContain('deny')
-    expect(await bash('git commit -m x')).not.toContain('deny')
-    say('and the margins?', 20)
-    expect(await edit('src/a.ts')).toContain('deny')
-    expect(await bash('git push')).toContain('deny')
-  })
 })

@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { cleanError } from '../../api'
 import { actions, useStore } from '../../store'
-import { ConfirmDialog, useBusy } from '../../ui'
+import { ConfirmDialog, Icon, useBusy } from '../../ui'
+import { AgentFile } from './AgentFile'
 import { retireAgent } from './retireAgent'
-import { shortFile } from './model'
 import './agent.css'
 
 /**
@@ -26,20 +26,26 @@ export function ConfirmRetire({ projectId, agentId }: { projectId: string; agent
       await retireAgent(projectId, agentId)
     } catch (e) { setError(cleanError(e)) }
   })
-  const leadName = lead?.name ?? 'the Lead'
+  const leadName = lead?.name ?? 'Kernel'
   const others = agent.reviewer ? open - reviews : open
-  const handoff = open === 0 ? 'No open workspaces' : [
-    agent.reviewer && reviews ? `${reviews} open ${reviews === 1 ? 'review goes' : 'reviews go'} to the next reviewer` : '',
-    others ? `${others} open ${others === 1 ? 'workspace goes' : 'workspaces go'} to ${leadName}` : ''
-  ].filter(Boolean).join(', ')
+  const chats = (n: number) => `${n} open ${n === 1 ? 'chat' : 'chats'}`
+  const moves = [
+    agent.reviewer && reviews ? `${chats(reviews)} ${reviews === 1 ? 'is a review that goes' : 'are reviews that go'} to the next reviewer` : '',
+    others ? `${chats(others)} ${others === 1 ? 'moves' : 'move'} to ${leadName}` : ''
+  ].filter(Boolean)
 
   return (
     <ConfirmDialog
-      title={`Retire ${agent.name}?`} busy={!!busy} busyPattern="scatter" busyLabel="Retiring" confirmLabel={`Retire ${agent.name}`} onConfirm={() => void retire()} onCancel={actions.ui.closeModal}
-      body={`${agent.name} finishes the current turn, then leaves the team and the workspace picker. The file moves to .claude/retired-agents so you can bring ${agent.name} back.`}
+      title={`Retire ${agent.name}?`} danger busy={!!busy} busyPattern="ripple" busyLabel="Retiring" confirmLabel={`Retire ${agent.name}`} onConfirm={() => void retire()} onCancel={actions.ui.closeModal}
+      body={`${agent.name} finishes the current turn, then leaves the team. The file moves to .claude/retired-agents, so you can bring ${agent.name} back.`}
     >
-      <div className="tm-box mono"><span>{shortFile(agent.file)}</span><span>{handoff}</span></div>
-      {error && <p role="alert" style={{ color: 'var(--del)' }}>{error}</p>}
+      <div className="rt-box">
+        <div className="rt-row"><AgentFile file={agent.file} /><span className="rt-where">Moves to .claude/retired-agents</span></div>
+        {moves.length === 0
+          ? <div className="rt-row rt-chat"><Icon name="chat" size={14} />No open chats</div>
+          : moves.map((m) => <div key={m} className="rt-row rt-chat"><Icon name="chat" size={14} />{m}</div>)}
+      </div>
+      {error && <p role="alert" className="del">{error}</p>}
     </ConfirmDialog>
   )
 }

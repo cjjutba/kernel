@@ -1,5 +1,5 @@
 import type { AppSettings, ChatItem, ChatPart, Overrule, PrInfo, PrPending, PrState, ReviewComment, ReviewKind, Toast, Workspace } from '@shared/types'
-import { headBlockers, kindStates, kindsText, lensOf, mergeBlock, mergeableState, reviewVerdicts } from '@shared/merge'
+import { headBlockers, kindStates, kindsText, lensOf, mergeBlock, mergeNeedsPr, mergeableState, reviewVerdicts } from '@shared/merge'
 import { stripRemote } from '../../settings/remote'
 
 /** The rules a PR's merge reads (Settings, Pull requests). */
@@ -17,7 +17,7 @@ export interface PrHeaderView {
   /** Where the PR stands, beside the link: its word, icon and the header band's tone (KERNEL-274). The icon never spins. */
   state: { label: string; tone: PrTone; glyph: PrGlyph }
   /** The main button. `busy` shows a spinner and is disabled, whoever started what runs (KERNEL-417). `override` asks first, as Merge anyway does (KERNEL-501). */
-  button?: { label: string; kind: 'primary' | 'secondary' | 'strong' | 'busy'; action?: PrAction; override?: boolean }
+  button?: { label: string; kind: 'primary' | 'secondary' | 'strong' | 'busy'; action?: PrAction; override?: boolean; /** Why the button is off: it is shown but can't be pressed (KERNEL-1071). */ disabled?: string }
   /** Create PR's caret menu (squared right edge on the button). */
   caret: boolean
   merged: boolean
@@ -135,6 +135,8 @@ export const METHOD_WORD: Record<AppSettings['pr']['mergeMethod'], string> = { s
 
 /** The merge line and the chat row's wording for how a merge landed. Shared with the PR toast. */
 export const LANDED: Record<AppSettings['pr']['mergeMethod'], string> = { squash: 'Squashed into', merge: 'Merged into', rebase: 'Rebased onto' }
+/** The merged toast's line when the agent is known: "Noor squashed it into main." (Pen 18.1). */
+const LANDED_BY: Record<AppSettings['pr']['mergeMethod'], string> = { squash: 'squashed it into', merge: 'merged it into', rebase: 'rebased it onto' }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
@@ -187,6 +189,21 @@ export function localRow(stand: LocalStand, base: string, info: Pick<PrInfo, 'lo
 /** Kernel saves a workspace's file count whenever it reads the changes. No files, or no count yet, means nothing to put in a PR. */
 export const hasChanges = (ws: Workspace) => (ws.stat?.files ?? 0) > 0
 
+/** Why a PR GitHub calls mergeable can't merge yet, from `mergeBlock`. `review` is when only a required review holds it. */
+export interface MergeWait { reason: string; review: boolean }
+
+/**
+ * The merge's block for the header: the reason `mergeBlock` gives, the rule every Merge button uses, and whether a required review
+ * alone holds it (KERNEL-1071). Nothing when the PR can merge, when blockers on the latest commit hold it (`blockersHold` owns
+ * that band), or before the PR is read while the rule needs it, which is a moment, not a refusal.
+ */
+export function mergeWait(ws: Workspace, pr: PrInfo | null | undefined, rules: Rules, name: (agentId: string) => string): MergeWait | undefined {
+  if (!mergeableState(ws.prState) || (!pr && mergeNeedsPr(ws, rules))) return undefined
+  const reason = mergeBlock(ws, pr, rules, name)
+  if (!reason || blockersHold(ws, pr, rules, name)) return undefined
+  return { reason, review: mergeBlock(ws, pr, { ...rules, requireReviewer: false }, name) === undefined }
+}
+
 /**
  * `changed` is false when the workspace has nothing to put in a PR, which hides Create PR and its menu. Merge PR shows in
  * exactly the states `mergeBlock` lets through, so the header and every other Merge button agree (KERNEL-349). `blocked`
@@ -196,13 +213,13 @@ export const hasChanges = (ws: Workspace) => (ws.stat?.files ?? 0) > 0
  * spins in the action's word, as the pressed button's own does, so nothing is left to press or to answer to a key (KERNEL-520).
  * A merged PR keeps Continue and Archive, since its merge is done and the pending clears a moment later.
  */
-export function headerView(state: PrState, changed = true, blocked = false, local?: { base: string; stand: LocalStand }, held = false, pending?: PrAction): PrHeaderView {
-  const view = stateView(state, changed, blocked, local, held)
+export function headerView(state: PrState, changed = true, blocked = false, local?: { base: string; stand: LocalStand }, held = false, pending?: PrAction, wait?: MergeWait): PrHeaderView {
+  const view = stateView(state, changed, blocked, local, held, wait)
   if (!pending || view.merged) return view
   return { ...view, caret: false, archive: false, button: { label: busyLabel[pending], kind: 'busy' } }
 }
 
-function stateView(state: PrState, changed: boolean, blocked: boolean, local: { base: string; stand: LocalStand } | undefined, held: boolean): PrHeaderView {
+function stateView(state: PrState, changed: boolean, blocked: boolean, local: { base: string; stand: LocalStand } | undefined, held: boolean, wait?: MergeWait): PrHeaderView {
   if (local) return localHeaderView(local.stand, local.base, changed)
   const base = { link: true, caret: false, merged: false, archive: false }
   const noPr = { label: 'No PR yet', tone: 'idle', glyph: 'branch' } as const
@@ -212,6 +229,8 @@ function stateView(state: PrState, changed: boolean, blocked: boolean, local: { 
   const running = (s: 'creating' | 'checks' | 'resolving' | 'merging') => ({ label: PR_STATUS[s].label, kind: 'busy' }) as const
   if (mergeableState(state)) {
     if (held) return { ...base, state: { label: BLOCKERS_STATUS.label, tone: BLOCKERS_STATUS.tone, glyph: BLOCKERS_STATUS.glyph }, button: { label: 'Merge anyway', kind: 'secondary', action: 'merge', override: true } }
+    // `mergeBlock` refuses the merge: the band doesn't say ready and Merge PR is off, with the reason (KERNEL-1071).
+    if (wait) return { ...base, state: { label: wait.review ? 'Waiting for review' : 'Open', tone: 'idle', glyph: 'pr' }, button: { label: 'Merge PR', kind: 'primary', disabled: wait.reason } }
     return { ...base, state: state === 'ready' && !blocked ? mergeable : { label: 'Open', tone: 'ready', glyph: 'pr' }, button: { label: 'Merge PR', kind: 'primary', action: 'merge' } }
   }
   switch (state) {
@@ -294,7 +313,7 @@ export function prToast(before: PrState | undefined, ws: Workspace, o: { method?
   const base = stripRemote(ws.baseRef, o.remote ?? 'origin')
   if (before === 'creating' && ws.prState === 'none') return { title: 'Could not create the PR', sub: `${o.agent ?? 'The agent'} finished without opening one.` }
   if (before === 'creating') return { title: `${n} created`, sub: ws.prState === 'draft' ? 'Opened as a draft' : ws.prTitle || undefined, ...view }
-  if (ws.prState === 'merged') return { title: `${n} merged`, sub: before === 'merging' && o.method ? `${LANDED[o.method]} ${base}` : 'Merged on GitHub', ...view }
+  if (ws.prState === 'merged') return { glyph: 'merged', title: `${n} merged`, sub: before === 'merging' && o.method ? (o.agent ? `${o.agent} ${LANDED_BY[o.method]} ${base}.` : `${LANDED[o.method]} ${base}`) : 'Merged on GitHub', ...view }
   return undefined
 }
 

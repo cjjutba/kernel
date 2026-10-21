@@ -126,6 +126,8 @@ export class Providers extends Feature {
   private refused = new Set<string>()
   /** When `readUsage` last read each account, by `provider:id`, so opening the account menu twice reads once. */
   private usageReadAt = new Map<string, number>()
+  /** The accounts, by `provider:id`, whose last usage read failed. A read that works, or an account never read, isn't here (KERNEL-1076). */
+  private usageFailed = new Set<string>()
   /** The read a finished turn asked for, by `provider:id`, which the turns that finish before it runs share (KERNEL-673). */
   private afterTurn = new Map<string, NodeJS.Timeout>()
   /** Usage reads running, by account id, which Remove waits for so none writes to a folder it deleted. */
@@ -317,7 +319,7 @@ export class Providers extends Feature {
   /** The providers a project's agents run on, by their picks. A project Kernel hasn't read yet counts every role's. */
   usedIn(projectId: string): Provider[] {
     const agents = this.k.team.agentsSync(projectId)
-    const picks = agents.length ? agents.map((a) => this.k.team.pickFor(a).provider) : Object.values(this.settings.models.roles).map((r) => r.provider)
+    const picks = agents.length ? agents.map((a) => this.k.team.pickFor(a).provider) : (Object.keys(this.settings.models.roles) as Role[]).map((r) => this.k.team.pickRole(r).provider)
     return [...new Set(picks)]
   }
 
@@ -641,7 +643,7 @@ export class Providers extends Feature {
       const added = file[provider].accounts.filter((a) => a.auth !== 'apiKey' && (provider === 'codex' || !!a.home)).map((a) => a.id)
       for (const id of [undefined, ...added]) {
         if (o.active && id !== this.active(provider)) continue
-        const read = o.probe ? (merge: (p: LimitPatch[]) => void) => this.tracked(id, provider === 'claude' ? this.readClaudeUsage(id, merge, !!o.check) : this.readCodexUsage(id, merge)) : undefined
+        const read = o.probe ? (merge: (p: LimitPatch[]) => void) => this.noteRead(provider, id, this.tracked(id, provider === 'claude' ? this.readClaudeUsage(id, merge, !!o.check) : this.readCodexUsage(id, merge))) : undefined
         out.push({ provider, ...(id ? { accountId: id } : {}), ...(read ? { read } : {}) })
       }
     }
@@ -681,6 +683,17 @@ export class Providers extends Feature {
     this.afterTurn.set(key, timer)
   }
 
+  /** Records whether a usage read worked, so a failed one isn't taken for one that hasn't happened yet. A read that fails still fails. */
+  private noteRead(provider: Provider, id: string | undefined, read: Promise<void>): Promise<void> {
+    const key = `${provider}:${id ?? CLI_ACCOUNT}`
+    return read.then(() => { this.usageFailed.delete(key) }, (e) => { this.usageFailed.add(key); throw e })
+  }
+
+  /** Whether the last usage read of the account `provider` runs on failed. No read yet is not a failure (KERNEL-1076). */
+  usageReadFailed(provider: Provider): boolean {
+    return this.usageFailed.has(`${provider}:${this.active(provider) ?? CLI_ACCOUNT}`)
+  }
+
   private tracked(id: string | undefined, read: Promise<void>): Promise<void> {
     if (!id) return read
     const running = this.reading.get(id) ?? new Set<Promise<void>>()
@@ -711,6 +724,7 @@ export class Providers extends Feature {
     const chatgpt = r.account?.type === 'chatgpt' ? r.account : undefined
     if (!r.failed) await this.noteLogin('codex', id, { signedIn: !!chatgpt, email: chatgpt?.email ?? undefined, plan: codexPlan(chatgpt?.planType) })
     merge(codexLimits(r.limits?.rateLimits, id))
+    if (r.failed || r.limitsFailed) throw new Error('The Codex usage read failed.')
   }
 
   // ---------- adding, signing in and out
@@ -998,6 +1012,29 @@ export class Providers extends Feature {
       if (!offered || need.every((m) => offered.includes(m))) return id
     }
     return ids[0]
+  }
+
+  /**
+   * Whether `provider` can't take new work now (KERNEL-1055): the account in use has a rejected 5-hour or weekly window and no
+   * other signed-in subscription account has room, as `spareAccount` says. Only a real rejection counts, as in `Account`'s
+   * switch at a limit. A running turn isn't asked: it waits for the reset.
+   */
+  atLimit(provider: Provider, now = Date.now()): boolean {
+    const mine = (this.store.meta<RateLimit[]>('limits') ?? []).filter((l) => limitProvider(l) === provider)
+    const active = this.active(provider) ?? CLI_ACCOUNT
+    if (!blockingLimit(mine.filter((l) => (l.accountId ?? CLI_ACCOUNT) === active), now)) return false
+    return !this.spareAccount(provider, mine, now)
+  }
+
+  /**
+   * Whether `provider` is set up and can take new work now (KERNEL-1055): a login Kernel has read as signed in, or an API key
+   * that works, and no limit stopping the provider (`atLimit`). A provider Kernel never saw signed in has no room, so work never
+   * falls back to one the user hasn't set up.
+   */
+  hasRoom(provider: Provider, now = Date.now()): boolean {
+    const file = this.load()[provider]
+    const signedIn = file.cli?.signedIn === true || file.accounts.some((a) => this.storedSignedIn(provider, a))
+    return signedIn && !this.atLimit(provider, now)
   }
 
   /**
@@ -1545,7 +1582,10 @@ export class Providers extends Feature {
         if (pick.provider === provider && pick.model) add(pick.model, a.name)
       }
     }
-    if (!read) for (const [role, pick] of Object.entries(this.settings.models.roles) as [Role, { provider: Provider; model: string }][]) if (pick.provider === provider && pick.model) add(pick.model, ROLE_NAMES[role])
+    if (!read) for (const role of Object.keys(this.settings.models.roles) as Role[]) {
+      const pick = this.k.team.pickRole(role)
+      if (pick.provider === provider && pick.model) add(pick.model, ROLE_NAMES[role])
+    }
     return out
   }
 

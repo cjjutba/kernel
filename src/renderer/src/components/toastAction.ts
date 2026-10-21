@@ -1,6 +1,11 @@
 import type { Toast } from '@shared/types'
-import { call } from '../api'
+import { call, cleanError } from '../api'
 import { actions } from '../store'
+import { commandComposer } from '../screens/workspace/composer/bus'
+import { setupToasts } from '../screens/onboarding/setupToasts'
+import { runRetry } from '../retry'
+import { openSetupLog } from '../screens/workspace/setupFailed'
+import { retryNow } from '../screens/workspace/banners/retryNow'
 
 /**
  * What a toast's action does when pressed. A link opens in the browser. A tab opens in the app, and the app goes to that tab's workspace, since
@@ -8,6 +13,18 @@ import { actions } from '../store'
  * necessarily the one showing it). `go` keeps the tab just opened.
  */
 export function runToastAction(action: NonNullable<Toast['action']>) {
+  if (action.copy) void navigator.clipboard.writeText(action.copy).catch(() => actions.ui.toast({ title: 'Could not copy', sub: action.copy }))
+  if (action.recheck || action.fix) void (action.fix ? call('preflight.fix', { id: action.fix }) : call('preflight.run', undefined)).then((checks) => { actions.system.setPreflight(checks); setupToasts(checks) }).catch((e) => actions.ui.toast({ title: 'Could not check again', sub: cleanError(e) }))
+  if (action.retrySetup) void call('projects.retrySetup', { projectId: action.retrySetup }).catch((e) => actions.ui.toast({ title: 'Could not try again', sub: cleanError(e) }))
+  if (action.recheckPush) void call('projects.pushCheck', { projectId: action.recheckPush, recheck: true }).catch((e) => actions.ui.toast({ title: 'Could not check again', sub: cleanError(e) }))
+  if (action.retryNow) void retryNow(action.retryNow).catch((e) => actions.ui.toast({ title: 'Could not retry', sub: cleanError(e) }))
+  if (action.recheckAccount) void Promise.all([call('account.get', undefined).then(actions.account.set), call('accounts.list', undefined).then(actions.accounts.set)]).catch((e) => actions.ui.toast({ title: 'Could not check again', sub: cleanError(e) }))
+  if (action.rerunSetup) void call('scripts.run', { workspaceId: action.rerunSetup, kind: 'setup' }).catch((e) => actions.ui.toast({ title: 'Could not run setup', sub: cleanError(e) }))
+  if (action.openSetup) openSetupLog(action.openSetup)
+  if (action.retryWorktree) void call('workspaces.retryWorktree', { workspaceId: action.retryWorktree }).catch((e) => actions.ui.toast({ title: 'Could not create the worktree', sub: cleanError(e) }))
+  if (action.sendAsHandoff) void call('lead.sendAsHandoff', { workspaceId: action.sendAsHandoff }).catch((e) => actions.ui.toast({ title: 'Could not send as Hand off', sub: cleanError(e) }))
+  if (action.pickProject) commandComposer('project')
+  if (action.retry) runRetry(action.retry)
   if (action.href) void call('system.openExternal', { url: action.href })
   if (action.route) actions.ui.go(action.route)
   if (action.modal) actions.ui.openModal(action.modal)

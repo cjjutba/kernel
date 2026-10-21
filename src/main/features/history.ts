@@ -35,6 +35,7 @@ export class History extends Feature {
       workspaces: facts.length,
       skipped,
       unpushedBranches: facts.filter((f) => f.branch === 'unpushed').length,
+      unpushed: facts.filter((f) => f.branch === 'unpushed').map((f) => ({ id: f.ws.id, branch: f.ws.branch })),
       transcriptBytes: facts.reduce((n, f) => n + [...f.sessions.values()].reduce((a, b) => a + b, 0), 0)
     }
   }
@@ -108,7 +109,7 @@ export class History extends Feature {
           else branch = (await unpushedCommits(project.path, ws.branch, ws.baseRef, remote)) === 0 ? 'delete' : 'unpushed'
         }
         const found = new Map<string, number>()
-        if (ws.mode === 'worktree' && !staying.some((w) => w.path === ws.path)) {
+        if (ws.mode === 'worktree' && !ws.shared && !staying.some((w) => w.path === ws.path)) {
           for (const info of await this.k.listSessions({ dir: ws.path, includeWorktrees: false }).catch(() => [])) found.set(info.sessionId, info.fileSize ?? 0)
         }
         for (const chat of this.store.chats(ws.id)) {

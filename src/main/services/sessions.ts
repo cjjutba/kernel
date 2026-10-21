@@ -286,7 +286,7 @@ export interface SessionDeps {
   onLimits?: (limits: RateLimit[]) => void
   /** The chats a limit or a quit stopped changed. Kernel saves them, so they still carry on after a restart. */
   onCutOff?: (cutOff: Record<string, CutOffEntry>) => void
-  /** What chats held for setup are holding changed. Kernel saves it, so a brief survives a restart (KERNEL-128). */
+  /** What held chats are holding changed. Kernel saves it, so a brief survives a restart (KERNEL-128). */
   onHeld?: (held: Record<string, QueuedMessage[]>) => void
   /**
    * A hold on every chat of a project or a provider lifted: a resume, back online or signed in, the launch checks done, a
@@ -311,11 +311,12 @@ export type TurnBy = MessageFrom | 'user'
 
 /**
  * Why `post` refuses Kernel's message now (KERNEL-637): the chat runs a turn (`busy`), has messages queued, its session died
- * mid-turn, it waits for setup or a launch check, its project is paused, it is offline or signed out, it waits for the user to
+ * mid-turn, it is held (`held`: its workspace isn't made yet, its folder is gone, or its brief waits for a merge) or waits for a
+ * launch check, its project is paused, it is offline or signed out, it waits for the user to
  * choose how it moves to another account, it is held near a usage limit, over the agent limit or behind cold re-reads, or
  * Kernel is closing.
  */
-export type PostHold = 'busy' | 'queued' | 'crashed' | 'setup' | 'launching' | 'paused' | 'offline' | 'move' | 'limit' | 'capacity' | 'moving' | 'closing'
+export type PostHold = 'busy' | 'queued' | 'crashed' | 'held' | 'launching' | 'paused' | 'offline' | 'move' | 'limit' | 'capacity' | 'moving' | 'closing'
 
 /** What stopped a chat mid-turn that carries on by itself: a usage limit, or Kernel quitting or closing (KERNEL-215). */
 export type CutOffReason = 'limit' | 'quit'
@@ -339,7 +340,7 @@ const sender = (o: Sender): Sender => ({ ...(o.from ? { from: o.from } : {}), ..
 const queuedOf = (chatId: string, parts: ChatPart[], o: Sender): QueuedMessage =>
   ({ id: o.clientId ?? randomUUID(), chatId, parts, ts: Date.now(), ...sender(o), ...(o.clientId ? { clientId: o.clientId } : {}) })
 
-/** Setup passed and the brief waits for PRs to merge (KERNEL-259). A chat held while its setup runs or failed waits for setup. */
+/** The workspace is ready and the brief waits for PRs to merge (KERNEL-259). Any other held chat waits for its workspace to be made (KERNEL-1086). */
 const heldForMerge = (ws?: Workspace) => ws?.status === 'ready' && !!ws.waitsFor?.held
 
 /** What a chat says once about a server its agent file lists that the session can't use (KERNEL-397, KERNEL-464). */
@@ -404,7 +405,10 @@ export class Sessions {
    */
   private holds = new Map<string, Provider | undefined>()
   private gates = new Map<Provider, { open: Promise<void>; release: () => void }>()
-  /** Chats whose first prompt waits for the workspace's setup script to pass, or for the PRs it waits for to merge (KERNEL-259). */
+  /**
+   * Chats whose first prompt waits for the workspace to be made (its worktree, and the local files a brief needs), or for the PRs
+   * it waits for to merge (KERNEL-259). Never for the setup script, which runs alongside the agent (KERNEL-1086).
+   */
   private waiting = new Set<string>()
   /** Chats a usage limit or a quit stopped mid-turn. They carry on by themselves once nothing holds them (`carryOn`). */
   private cutOff = new Map<string, CutOffEntry>()
@@ -647,7 +651,7 @@ export class Sessions {
     this.d.onFreed?.()
   }
 
-  /** Hands Kernel what every chat held for setup is holding, to save. */
+  /** Hands Kernel what every held chat is holding, to save. */
   private saveHeld() {
     if (!this.d.onHeld) return
     const held: Record<string, QueuedMessage[]> = {}
@@ -940,8 +944,8 @@ export class Sessions {
     const chat = this.d.store.chat(chatId)
     if (!chat) return undefined
     if (this.live.get(chat.id)?.running) return 'running'
-    if (this.waiting.has(chat.id)) return heldForMerge(this.d.store.workspace(chat.workspaceId)) ? 'merge' : 'setup'
-    if (this.unmade(chat)) return 'setup'
+    if (this.waiting.has(chat.id)) return heldForMerge(this.d.store.workspace(chat.workspaceId)) ? 'merge' : 'worktree'
+    if (this.unmade(chat)) return 'worktree'
     if (this.holding(chatProvider(chat))) return 'offline'
     if (this.pausedChat(chat)) return 'paused'
     if (this.moveHolds.has(chat.id)) return 'move'
@@ -971,7 +975,7 @@ export class Sessions {
     if (this.live.get(chatId)?.running) return 'busy'
     if (this.queued(chatId).length) return 'queued'
     if (this.crashed.has(chatId)) return 'crashed'
-    if (this.waiting.has(chatId) || this.d.store.workspace(chat.workspaceId)?.folderGone || this.unmade(chat)) return 'setup'
+    if (this.waiting.has(chatId) || this.d.store.workspace(chat.workspaceId)?.folderGone || this.unmade(chat)) return 'held'
     // A chat that carries on after a quit waits for the launch checks too, or an update would take its turn without them.
     if (this.launching && this.cutOff.has(chatId)) return 'launching'
     if (this.holding(chatProvider(chat))) return 'offline'
@@ -1535,7 +1539,7 @@ export class Sessions {
     return queue
   }
 
-  /** Saves the queues of chats not held for setup (those go under `held`), so they survive a quit or a crash. */
+  /** Saves the queues of chats that aren't held (those go under `held`), so they survive a quit or a crash. */
   private saveQueues() {
     const queues: Record<string, QueuedMessage[]> = {}
     for (const [id, queue] of this.queues) if (!this.waiting.has(id)) queues[id] = queue
@@ -1567,7 +1571,7 @@ export class Sessions {
 
   /**
    * A turn started or ended, or a hold began or lifted: held queues whose reason changed tell the renderer. Kernel calls it
-   * when a workspace changes too, since a held brief waits for setup or for a merge by its workspace's state (KERNEL-361).
+   * when a workspace changes too, since a held brief waits for its workspace or for a merge by its workspace's state (KERNEL-361).
    */
   pushReasons() {
     for (const chatId of this.queues.keys()) if (this.reasons.get(chatId) !== this.waitsFor(chatId)) this.pushQueue(chatId)
@@ -1711,7 +1715,7 @@ export class Sessions {
   }
 
   /**
-   * Something still needs the idle chat's process: messages waiting to go, a brief held for setup, a paused project or a
+   * Something still needs the idle chat's process: messages waiting to go, a held brief, a paused project or a
    * hold on every project, a usage limit it waits out, or a background task it runs.
    */
   private keepsProcess(chatId: string, live: Live): boolean {
@@ -2380,12 +2384,14 @@ export class Sessions {
 
 export function agentPrompt(agent: AgentDef | undefined, ws: Workspace, rule?: string): string {
   // Before KERNEL-405 the Lead's shared worktree was detached, on no branch. Each Lead chat now has a branch of its own.
-  const where = ws.lead && ws.mode === 'worktree' && ws.branch === 'HEAD'
+  const where = ws.shared
+    ? `You are working in the folder Kernel keeps for this project's chats, at ${ws.path}, detached at ${ws.baseRef}, not on a branch. Other chats work there too, and Kernel keeps it on the latest main. It is not the main checkout, which the user may be running. Stay inside it.`
+    : ws.lead && ws.mode === 'worktree' && ws.branch === 'HEAD'
     ? `You are working in your own git worktree at ${ws.path}, detached at ${ws.baseRef}, not on a branch. It is not the main checkout, which the user may be running. Stay inside it.`
     : ws.mode === 'worktree'
     ? `You are working in a git worktree at ${ws.path} on branch ${ws.branch}, created from ${ws.baseRef}.${ws.lead ? ' It is not the main checkout, which the user may be running.' : ''} Stay inside it. Push with \`git push -u origin ${ws.branch}\` (or \`HEAD\`), never a bare \`git push\`.`
     : `You are working directly in the main checkout at ${ws.path} on ${ws.branch}. Some files already had changes before you started; never commit those unless asked.`
-  const port = `If you start a dev server, use port ${ws.port} ($KERNEL_PORT).`
+  const port = ws.shared ? undefined : `If you start a dev server, use port ${ws.port} ($KERNEL_PORT).`
   // The chat's mode picks the Lead's rule: Hand off plans and hands off, Build here builds in this worktree (KERNEL-770).
   return [agent?.prompt, agent?.lead && leadRule(leadModeOf(ws)), rule, where, port].filter(Boolean).join('\n\n')
 }
@@ -2444,7 +2450,7 @@ export const QUIT_BUDGET_MS = 3000
 /** Every provider, for the holds that name one. */
 const PROVIDER_IDS: Provider[] = ['claude', 'codex']
 
-/** Meta keys Sessions saves itself: the working journal, every queue not held for setup, and the pids of live processes. */
+/** Meta keys Sessions saves itself: the working journal, every queue that isn't held, and the pids of live processes. */
 const WORKING = 'working'
 const QUEUES = 'queues'
 const PIDS = 'claudePids'

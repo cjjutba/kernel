@@ -39,7 +39,7 @@ const REPO = {
 async function dirs(workspace: Record<string, unknown> = {}) {
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', ...workspace } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', ...workspace } }))
   return { dataDir, home }
 }
 
@@ -139,25 +139,22 @@ describe('a workspace per chat with Kernel (KERNEL-405)', () => {
     expect(await sha(ws.path, 'HEAD')).toBe(release)
   })
 
-  it('copies files and runs setup like a teammate, holds the message through a failed setup with Wait for setup on, and Run again sends it', async () => {
+  it('copies files and runs setup like a teammate, and a failed setup holds nothing: a message sent after it goes out at once (KERNEL-1086)', async () => {
     const repo = await tempRepo({ ...REPO, '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt && echo set up"\n' })
     await writeFile(join(repo, '.env.local'), 'SECRET=1\n')
-    const k = await boot(await dirs({ leadWaitForSetup: true }))
+    const k = await boot(await dirs())
     const project = await k.addProject(repo)
     sdk.calls.length = 0
     const chat = await k.lead.startLeadChat(project.id, { prompt: 'Plan it' })
-    const ws = await setUp(k, chat.id, 'failed')
+    const ws = await setUp(k, chat.id)
+    expect(ws).toMatchObject({ status: 'ready', setupRun: { end: 1 } })
     expect(await readFile(join(ws.path, '.env.local'), 'utf8')).toBe('SECRET=1\n')
-    expect(queuedText(k, chat.id)).toEqual(['Plan it'])
-    // A second tab of a chat whose setup failed waits with it.
-    const tab = await k.handlers()['chats.create']({ workspaceId: ws.id })
-    await k.sessions.send(tab.id, [{ type: 'text', text: 'And this' }])
-    expect(queuedText(k, tab.id)).toEqual(['And this'])
-    expect(callIn(ws.path)).toHaveLength(0)
-    await writeFile(join(ws.path, 'ok.txt'), 'ok\n')
-    expect((await k.setup.retrySetup(ws.id)).status).toBe('ready')
-    await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(2))
+    await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(1))
     expect(k.sessions.queued(chat.id)).toEqual([])
+    // A second tab, after setup failed, isn't held either.
+    const tab = await k.handlers()['chats.create']({ workspaceId: ws.id })
+    expect(await k.sessions.send(tab.id, [{ type: 'text', text: 'And this' }])).toMatchObject({ queued: false })
+    await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(2))
     expect(k.sessions.queued(tab.id)).toEqual([])
   })
 
@@ -222,8 +219,8 @@ describe('a workspace per chat with Kernel (KERNEL-405)', () => {
   })
 })
 
-// KERNEL-490: Kernel's first message waits only when Wait for setup is on and a setup script runs on create. A teammate's brief
-// always waits.
+// KERNEL-490, KERNEL-1086: nothing waits for setup. Kernel's first message and a teammate's brief go once the worktree exists, and
+// the setup script runs alongside them.
 describe('what waits for setup (KERNEL-490)', () => {
   const SETUP = { '.kernel/settings.toml': '[scripts]\nsetup = "sleep 1 && echo set up"\n' }
 
@@ -256,20 +253,8 @@ describe('what waits for setup (KERNEL-490)', () => {
     expect((await setUp(k, chat.id)).setupRun).toMatchObject({ end: 0 })
   })
 
-  it('holds it until setup passes with Wait for setup on and a setup script', async () => {
-    const { k, project: r } = await project(SETUP, { leadWaitForSetup: true })
-    const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
-    const ws = k.store.workspace(chat.workspaceId)!
-    expect(queuedText(k, chat.id)).toEqual(['Plan it'])
-    expect(k.sessions.queueReason(chat.id)).toBe('setup')
-    expect(callIn(ws.path)).toHaveLength(0)
-    await setUp(k, chat.id)
-    await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(1))
-    expect(k.sessions.queued(chat.id)).toEqual([])
-  })
-
-  it("keeps the window's id on the prompt through setup and on what the chat's handlers send next (KERNEL-894)", async () => {
-    const { k, project: r } = await project(SETUP, { leadWaitForSetup: true })
+  it("keeps the window's id on the prompt while the worktree is made and on what the chat's handlers send next (KERNEL-894)", async () => {
+    const { k, project: r } = await project(SETUP)
     const h = k.handlers()
     const chat = await h['lead.start']({ projectId: r.id, prompt: 'Plan it', clientId: 'c-start' })
     expect(k.sessions.queued(chat.id).map((q) => q.id)).toEqual(['c-start'])
@@ -285,16 +270,17 @@ describe('what waits for setup (KERNEL-490)', () => {
   it.each([
     ['the project has no setup script', {}, true],
     ['Run setup on create is off', SETUP, false]
-  ] as const)('sends it at once with Wait for setup on when %s, and runs no setup', async (_, files, setupOnCreate) => {
-    const { k, project: r } = await project(files, { leadWaitForSetup: true })
+  ] as const)('sends it at once when %s, and runs no setup', async (_, files, setupOnCreate) => {
+    const { k, project: r } = await project(files)
     if (!setupOnCreate) await k.config.setSettings({ scripts: { setupOnCreate } })
     const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
     await sentAtOnce(k, chat)
     expect((await setUp(k, chat.id)).setupRun).toBeUndefined()
   })
 
-  it("sends it at once when the project's own file turns Wait for setup off", async () => {
-    const { k, project: r } = await project({ ...SETUP, '.kernel/settings.local.toml': '[workspace]\nlead_wait_for_setup = false\n' }, { leadWaitForSetup: true })
+  it('sends it at once though an older settings file still turns Wait for setup on (KERNEL-1086)', async () => {
+    const { k, project: r } = await project({ ...SETUP, '.kernel/settings.local.toml': '[workspace]\nlead_wait_for_setup = true\n' }, { leadWaitForSetup: true })
+    expect(k.settings.workspace).not.toHaveProperty('leadWaitForSetup')
     const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
     await sentAtOnce(k, chat)
     await setUp(k, chat.id)
@@ -302,14 +288,15 @@ describe('what waits for setup (KERNEL-490)', () => {
 
   const FAILS = { '.kernel/settings.toml': '[scripts]\nsetup = "exit 3"\n' }
 
-  it("holds a teammate's brief through a failed setup with Wait for setup on", async () => {
-    const { k, project: r } = await project(FAILS, { leadWaitForSetup: true })
+  it("sends a teammate's brief at once, and a failed setup alongside it holds nothing (KERNEL-1086)", async () => {
+    const { k, project: r } = await project(FAILS)
     const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'Build the invoice list', agentId: 'christian' })
-    expect(ws.status).toBe('failed')
+    expect(ws.status).toBe('ready')
     const brief = k.chatTabs(ws.id).find((c) => c.kind !== 'terminal')!
-    expect(queuedText(k, brief.id)).toEqual(['Build the invoice list'])
-    expect(k.sessions.queueReason(brief.id)).toBe('setup')
-    expect(callIn(ws.path)).toHaveLength(0)
+    expect(k.sessions.queued(brief.id)).toEqual([])
+    await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(1))
+    expect((await setUp(k, ws.id)).setupRun).toMatchObject({ end: 3 })
+    expect(k.sessions.queueReason(brief.id)).toBeUndefined()
   })
 
   it("sends the Lead's message to a started teammate at once, after the brief, while setup runs (KERNEL-1012)", async () => {
@@ -527,5 +514,459 @@ describe("keeping each chat's worktree on the latest main (KERNEL-181, KERNEL-40
     await k.lead.syncLead(project.id, { workspaceId: wa.id })
     expect(await sha(wa.path, 'HEAD')).toBe(was)
     await rm(join(repo, 'merged-0.txt'))
+  })
+})
+
+// KERNEL-1050: a new chat in Hand off opens in one shared folder per project, with no worktree, branch, ports or setup of its own.
+describe('chats in Hand off on the shared main folder (KERNEL-1050)', () => {
+  const start = (k: Kernel, projectId: string, prompt = 'Plan it', o: Record<string, unknown> = {}) => k.lead.newLeadChat(projectId, { prompt, leadMode: 'handoff', ...o })
+  const mainFolder = (k: Kernel, project: { id: string }) => k.mainFolder.path(project.id)
+  const trees = async (repo: string) => (await git(repo, 'worktree', 'list', '--porcelain')).split('\n').filter((l) => l.startsWith('worktree ')).map((l) => l.slice(9)).filter((p) => p.endsWith('/.main'))
+  /** The mocked sessions never end a turn, so the chats count as busy until the test says they are idle. */
+  const idle = (k: Kernel) => { k.sessions.isRunning = () => false }
+  const notes = (k: Kernel, projectId: string) => k.store.activity(projectId, 500).filter((x) => x.actor === 'kernel' && /shared main folder/.test(x.text)).reverse()
+
+  it('starts with no worktree, branch, ports or setup, and sends the first message at once', async () => {
+    const { repo, bare } = await withOrigin({ '.kernel/settings.toml': '[scripts]\nsetup = "touch setup-ran.txt"\n' })
+    const k = await boot(await dirs())
+    const project = await k.addProject(repo)
+    const merged = await pushElsewhere(bare, 'merged')
+    await run('git', ['-C', repo, 'fetch', '-q', 'origin'])
+    sdk.calls.length = 0
+    const chat = await start(k, project.id)
+    const ws = k.store.workspace(chat.workspaceId)!
+    expect(ws).toMatchObject({ lead: true, shared: true, threadId: chat.threadId, branch: 'HEAD', baseRef: 'origin/main', mode: 'worktree', status: 'ready', port: 0 })
+    expect(ws.worktreePending).toBeFalsy()
+    expect(ws.path).toBe(join(projectWorktreeRoot(k.settings.worktreeRoot, project), '.main'))
+    expect(await sha(ws.path, 'HEAD')).toBe(merged)
+    expect(existsSync(join(ws.path, 'setup-ran.txt'))).toBe(false)
+    expect(k.sessions.isHeld(chat.id)).toBe(false)
+    expect(k.sessions.queued(chat.id)).toEqual([])
+    await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(1))
+    expect(callIn(ws.path)[0].options.systemPrompt.append).toContain('detached at origin/main')
+    // No branch of its own was cut.
+    expect((await git(repo, 'branch', '--list', 'kernel/*')).trim()).toBe('')
+    expect(await branchOf(repo)).toBe('main')
+  })
+
+  it('shares one folder between chats, makes it once for chats started together, and makes it again when it is deleted', async () => {
+    const { repo } = await withOrigin()
+    const k = await boot(await dirs())
+    const project = await k.addProject(repo)
+    const [a, b] = await Promise.all([start(k, project.id, 'One'), start(k, project.id, 'Two')])
+    const [wa, wb] = [a, b].map((c) => k.store.workspace(c.workspaceId)!)
+    expect(wa.id).not.toBe(wb.id)
+    expect(wa.path).toBe(wb.path)
+    expect((await trees(repo))).toHaveLength(1)
+    await rm(wa.path, { recursive: true, force: true })
+    const c = await start(k, project.id, 'Three')
+    expect(k.store.workspace(c.workspaceId)!.path).toBe(wa.path)
+    expect(existsSync(join(wa.path, 'README.md'))).toBe(true)
+    expect((await trees(repo))).toHaveLength(1)
+  })
+
+  it('links node_modules into the folder when the project asks for it', async () => {
+    const repo = await tempRepo({ ...REPO, '.kernel/settings.toml': '[files]\nsymlink_node_modules = true\n' })
+    await mkdir(join(repo, 'node_modules'))
+    await writeFile(join(repo, 'node_modules', 'dep.txt'), 'dep\n')
+    const k = await boot(await dirs())
+    const project = await k.addProject(repo)
+    const ws = k.store.workspace((await start(k, project.id)).workspaceId)!
+    expect(await readFile(join(ws.path, 'node_modules', 'dep.txt'), 'utf8')).toBe('dep\n')
+  })
+
+  it('fast-forwards only while every chat on the folder is idle', async () => {
+    const { repo, bare } = await withOrigin()
+    const k = await boot(await dirs())
+    const project = await k.addProject(repo)
+    const a = await start(k, project.id, 'One')
+    await start(k, project.id, 'Two')
+    idle(k)
+    const path = mainFolder(k, project)
+    const was = await sha(path, 'HEAD')
+    const merged = await pushElsewhere(bare, 'merged')
+    await run('git', ['-C', repo, 'fetch', '-q', 'origin'])
+    k.sessions.isRunning = (id) => id === a.id
+    await k.mainFolder.sync(project.id)
+    expect(await sha(path, 'HEAD')).toBe(was)
+    idle(k)
+    await k.mainFolder.sync(project.id)
+    expect(await sha(path, 'HEAD')).toBe(merged)
+    expect(await branchOf(path)).toBe('HEAD')
+    expect(notes(k, project.id).map((x) => x.text)).toEqual(['updated the shared main folder to origin/main, 1 new commit'])
+  })
+
+  it('stays put with tracked changes or a commit of its own, and warns once per sha', async () => {
+    const { repo, bare } = await withOrigin()
+    const k = await boot(await dirs())
+    const project = await k.addProject(repo)
+    await start(k, project.id)
+    idle(k)
+    const path = mainFolder(k, project)
+    const was = await sha(path, 'HEAD')
+    await writeFile(join(path, 'README.md'), '# edited\n')
+    await pushElsewhere(bare, 'first')
+    await run('git', ['-C', repo, 'fetch', '-q', 'origin'])
+    await k.mainFolder.sync(project.id)
+    await k.mainFolder.sync(project.id)
+    expect(await sha(path, 'HEAD')).toBe(was)
+    expect(await readFile(join(path, 'README.md'), 'utf8')).toBe('# edited\n')
+    expect(notes(k, project.id).map((x) => x.object)).toEqual(['tracked files have changes'])
+    // A commit of its own is a different reason on the same sha, so it warns again, and then not again.
+    await run('git', ['-C', path, '-c', 'user.email=t@t.dev', '-c', 'user.name=Test', 'commit', '-q', '-am', 'own'])
+    const own = await sha(path, 'HEAD')
+    await k.mainFolder.sync(project.id)
+    await k.mainFolder.sync(project.id)
+    expect(await sha(path, 'HEAD')).toBe(own)
+    expect(notes(k, project.id).map((x) => x.object)).toEqual(['tracked files have changes', 'it has a commit of its own'])
+  })
+
+  it('syncs after the merge fetch through syncLead', async () => {
+    const { repo, bare } = await withOrigin()
+    const k = await boot(await dirs())
+    const project = await k.addProject(repo)
+    await start(k, project.id)
+    idle(k)
+    const merged = await pushElsewhere(bare, 'merged')
+    await k.lead.syncLead(project.id, { fetch: true })
+    expect(await sha(mainFolder(k, project), 'HEAD')).toBe(merged)
+  })
+
+  it('shows no changes, refuses Create PR and refuses run scripts for a shared chat', async () => {
+    const { repo } = await withOrigin()
+    const k = await boot(await dirs())
+    const project = await k.addProject(repo)
+    const chat = await start(k, project.id)
+    const ws = k.store.workspace(chat.workspaceId)!
+    await writeFile(join(ws.path, 'README.md'), '# edited\n')
+    const h = k.handlers()
+    expect(await h['workspaces.changes']({ workspaceId: ws.id })).toEqual([])
+    await expect(h['pr.create']({ workspaceId: ws.id })).rejects.toThrow('Switch this chat to Build here first')
+    await expect(h['scripts.run']({ workspaceId: ws.id, kind: 'run' } as never)).rejects.toThrow(/shared main folder/)
+  })
+
+  it('leaves a Build here chat, an explicit target branch and a project with no commit as they were', async () => {
+    const { repo } = await withOrigin()
+    const k = await boot(await dirs())
+    const project = await k.addProject(repo)
+    const build = k.store.workspace((await start(k, project.id, 'Build', { leadMode: 'build' })).workspaceId)!
+    await k.workspaces.worktreeMade(build.id)
+    expect(build.shared).toBeFalsy()
+    expect(build.path).not.toBe(mainFolder(k, project))
+    const picked = k.store.workspace((await start(k, project.id, 'Target', { baseRef: 'origin/main' })).workspaceId)!
+    expect(picked.shared).toBeFalsy()
+
+    const empty = await mkdtemp(join(tmpdir(), 'kernel-'))
+    await run('git', ['init', '-q', '-b', 'main', empty])
+    for (const [f, c] of Object.entries(REPO)) { await mkdir(join(empty, f, '..'), { recursive: true }); await writeFile(join(empty, f), c) }
+    const noCommit = await k.addProject(empty)
+    const ws = k.store.workspace((await start(k, noCommit.id)).workspaceId)!
+    expect(ws).toMatchObject({ mode: 'current', path: empty })
+    expect(ws.shared).toBeFalsy()
+  })
+})
+
+// KERNEL-1051: the first switch of a chat on the shared main folder to Build here gives it a working copy by Workspace type.
+describe('the working copy of a shared chat, made on the first send in Build here (KERNEL-1051, KERNEL-1053)', () => {
+  const start = (k: Kernel, projectId: string, prompt = 'Plan the invoices work', o: Record<string, unknown> = {}) => k.lead.newLeadChat(projectId, { prompt, leadMode: 'handoff', ...o })
+  const idle = (k: Kernel) => { k.sessions.isRunning = () => false }
+  const SETUP = { '.kernel/settings.toml': '[scripts]\nsetup = "echo ran >> setup-count.txt"\n' }
+  const lines = async (path: string) => (await readFile(join(path, 'setup-count.txt'), 'utf8').catch(() => '')).split('\n').filter(Boolean).length
+  const rows = (k: Kernel, chatId: string) => k.store.items(chatId).filter((i) => i.kind === 'note').map((i) => (i as { text: string }).text)
+
+  /** The copy is made and set up: the record is its own, ready, and nothing is pending. */
+  const copied = (k: Kernel, id: string) => vi.waitFor(() => { const w = k.store.workspace(id)!; expect(w.status).toBe('ready'); expect(w.shared).toBeFalsy(); expect(w.worktreePending).toBeFalsy() })
+  const say = (k: Kernel, chatId: string, text = 'Now build it') => k.lead.send(chatId, [{ type: 'text', text }])
+  const branches = async (repo: string) => (await git(repo, 'branch', '--list', 'kernel/*')).trim()
+
+  it('only records the mode on Build here and makes nothing, and going back leaves nothing to clean up', async () => {
+    const { repo } = await withOrigin(SETUP)
+    const k = await boot(await dirs())
+    const project = await k.addProject(repo)
+    idle(k)
+    const chat = await start(k, project.id)
+    const shared = k.store.workspace(chat.workspaceId)!
+    await k.workspaces.prepareSpare(project.id)
+    const spare = (k.workspaces as unknown as { spares: Map<string, { path?: string }> }).spares.get(project.id)!.path!
+
+    const ws = k.lead.setMode(shared.id, 'build')
+    expect(ws).toMatchObject({ leadMode: 'build', shared: true, path: shared.path, branch: 'HEAD', port: 0, status: 'ready' })
+    expect(ws.worktreePending).toBeFalsy()
+    expect(k.sessions.isHeld(chat.id)).toBe(false)
+    await new Promise((r) => setTimeout(r, 100))
+    expect(k.store.workspace(shared.id)).toMatchObject({ shared: true, path: shared.path, status: 'ready' })
+    expect(existsSync(spare)).toBe(true)
+    expect(await branches(repo)).toBe('')
+    expect(existsSync(join(shared.path, 'setup-count.txt'))).toBe(false)
+
+    expect(k.lead.setMode(shared.id, 'handoff')).toMatchObject({ leadMode: 'handoff', shared: true, path: shared.path })
+    expect(k.store.workspace(shared.id)).toEqual(expect.objectContaining({ shared: true, status: 'ready', port: 0 }))
+    expect(await branches(repo)).toBe('')
+    expect(existsSync(spare)).toBe(true)
+  })
+
+  it('makes the copy on the first send in Build here, claims the spare, runs setup and runs the turn in the new folder', async () => {
+    const { repo, bare } = await withOrigin(SETUP)
+    const k = await boot(await dirs())
+    const project = await k.addProject(repo)
+    idle(k)
+    // No first message, so no process runs yet: the mocked turns never end.
+    const chat = await start(k, project.id, '')
+    await k.handlers()['threads.rename']({ threadId: chat.threadId!, title: 'Plan the invoices work' })
+    const shared = k.store.workspace(chat.workspaceId)!
+    await k.workspaces.prepareSpare(project.id)
+    const spare = (k.workspaces as unknown as { spares: Map<string, { path?: string }> }).spares.get(project.id)!.path!
+    const merged = await pushElsewhere(bare, 'merged')
+    await run('git', ['-C', repo, 'fetch', '-q', 'origin'])
+    k.lead.setMode(shared.id, 'build')
+
+    sdk.calls.length = 0
+    const sent = await say(k, chat.id)
+    expect(sent.queued).toBe(true)
+    expect(queuedText(k, chat.id)).toEqual(['Now build it'])
+    await copied(k, shared.id)
+    const now = k.store.workspace(shared.id)!
+    expect(now.shared).toBeFalsy()
+    expect(now.worktreePending).toBeFalsy()
+    expect(now).toMatchObject({ naming: 'branch', baseRef: 'origin/main', leadMode: 'build', firstInProject: true })
+    expect(now.branch).toBe('kernel/plan-the-invoices-work')
+    expect(now.port).toBeGreaterThan(0)
+    expect(now.path).not.toBe(shared.path)
+    expect(await branchOf(now.path)).toBe(now.branch)
+    expect(await sha(now.path, 'HEAD')).toBe(merged)
+    // The spare became the chat's worktree: it is gone from where it was.
+    expect(existsSync(spare)).toBe(false)
+    await vi.waitFor(async () => expect(await lines(now.path)).toBe(1))
+    await vi.waitFor(() => expect(callIn(now.path)).toHaveLength(1))
+    expect(callIn(shared.path)).toHaveLength(0)
+    expect(k.sessions.isHeld(chat.id)).toBe(false)
+  })
+
+  it('waits for a running turn, then makes the copy when the queued message would go', async () => {
+    const { repo } = await withOrigin()
+    const k = await boot(await dirs())
+    const project = await k.addProject(repo)
+    const chat = await start(k, project.id, '')
+    const shared = k.store.workspace(chat.workspaceId)!
+    let running = true
+    k.sessions.isRunning = () => running
+    k.lead.setMode(shared.id, 'build')
+    sdk.calls.length = 0
+
+    expect(await say(k, chat.id)).toMatchObject({ queued: true, why: 'running' })
+    expect(k.sessions.isHeld(chat.id)).toBe(true)
+    await new Promise((r) => setTimeout(r, 100))
+    expect(k.store.workspace(shared.id)).toMatchObject({ shared: true, path: shared.path })
+    expect(callIn(shared.path)).toHaveLength(0)
+
+    running = false
+    k.lead.turnEnded(chat.id)
+    await copied(k, shared.id)
+    const now = k.store.workspace(shared.id)!
+    expect(now.path).not.toBe(shared.path)
+    await vi.waitFor(() => expect(callIn(now.path)).toHaveLength(1))
+    expect(callIn(shared.path)).toHaveLength(0)
+  })
+
+  it('moves to the main checkout with the baseline on send when Workspace type is current, and refuses Build here while another chat is on it', async () => {
+    const { repo } = await withOrigin()
+    const k = await boot(await dirs({ mode: 'current' }))
+    const project = await k.addProject(repo)
+    idle(k)
+    await writeFile(join(repo, 'wip.txt'), 'mine\n')
+    await writeFile(join(repo, 'README.md'), '# edited\n')
+    const a = await start(k, project.id, '')
+    const b = k.store.workspace((await start(k, project.id, '')).workspaceId)!
+
+    k.lead.setMode(a.workspaceId, 'build')
+    expect(k.store.workspace(a.workspaceId)).toMatchObject({ shared: true, leadMode: 'build' })
+    await say(k, a.id)
+    await copied(k, a.workspaceId)
+    const now = k.store.workspace(a.workspaceId)!
+    expect(now).toMatchObject({ mode: 'current', path: repo, branch: 'main', status: 'ready', leadMode: 'build' })
+    expect(now.shared).toBeFalsy()
+    expect(now.worktreePending).toBeFalsy()
+    expect(now.baselineRef).toBeTruthy()
+    expect(now.port).toBeGreaterThan(0)
+    expect(await readFile(join(repo, 'README.md'), 'utf8')).toBe('# edited\n')
+
+    expect(() => k.lead.setMode(b.id, 'build')).toThrow(/already working on the current branch/)
+    expect(k.store.workspace(b.id)).toMatchObject({ shared: true, leadMode: 'handoff', path: b.path })
+    k.settings.workspace.oneCurrentBranchPerProject = false
+    expect(k.lead.setMode(b.id, 'build')).toMatchObject({ leadMode: 'build' })
+  })
+
+  it('reuses the working copy when the chat goes back to Hand off and to Build here again', async () => {
+    const { repo } = await withOrigin(SETUP)
+    const k = await boot(await dirs())
+    const project = await k.addProject(repo)
+    idle(k)
+    const chat = await start(k, project.id)
+    const id = chat.workspaceId
+    k.lead.setMode(id, 'build')
+    await say(k, chat.id)
+    await copied(k, id)
+    const first = k.store.workspace(id)!
+    await vi.waitFor(async () => expect(await lines(first.path)).toBe(1))
+
+    expect(k.lead.setMode(id, 'handoff')).toMatchObject({ leadMode: 'handoff', path: first.path, branch: first.branch })
+    const again = k.lead.setMode(id, 'build')
+    expect(again).toMatchObject({ leadMode: 'build', path: first.path, branch: first.branch, port: first.port })
+    expect(k.store.workspace(id)).toMatchObject({ status: 'ready', path: first.path })
+    expect((await branches(repo)).split('\n')).toHaveLength(1)
+    expect(await lines(first.path)).toBe(1)
+  })
+
+  it('keeps the copy when the chat goes back to Hand off while it is made, and sends the message in Hand off', async () => {
+    const { repo } = await withOrigin()
+    const k = await boot(await dirs())
+    const project = await k.addProject(repo)
+    idle(k)
+    const chat = await start(k, project.id, '')
+    const shared = k.store.workspace(chat.workspaceId)!
+    k.lead.setMode(shared.id, 'build')
+    let open!: () => void
+    const gate = new Promise<void>((resolve) => { open = resolve })
+    const make = k.workspaces.makeWorktree.bind(k.workspaces)
+    k.workspaces.makeWorktree = async (id: string) => { await gate; return make(id) }
+    sdk.calls.length = 0
+    await say(k, chat.id)
+    await vi.waitFor(() => expect(k.store.workspace(shared.id)?.worktreePending).toEqual({ fromShared: true }))
+
+    expect(k.lead.setMode(shared.id, 'handoff')).toMatchObject({ leadMode: 'handoff' })
+    open()
+    await copied(k, shared.id)
+    const now = k.store.workspace(shared.id)!
+    expect(now).toMatchObject({ leadMode: 'handoff' })
+    expect(now.shared).toBeFalsy()
+    expect(now.path).not.toBe(shared.path)
+    await vi.waitFor(() => expect(callIn(now.path)).toHaveLength(1))
+    expect(callIn(shared.path)).toHaveLength(0)
+    expect(callIn(now.path)[0].options.systemPrompt.append).not.toContain('Build here')
+  })
+
+  describe('when the copy fails', () => {
+    const failing = async () => {
+      const { repo } = await withOrigin()
+      const k = await boot(await dirs({ leadBranchPattern: 'bad..{slug}' }))
+      const project = await k.addProject(repo)
+      idle(k)
+      const chat = await start(k, project.id, '')
+      const shared = k.store.workspace(chat.workspaceId)!
+      k.lead.setMode(shared.id, 'build')
+      sdk.calls.length = 0
+      await say(k, chat.id)
+      await vi.waitFor(() => expect(k.store.workspace(shared.id)?.worktreePending?.error).toBeTruthy())
+      return { k, repo, chat, shared }
+    }
+
+    it('holds the message with the error on the record, and runs nothing on the shared folder', async () => {
+      const { k, chat, shared } = await failing()
+      const now = k.store.workspace(shared.id)!
+      expect(now).toMatchObject({ status: 'failed', leadMode: 'build', worktreePending: { fromShared: true } })
+      expect(now.worktreePending!.error).toMatch(/not a valid branch name/)
+      expect(k.sessions.isHeld(chat.id)).toBe(true)
+      expect(queuedText(k, chat.id)).toEqual(['Now build it'])
+      expect(rows(k, chat.id).join('\n')).not.toContain('shared main folder')
+      // A message sent meanwhile waits behind it.
+      await say(k, chat.id, 'And this')
+      expect(queuedText(k, chat.id)).toEqual(['Now build it', 'And this'])
+      expect(sdk.calls).toHaveLength(0)
+    })
+
+    it('Retry makes the copy again and sends the held message in it', async () => {
+      const { k, chat, shared } = await failing()
+      k.settings.workspace.leadBranchPattern = 'kernel/{slug}'
+      const ws = k.lead.retryCopy(shared.id)
+      expect(ws.worktreePending).toEqual({ fromShared: true })
+      await copied(k, shared.id)
+      const now = k.store.workspace(shared.id)!
+      expect(now.worktreePending).toBeFalsy()
+      expect(now.shared).toBeFalsy()
+      await vi.waitFor(() => expect(callIn(now.path)).toHaveLength(1))
+      expect(callIn(shared.path)).toHaveLength(0)
+      expect(k.sessions.isHeld(chat.id)).toBe(false)
+      expect(() => k.lead.retryCopy(shared.id)).toThrow(/no failed working copy/)
+    })
+
+    it('Send as Hand off puts the chat back on the shared folder in Hand off and sends the message there', async () => {
+      const { k, repo, chat, shared } = await failing()
+      const ws = await k.lead.sendAsHandoff(shared.id)
+      expect(ws).toMatchObject({ shared: true, leadMode: 'handoff', status: 'ready', path: shared.path, branch: 'HEAD', port: 0 })
+      expect(ws.worktreePending).toBeFalsy()
+      await vi.waitFor(() => expect(callIn(shared.path)).toHaveLength(1))
+      expect(callIn(shared.path)[0].options.systemPrompt.append).not.toContain('Build here')
+      expect(k.sessions.isHeld(chat.id)).toBe(false)
+      expect(await branches(repo)).toBe('')
+      await expect(k.lead.sendAsHandoff(shared.id)).rejects.toThrow(/no failed working copy/)
+    })
+  })
+
+  it('finishes the copy and sends the message after a restart in the middle of it', async () => {
+    const { repo } = await withOrigin()
+    const where = await dirs()
+    const first = new Kernel(where)
+    first.signedInReader = async () => true
+    await first.start()
+    const project = await first.addProject(repo)
+    idle(first)
+    const chat = await start(first, project.id)
+    const shared = first.store.workspace(chat.workspaceId)!
+    first.lead.setMode(shared.id, 'build')
+    // The quit comes after the message is held and the record marked, before the worktree is made.
+    first.workspaces.makeWorktree = () => new Promise(() => undefined)
+    await say(first, chat.id)
+    await vi.waitFor(() => expect(first.store.workspace(shared.id)?.worktreePending).toEqual({ fromShared: true }))
+    await first.stop({ budgetMs: 0 })
+
+    sdk.calls.length = 0
+    const k = await boot(where)
+    await copied(k, shared.id)
+    const now = k.store.workspace(shared.id)!
+    expect(now.worktreePending).toBeFalsy()
+    expect(now.shared).toBeFalsy()
+    await vi.waitFor(() => expect(callIn(now.path)).toHaveLength(1))
+    expect(callIn(shared.path)).toHaveLength(0)
+  })
+
+  it('stamps firstInProject on a new project\'s first chat only, and on nothing else', async () => {
+    const { repo } = await withOrigin()
+    const k = await boot(await dirs())
+    const project = await k.addProject(repo)
+    idle(k)
+    const a = await start(k, project.id, 'First chat')
+    const b = await start(k, project.id, 'Second chat')
+    expect(k.store.workspace(a.workspaceId)!.firstInProject).toBe(true)
+    expect(k.store.workspace(b.workspaceId)!.firstInProject).toBe(false)
+    // Its copy keeps the stamp, and the second chat's copy has none to keep.
+    for (const c of [a, b]) { k.lead.setMode(c.workspaceId, 'build'); await say(k, c.id) }
+    await vi.waitFor(() => expect(['a', 'b'].length && [a, b].every((c) => k.store.workspace(c.workspaceId)?.status === 'ready' && !k.store.workspace(c.workspaceId)?.shared)).toBe(true))
+    expect(k.store.workspace(a.workspaceId)!.firstInProject).toBe(true)
+    expect(k.store.workspace(b.workspaceId)!.firstInProject).toBe(false)
+    const mate = await k.createWorkspace(project.id, { prompt: 'Teammate', agentId: 'christian', title: 'Teammate work' })
+    expect(k.store.workspace(mate.id)!.firstInProject).toBe(false)
+    // Archived chats still count.
+    const other = await boot(await dirs())
+    const p2 = await other.addProject((await withOrigin()).repo)
+    idle(other)
+    const only = await start(other, p2.id, 'Only chat')
+    await other.archiveWorkspace(only.workspaceId, false)
+    const later = await start(other, p2.id, 'Later chat')
+    expect(other.store.workspace(later.workspaceId)!.firstInProject).toBe(false)
+  })
+
+  it('starts a new chat in Build here by Workspace type', async () => {
+    const { repo } = await withOrigin()
+    const current = await boot(await dirs({ mode: 'current' }))
+    const project = await current.addProject(repo)
+    const onCheckout = current.store.workspace((await start(current, project.id, 'Build now', { leadMode: 'build' })).workspaceId)!
+    expect(onCheckout).toMatchObject({ mode: 'current', path: repo, leadMode: 'build', status: 'ready' })
+    expect(onCheckout.baselineRef).toBeTruthy()
+
+    const worktree = await boot(await dirs())
+    const other = await worktree.addProject((await withOrigin()).repo)
+    const cut = worktree.store.workspace((await start(worktree, other.id, 'Build now', { leadMode: 'build' })).workspaceId)!
+    expect(cut).toMatchObject({ mode: 'worktree', leadMode: 'build' })
+    await worktree.workspaces.worktreeMade(cut.id)
   })
 })

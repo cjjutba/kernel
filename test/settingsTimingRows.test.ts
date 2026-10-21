@@ -9,9 +9,9 @@ const files = [join(dir, 'kit.tsx'), ...readdirSync(join(dir, 'pages')).filter((
 const lines = files.flatMap((f) => readFileSync(f, 'utf8').split('\n')).filter((l) => /\bsetting=|appliesTo\(/.test(l))
 
 /**
- * Settings that have no row in Settings at all: main reads them, but only a settings file sets them.
+ * Settings that have no row in Settings at all: main reads them, but only a settings file sets them. `providers.fallback` is one until its row lands (KERNEL-1056). `onboarding.out` and `onboarding.reviewer` are set by the Your team step of onboarding (KERNEL-1088), which has no note.
  */
-const NO_ROW = new Set(['hookPort', 'experimental.sharing', 'models.effortByModel', 'mcp.aliases', 'agents.unlistedTools', 'agents.allow'])
+const NO_ROW = new Set(['hookPort', 'experimental.sharing', 'models.effortByModel', 'mcp.aliases', 'agents.unlistedTools', 'agents.allow', 'providers.fallback', 'onboarding.out', 'onboarding.reviewer'])
 
 const NOTED = new Set(['newChats', 'newWorkspaces', 'newProjects', 'restart'])
 const noted = (map: Record<string, string>) => Object.entries(map).filter(([, t]) => NOTED.has(t)).map(([k]) => k)
@@ -29,7 +29,8 @@ describe('Applies to notes (KERNEL-725)', () => {
 
   it('words each timing', () => {
     expect(appliesTo('models.leadPlanMode')).toBe('Applies to new chats')
-    expect(appliesTo('workspace.mode')).toBe('Applies to new workspaces')
+    expect(appliesTo('workspace.mode')).toBe('Applies to teammates and to chats when they switch to Build here')
+    expect(appliesTo('workspace.baseRef')).toBe('Applies to new workspaces')
     expect(appliesTo('team.defaultTemplate')).toBe('Applies to new projects')
     expect(appliesTo('general.openTo')).toBe('Applies the next time Kernel opens')
     expect(appliesTo('terminal.preset')).toBe('Applies to new terminal tabs')

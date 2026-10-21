@@ -126,7 +126,7 @@ describe('the Team update card', () => {
     expect(many).toContain("Updates on 3 more workspaces didn&#x27;t fit here")
     expect(html).not.toContain('aria-label="Copy"')
     expect(html).not.toContain('aria-label="Edit"')
-    expect(html).toMatch(/<button[^>]*aria-label="Open Christian&#x27;s workspace for Remove the Try section"[^>]*>Open<\/button>/)
+    expect(html).toMatch(/<button[^>]*aria-label="Open Christian&#x27;s workspace for Remove the Try section"[^>]*>Open<svg/)
   })
 
   it('counts what an older update left out in updates, and shows one with no rows it can read as a note', async () => {
@@ -240,7 +240,7 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
       const html = draw()
       // w1 says Merging with the spinner in its Merge place, with nothing to press, while w2 keeps its button.
       expect(html).not.toContain('aria-label="Merge PR #162"')
-      expect(html).toMatch(/<span class="pr-word pr-run" data-tone="ready" aria-busy="true">.*Merging<\/span>/)
+      expect(html).toMatch(/<button[^>]*class="btn merge sm"[^>]*aria-busy="true"[^>]*>.*Merging<\/button>/)
       expect(html).toContain('aria-label="Merge PR #161"')
     } finally { delete pending.w1 }
     // The merge was refused: the pending clears and the row reads Merge again.
@@ -285,17 +285,17 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
     expect(spinning).toContain('disabled')
     expect(spinning).toContain('Merging')
     // A PR that reads merging spins in every place it shows, whoever started the merge: this button, another or the Lead
-    // (KERNEL-417): the spinner and the word in the ready band's green, never a button (KERNEL-757).
+    // (KERNEL-417): the green Merge button, spinning in its word and off, so there is nothing to press twice (Pen 10.11, LeadPrsMerging).
     expect(draw({ kind: 'merging' }, 'Merging')).toMatch(/aria-busy="true"[^>]*>.*Merging/)
-    expect(draw({ kind: 'merging' })).toMatch(/^<span class="pr-word pr-run" data-tone="ready" aria-busy="true">.*Merging<\/span>$/)
+    expect(draw({ kind: 'merging' })).toMatch(/^<button[^>]*class="btn merge sm"[^>]*disabled=""[^>]*aria-busy="true"[^>]*>.*Merging<\/button>$/)
     // An open PR's state, as the PR band says it: a spinner while checks run, and the word in red for what failed.
     expect(draw({ kind: 'state', label: 'Checks running', tone: 'idle', glyph: 'pr', spin: true })).toMatch(/^<span class="pr-word pr-run" data-tone="idle" aria-busy="true">.*Checks running<\/span>$/)
     // Merge anyway is a quiet outline, since the row's red state already says what is wrong (KERNEL-757).
-    expect(draw({ kind: 'override', reviewer: 'The code review', count: 2 })).toMatch(/^<span class="pr-tone" data-tone="idle"><button[^>]*class="[^"]*pr-outline[^"]*"[^>]*>Merge anyway<\/button><\/span>$/)
+    expect(draw({ kind: 'override', reviewer: 'The code review', count: 2 })).toMatch(/^<button[^>]*class="btn sm"[^>]*>Merge anyway<\/button>$/)
     expect(draw({ kind: 'state', label: 'Checks failed', tone: 'fail', glyph: 'prCifail', spin: false })).toMatch(/^<span class="pr-word pr-run" data-tone="fail"><svg[^>]*>.*<\/svg>Checks failed<\/span>$/)
     // A row that draws its own glyph (the PRs tab) drops the static icon but keeps the spinner while a merge runs.
     const bare = (view: Parameters<typeof mod.MergeSlot>[0]['view']) => renderToStaticMarkup(React.createElement(mod.MergeSlot, { ws: ws('w1', { prNumber: 162 }), view, icon: false, onMerge: () => undefined }))
-    expect(bare({ kind: 'merging' })).toMatch(/aria-busy="true"[^>]*><span[^>]*>.*<\/span>Merging<\/span>$/)
+    expect(bare({ kind: 'merging' })).toMatch(/aria-busy="true"[^>]*><span[^>]*>.*<\/span>Merging<\/button>$/)
     expect(bare({ kind: 'state', label: 'Checks failed', tone: 'fail', glyph: 'prCifail', spin: false })).toBe('<span class="pr-word pr-run" data-tone="fail">Checks failed</span>')
     expect(bare({ kind: 'merged' })).toBe('<span class="tucard-merged">Merged</span>')
     expect(draw({ kind: 'blocked', reason: "Artkin hasn't approved the latest commit. Merging waits (Settings, Pull requests)." })).toContain("Artkin hasn&#x27;t approved the latest commit.</span>")

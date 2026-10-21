@@ -24,6 +24,8 @@ const fixtureAccount: ClaudeAccount = { signedIn: true, name: 'Sam Rivera', logi
  * Reads serve the fixture. Writes return a plausible value and change nothing, so a screenshot shows the same state every time.
  */
 export function fixtureHandlers(f: Fixture): Handlers {
+  /** The `mentionsGone` paths already answered once. */
+  const asked = new Set<string>()
   const chat = (id: string): Chat => {
     const c = f.chats.find((x) => x.id === id)
     if (!c) throw new Error(`Unknown chat ${id}`)
@@ -74,6 +76,8 @@ export function fixtureHandlers(f: Fixture): Handlers {
     d.behavior === 'answer' ? { ...a, status: 'answered', answer: d.text } : { ...a, status: d.behavior === 'allow' ? 'allowed' : 'denied' }
 
   const handlers: Handlers = {
+    'evidence.pr': async ({ workspaceId }) => f.evidence?.[workspaceId] ?? null,
+    'attention.plan': async ({ approvalId }) => f.attention?.[approvalId] ?? ({ prsMerged: 0, needed: 0, byKind: { plan: 0, tool: 0, question: 0, blocker: 0, merge: 0 }, finished: false }),
     'preflight.run': async () => f.preflight,
     'preflight.fix': async () => { if (f.preflightFixError) throw new Error(f.preflightFixError); return f.preflight },
     'hooks.install': async () => ({ path: '(fixture)', events: [] }),
@@ -145,24 +149,35 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'workspaces.list': async ({ projectId }) => f.workspaces.filter((w) => !projectId || w.projectId === projectId),
     'workspaces.create': async () => { throw new Error('Fixture mode does not create workspaces.') },
     'workspaces.fork': async () => { throw new Error('Fixture mode does not create workspaces.') },
+    'workspaces.retryWorktree': async () => { throw new Error('Fixture mode does not make worktrees.') },
     'workspaces.archive': async () => ok,
     'workspaces.restore': async ({ workspaceId }) => ({ ...workspace(workspaceId), status: 'ready' }),
-    'workspaces.deletePreview': async ({ workspaceIds }) => f.deletePreview ?? { workspaces: workspaceIds.length, skipped: [], unpushedBranches: 0, transcriptBytes: 640 * 1024 * 1024 },
+    'workspaces.deletePreview': async ({ workspaceIds }) => f.deletePreview ?? { workspaces: workspaceIds.length, skipped: [], unpushedBranches: 0, unpushed: [], transcriptBytes: 640 * 1024 * 1024 },
     'workspaces.delete': async ({ workspaceIds }) => ({ deleted: workspaceIds, skipped: [], keptBranches: 0, freedBytes: 0 }),
     'workspaces.gitStatus': async ({ workspaceId }) => {
       if (f.gitStatus?.[workspaceId]) return f.gitStatus[workspaceId]
       const files = f.changes[workspaceId] ?? []
       return { branch: workspace(workspaceId).branch, ahead: 0, behind: 0, dirty: { files: files.length, added: files.reduce((n, c) => n + c.added, 0), removed: files.reduce((n, c) => n + c.removed, 0) } }
     },
-    'workspaces.changes': async ({ workspaceId }) => f.changes[workspaceId] ?? [],
-    'workspaces.diff': async ({ workspaceId }) => f.diffs[workspaceId] ?? '',
+    // A compare pick reads its own files when the fixture has them (Pen 9.21), else the workspace's changes.
+    'workspaces.changes': async ({ workspaceId, target }) => (target && target.kind !== 'base' ? f.changesAgainst?.[workspaceId]?.[target.kind] : undefined) ?? f.changes[workspaceId] ?? [],
+    // A fixture can give a file its own diff under `<workspace id>:<path>`.
+    'workspaces.diff': async ({ workspaceId, file }) => (file ? f.diffs[`${workspaceId}:${file}`] : undefined) ?? f.diffs[workspaceId] ?? '',
     'workspaces.commits': async ({ workspaceId }) => f.commits?.[workspaceId] ?? [],
     'workspaces.compareBranches': async ({ workspaceId }) => [...new Set([workspace(workspaceId).baseRef, ...(f.branches ?? [])])],
     'workspaces.tree': async ({ workspaceId }) => f.tree?.[workspaceId] ?? [],
     'workspaces.files': async ({ workspaceId, query, limit = 8 }) => (f.tree?.[workspaceId] ?? []).filter((e) => e.path.toLowerCase().includes(query.toLowerCase())).slice(0, limit),
-    'workspaces.readFile': async ({ workspaceId, path }) => f.fileText?.[workspaceId]?.[path] ?? '',
+    'workspaces.readFile': async ({ workspaceId, path }) => {
+      const refused = f.fileErrors?.[workspaceId]?.[path]
+      if (refused) throw new Error(refused)
+      return f.fileText?.[workspaceId]?.[path] ?? ''
+    },
     // A fixture's mentions resolve to the rows of its tree, by exact path.
     'workspaces.resolvePaths': async ({ workspaceId, paths }) => Object.fromEntries(paths.map((p) => {
+      if (f.mentionsGone?.[workspaceId]?.includes(p)) {
+        if (asked.has(`${workspaceId}:${p}`)) return [p, null]
+        asked.add(`${workspaceId}:${p}`)
+      }
       const m = f.mentions?.[workspaceId]?.[p]
       if (m !== undefined) return [p, m]
       const e = f.tree?.[workspaceId]?.find((t) => t.path === p)
@@ -302,6 +317,8 @@ export function fixtureHandlers(f: Fixture): Handlers {
       ws.leadMode = mode
       return ws
     },
+    'lead.retryCopy': async () => { throw new Error('Fixture mode does not make working copies.') },
+    'lead.sendAsHandoff': async () => { throw new Error('Fixture mode does not make working copies.') },
     'threads.list': async ({ projectId }) => (f.threads ?? []).filter((t) => !projectId || t.projectId === projectId),
     'threads.rename': async () => { throw new Error('Fixture mode does not rename chats.') },
     'threads.archivePreview': async ({ threadId }) => {

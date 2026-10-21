@@ -3,41 +3,36 @@ import type { LinearIssue, LinearScope } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { getState, go, useStore } from '../../store'
 import { readSaved as readStored, writeSaved } from '../../remember'
-import { Button, EmptyList, FailedState, Icon, NotConnectedState, Pill, useListKeys } from '../../ui'
-import { IssuePriority, IssueState } from '../../icons'
+import { Button, EmptyList, FailedState, Icon, LinkButton, Pill, useListKeys } from '../../ui'
+import { failToast, useRetryKey } from '../../retry'
+import { IssueState } from '../../icons'
 import { IssueDetail } from './IssueDetail'
 import { spotKey, useKeptScroll } from '../../ui/keptScroll'
 import { forgetLinear, generation, getLinearLists, getScope, getSelected, isFresh, setLinearLists, setScope, setSelected } from './cache'
-import { CapNote, FilterChip, HiddenNote, IssueSkeleton, RefreshNotice, type ProjectHead } from './parts'
+import { CapNote, ConnectLinear, FilterChip, HiddenNote, IssueSkeleton, type ProjectHead } from './parts'
 import { useReveal } from './useReveal'
 import { RowStatus, useReadPrs } from './WorkCard'
 import { WorkHeader } from '../work/WorkHeader'
 import { useOpenPrCount } from '../prs/model'
 import {
   ageTip, clearedFilter, cyclesFor, cycleLabel, describeFilter, fitFilter, FILTER_KEY, flatIssues, groupIssues, initials, issueAge, joinFits, linkedWorkspaces,
-  parseFilter, projectsFor, rowState, serializeFilter, stateShape, workspaceSlug, type SavedFilter
+  parseFilter, projectsFor, rowState, serializeFilter, stateShape, type SavedFilter
 } from './model'
 import './issues.css'
 
-/** Where the failure came from decides the words: a rejected token needs reconnecting, anything else is worth trying again. */
-type View = { kind: 'loading' } | { kind: 'connect' } | { kind: 'rejected' } | { kind: 'error'; title: string; sub: string } | { kind: 'ready' }
-
-const UNREACHABLE: View = { kind: 'error', title: "Can't reach Linear", sub: 'Check your connection, then try again.' }
+/** Where the failure came from decides the words: a rejected token needs signing in again, anything else is worth trying again. `message` is what the toast says. */
+type View = { kind: 'loading' } | { kind: 'connect' } | { kind: 'rejected' } | { kind: 'error'; message: string } | { kind: 'ready' }
 
 function failure(e: unknown): View {
   const message = cleanError(e)
   if (/^Connect Linear/i.test(message)) return { kind: 'connect' }
   if (/rejected the token/i.test(message)) return { kind: 'rejected' }
-  if (/could not reach/i.test(message)) return UNREACHABLE
-  return { kind: 'error', title: "Can't load issues", sub: message }
+  return { kind: 'error', message }
 }
 
 function readSaved(): SavedFilter {
   return parseFilter(readStored(FILTER_KEY))
 }
-
-/** The name of the Linear workspace, kept from the last time an issue came back, so the header can still say it while Linear is down. */
-let knownSlug: string | undefined
 
 /**
  * Issues.png and its states: your open Linear issues in a list, the selected one on the right (KERNEL-160). The route's `issueId` opens with
@@ -51,6 +46,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
   const chats = useStore((s) => s.chats)
   const running = useStore((s) => s.running)
   const prs = useStore((s) => s.prs)
+  const approvals = useStore((s) => s.approvals)
   // Groups folded up by the person, by group key. A fold lasts while the screen is open.
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set())
   const [seed] = useState(() => {
@@ -63,13 +59,10 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
     return { scope: cachedScope?.value ?? null, filter: f, lists: hit?.value ?? null, fresh: !!cachedScope && !!hit && isFresh(Math.min(cachedScope.at, hit.at)), sel: known ? last : undefined }
   })
   const [view, setView] = useState<View>(seed.lists ? { kind: 'ready' } : { kind: 'loading' })
-  const [problem, setProblem] = useState<View | null>(null)
-  const [unread, setUnread] = useState(false)
   const [scope, setScope_] = useState<LinearScope | null>(seed.scope)
   const [filter, setFilter] = useState<SavedFilter>(seed.filter)
   const [query, setQuery] = useState('')
   const [lists, setLists] = useState<{ mine: LinearIssue[]; all: LinearIssue[] } | null>(seed.lists)
-  const [slug, setSlug] = useState(knownSlug)
   const [sel, setSel] = useState<string | undefined>(issueId ?? seed.sel)
   const [tick, setTick] = useState(0)
   const [refreshing, setRefreshing] = useState(!!seed.lists && !seed.fresh)
@@ -93,7 +86,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
       if (full || !sc) {
         const rows = await call('integrations.list', undefined)
         if (stale()) return
-        if (!rows.find((r) => r.id === 'linear')?.connected) { forgetLinear(); hasLists.current = false; setLists(null); setProblem(null); return setView({ kind: 'connect' }) }
+        if (!rows.find((r) => r.id === 'linear')?.connected) { forgetLinear(); hasLists.current = false; setLists(null); return setView({ kind: 'connect' }) }
         sc = await call('linear.scope', undefined)
         setScope(sc, gen)
         if (stale()) return
@@ -108,22 +101,17 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
       if (!q) setLinearLists(serializeFilter(f), { mine, all }, gen)
       if (stale()) return
       loadedKey.current = `${serializeFilter(f)}|${now.current.query}`
-      const name = workspaceSlug((all[0] ?? mine[0])?.url)
-      if (name) { knownSlug = name; setSlug(name) }
       hasLists.current = true
       setLists({ mine, all })
-      setProblem(null)
-      setUnread(false)
       setView({ kind: 'ready' })
     } catch (e) {
       if (stale()) return
       const v = failure(e)
-      if (v.kind === 'connect') { forgetLinear(); hasLists.current = false; setLists(null); setProblem(null) }
-      if (hasLists.current && v.kind !== 'connect') {
-        setProblem(v)
-        if (loadedKey.current !== `${serializeFilter(now.current.filter)}|${now.current.query}`) { loadedKey.current = ''; setLists(null); setUnread(true) }
-      }
-      else setView(v)
+      if (v.kind === 'connect') { forgetLinear(); hasLists.current = false; setLists(null) }
+      // A failed read keeps the rows it has, unless they were for another filter. Either way the toast carries the error (DESIGN.md, State kinds).
+      const keep = hasLists.current && v.kind === 'error' && loadedKey.current === `${serializeFilter(now.current.filter)}|${now.current.query}`
+      if (v.kind === 'error' && getState().system.online) failToast(hasLists.current ? "Couldn't refresh issues" : "Couldn't load issues from Linear", v.message, 'issues')
+      if (!keep) { if (hasLists.current) { loadedKey.current = ''; setLists(null) } setView(v) }
     }
   }, [])
 
@@ -186,8 +174,9 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
   useReadPrs(rowLinked)
   const status = useMemo(() => {
     const runningOf = (w: { id: string }) => (chats[w.id] ?? []).some((c) => running[c.id])
-    return new Map(flat.map((i) => [i.id, rowState(linkedWorkspaces(i.id, workspaces), agents, runningOf, prs)]))
-  }, [flat, workspaces, agents, chats, running, prs])
+    const waitingOf = (w: { id: string }) => approvals.some((a) => a.status === 'pending' && a.workspaceId === w.id)
+    return new Map(flat.map((i) => [i.id, rowState(linkedWorkspaces(i.id, workspaces), agents, runningOf, prs, waitingOf)]))
+  }, [flat, workspaces, agents, chats, running, prs, approvals])
 
   const keys = useListKeys({
     ids: useMemo(() => visible.map((i) => i.id), [visible]),
@@ -201,15 +190,18 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
     },
   })
 
-  const failed: View | null = view.kind === 'ready' ? (!online ? UNREACHABLE : problem) : null
-  const shown: View = !online && (view.kind === 'rejected' || view.kind === 'error') ? UNREACHABLE : view
+  // Offline with nothing to show says so, and no toast: the screen already tells it (DESIGN.md, State kinds).
+  const offline = !online && (view.kind === 'error' || view.kind === 'rejected')
+  const shown: View = view
   const ready = shown.kind === 'ready' && scope
+  const retry = useCallback(() => load(true), [load])
+  useRetryKey('issues', retry)
   const listEl = useRef<HTMLDivElement>(null)
   const keep = spotKey.issues(head.project?.id ?? 'none')
   const kept = useKeptScroll(listEl, { key: keep, ready: !!ready && flat.length > 0 })
   useReveal(listEl, selId, !!ready && flat.length > 0, folded, kept.stop)
   // The open issue came from a link or the last visit, and the filter leaves it out of the list.
-  const hidden = !!ready && !unread && !!lists && !!selId && !cur && flat.length > 0
+  const hidden = !!ready && !!lists && !!selId && !cur && flat.length > 0
   const hiddenFits = scope ? describeFilter({ ...filter, query }, scope).fits : []
   // Every issue in the list is in one Linear project, so naming it on each row says nothing.
   const oneProject = flat.length > 0 && flat.every((i) => i.project?.id === flat[0].project?.id)
@@ -217,11 +209,15 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
   const set = (patch: Partial<SavedFilter>) => setFilter((f) => (scope ? fitFilter({ ...f, ...patch }, scope) : { ...f, ...patch }))
   const count = (n: number | undefined) => (n === undefined ? '' : n >= 100 ? '100+' : String(n))
 
+  const filtered = !!filter.projectId || !!filter.cycleId || ((scope?.teams.length ?? 0) > 1 && !!filter.teamId) || query.trim() !== ''
+  const clear = () => { setQuery(''); if (scope) setFilter(clearedFilter(scope)) }
+  const bar = !!scope && (shown.kind === 'ready' || shown.kind === 'error')
+
   return (
     <div className="panel">
-      <WorkHeader tab="issues" head={head} counts={{ issues: ready ? count(lists?.all.length) : undefined, prs: prCount }} onRefresh={refresh} refreshing={refreshing} where={shown.kind === 'ready' || shown.kind === 'rejected' || shown.kind === 'error' ? `Linear${slug ? ` · ${slug}` : ''}` : undefined} />
+      <WorkHeader tab="issues" head={head} counts={{ issues: ready ? count(lists?.all.length) : undefined, prs: prCount }} onRefresh={refresh} refreshing={refreshing} />
 
-      {ready && scope && (
+      {bar && (
         <div className="is-bar">
           <div role="group" aria-label="Whose issues" className="is-pills">
             <Pill pressed={filter.mine} onClick={() => set({ mine: true })}>Mine<span className="is-n">{count(lists?.mine.length)}</span></Pill>
@@ -229,10 +225,10 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
           </div>
           <span className="is-sep" aria-hidden="true" />
           {scope.teams.length > 1 && <FilterChip label="Team" value={filter.teamId ?? ''} options={[{ value: '', label: 'All' }, ...scope.teams.map((t) => ({ value: t.id, label: t.key }))]} onChange={(v) => set({ teamId: v || undefined })} />}
-          {scope.teams.length === 1 && <FilterChip label="Team" value={scope.teams[0].id} options={[{ value: scope.teams[0].id, label: scope.teams[0].key }]} onChange={() => undefined} />}
           <FilterChip label="Linear project" prefix="Linear:" value={filter.projectId ?? ''} options={[{ value: '', label: 'All projects' }, ...projectsFor(scope, filter.teamId).map((p) => ({ value: p.id, label: p.name }))]} onChange={(v) => set({ projectId: v || undefined })} />
           <FilterChip label="Cycle" value={filter.cycleId ?? ''} options={[{ value: '', label: 'All' }, ...cyclesFor(scope, filter.teamId).map((c) => ({ value: c.id, label: cycleLabel(c, scope, filter.teamId) }))]} onChange={(v) => set({ cycleId: v || undefined })} />
           <span className="grow" />
+          {filtered && <LinkButton variant="action" size="meta" onClick={clear}>Clear filters</LinkButton>}
           <span className="is-search">
             <Icon name="search" size={14} />
             <input type="search" aria-label="Search issues" placeholder="Search issues" autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -242,35 +238,28 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
 
       {shown.kind === 'loading' && <IssueSkeleton />}
 
-      {shown.kind === 'connect' && (
-        <NotConnectedState icon="plug" title="Connect Linear" page="integrations" label="Open Settings, Integrations">See the issues assigned to you, plan them with Kernel and start a chat from any of them.</NotConnectedState>
+      {shown.kind === 'connect' && <ConnectLinear head={head} />}
+
+      {offline && <FailedState icon="wifioff" title="You're offline">Issues show again when you're back online.</FailedState>}
+
+      {!offline && shown.kind === 'rejected' && (
+        <EmptyList icon="key" title="Sign in to Linear again" action={<Button variant="primary" onClick={openIntegrations}>Sign in to Linear</Button>}>Linear rejected Kernel's token. Your issues come back once you sign in.</EmptyList>
       )}
 
-      {shown.kind === 'rejected' && (
-        <NotConnectedState icon="key" title="Linear rejected the token" page="integrations" label="Open Settings, Integrations">Reconnect Linear to see your issues again.</NotConnectedState>
-      )}
+      {!offline && shown.kind === 'error' && <FailedState icon="wifioff" title="Issues didn't load" onRetry={() => load(true)}>Kernel will try again on its own. Your agents keep working in the meantime.</FailedState>}
 
-      {shown.kind === 'error' && <FailedState title={shown.title} onRetry={() => load(true)}>{shown.sub}</FailedState>}
-
-      {ready && failed && failed.kind === 'rejected' && (
-        <RefreshNotice kind="auth" title="Linear rejected the token" action={<Button size="md" onClick={openIntegrations}>Open Settings, Integrations</Button>}>Reconnect Linear to refresh these issues.</RefreshNotice>
-      )}
-      {ready && failed && failed.kind === 'error' && (
-        <RefreshNotice kind="offline" title={failed.title} action={<Button size="md" busy={refreshing} busyPattern="rotate" busyLabel="Trying" onClick={refresh}>Try again</Button>}>{failed.sub} {unread ? 'No issues are shown for this filter.' : 'The issues below are from the last time it loaded.'}</RefreshNotice>
-      )}
-
-      {ready && scope && !unread && flat.length === 0 && (() => {
+      {ready && scope && flat.length === 0 && (() => {
         const d = describeFilter({ ...filter, query }, scope)
         const none = d.fits.length === 0
         // Mine is what narrows most often, so the way out names it: All shows every open issue the other filters leave.
         const showAll = filter.mine && !query.trim() && !filter.projectId && !filter.cycleId && (lists?.all.length ?? 0) > 0
         return (
           <EmptyList
-            icon="search"
-            title={none ? 'No open issues' : 'No issues match'}
-            action={showAll ? <Button size="lg" onClick={() => set({ mine: false })}>Show all issues</Button> : !none ? <Button size="lg" onClick={() => { setQuery(''); setFilter(clearedFilter(scope)) }}>Clear filters</Button> : undefined}
+            icon={showAll ? 'checkCircle' : none ? 'checkCircle' : 'question'}
+            title={showAll ? 'Nothing assigned to you' : none ? 'No open issues' : 'No issues match these filters'}
+            action={showAll ? <Button onClick={() => set({ mine: false })}>Show all issues</Button> : !none ? <><Button onClick={clear}>Clear filters</Button><Button variant="ghost" onClick={() => { setQuery(''); setFilter(fitFilter({ mine: false }, scope)) }}>Show all issues</Button></> : undefined}
           >
-            {none ? `Nothing is open in ${d.where}.` : `Nothing in ${d.where} fits ${joinFits(d.fits)}. ${filter.mine ? 'Try All instead of Mine, or clear the filters.' : 'Try clearing the filters.'}`}
+            {showAll ? `Issues assigned to you in Linear show up here, with the agents working on them.` : none ? `Nothing is open in ${d.where}.` : null}
           </EmptyList>
         )
       })()}
@@ -288,7 +277,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
                 <h3 className="is-group">
                   <button type="button" className="is-fold" aria-expanded={open} aria-label={`${g.name}, ${g.issues.length}`} onClick={() => fold(key)}>
                     <span className="is-chev" data-open={open}><Icon name="chevron" size={12} /></span>
-                    <span className="is-slot"><IssueState shape={stateShape(g.type)} /></span><span>{g.name}</span><span className="muted">{g.issues.length}</span>
+                    <IssueState shape={stateShape(g.type)} size={13} /><span className="is-gname">{g.name}</span><span className="is-gn">{g.issues.length}</span>
                   </button>
                 </h3>
                 {open && <ul>
@@ -297,13 +286,12 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
                     return (
                       <li key={i.id} data-keep-id={i.id}>
                         <button type="button" {...keys.rowProps(i.id)} className="is-row" aria-current={i.id === selId ? 'true' : undefined} aria-selected={i.id === selId} onClick={() => setSel(i.id)}>
-                          <span className="is-slot"><IssueState shape={stateShape(i.state.type)} /></span>
+                          <IssueState shape={stateShape(i.state.type)} size={13} />
                           <span className="col grow">
                             <span className="is-title ellipsis">{i.title}</span>
                             <span className="is-sub">
-                              {i.priority > 0 && <IssuePriority priority={i.priority} size={14} />}
                               <span className="mono">{i.id}</span>
-                              {i.project && !oneProject && i.project.id !== filter.projectId && <span className="ellipsis" title={`Linear project: ${i.project.name}`}>{i.project.name}</span>}
+                              {i.project && !oneProject && i.project.id !== filter.projectId && <><span aria-hidden="true" className="is-dot">·</span><span className="ellipsis" title={`Linear project: ${i.project.name}`}>{i.project.name}</span></>}
                             </span>
                           </span>
                           <span className="is-right">
@@ -318,6 +306,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: Projec
               </section>
               )
             })}
+            {!flat.some((i) => status.get(i.id)) && <p className="is-hint"><Icon name="info" size={12} />No agent works on these yet. Hand one to Kernel to start.</p>}
             {list.length >= 100 && <CapNote>Showing the 100 issues updated most recently. Narrow by Linear project, cycle or search to find the rest.</CapNote>}
           </div>
           <div className="is-pane" ref={detail}>

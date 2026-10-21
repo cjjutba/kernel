@@ -55,20 +55,6 @@ async function hoverPreview(page: Page, target: ReturnType<Page['locator']>) {
   await page.waitForTimeout(300)
 }
 
-// A Read image row clicked: the first one loads and opens its image in a tab, the one for the deleted file opens to its path (KERNEL-671).
-async function clickReadImage(page: Page, name: string) {
-  await page.locator('.trow-btn', { hasText: 'Read image' }).filter({ hasText: name }).first().click()
-  await page.mouse.move(0, 0)
-  await page.waitForTimeout(400)
-}
-
-// KERNEL-1025: the run of grey notes opened from its "and 2 more" button.
-async function openNotes(page: Page) {
-  await page.getByRole('button', { name: /and \d+ more/ }).click()
-  await page.mouse.move(0, 0)
-  await page.waitForTimeout(300)
-}
-
 // WorkspaceScrolledUp is a long chat read from higher up. The scroll position is the transcript's own, so wheel it up like a reader would.
 async function scrollUp(page: Page) {
   await page.locator('.ws-scroll').hover()
@@ -193,25 +179,24 @@ async function openRail(page: Page, row: string) {
   await page.waitForTimeout(300)
 }
 
-// WorkspaceQuestionSteps is drawn on question 2 of 3 with two rows ticked; the step is local to the card.
+// WorkspaceQuestionSteps is drawn on question 1 of 3 with its pick kept: a single-select pick moves on, so the pager goes back to it; the step is local to the card.
 async function stepToSecondQuestion(page: Page) {
-  await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click()
-  await page.getByRole('checkbox', { name: 'Row actions menu' }).click()
-  await page.getByRole('checkbox', { name: 'Invoice detail header' }).click()
+  await page.getByRole('radio', { name: 'File it as its own issue' }).click()
+  await page.getByRole('button', { name: 'Show question 1' }).click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
 
 // WorkspaceKernelNoteOpen is the Kernel note opened to its full text, which is local to the note.
 async function openKernelNote(page: Page) {
-  await page.locator('.knote').click()
+  await page.locator('.knote').first().click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
 
 // WorkspaceQuestion is drawn with option 1 picked, which is local to the card, so Send is ready.
 async function pickFirstOption(page: Page) {
-  await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click()
+  await page.getByRole('radio', { name: 'File it as its own issue' }).click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
@@ -225,19 +210,19 @@ async function askApprove(page: Page) {
 
 // WorkspaceQuestionStates is option 1 picked, option 3 focused from the keyboard and option 2 hovered (KERNEL-676).
 async function questionStates(page: Page) {
-  await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click()
+  await page.getByRole('radio', { name: 'File it as its own issue' }).click()
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
-  await page.getByRole('radio', { name: /Add the client name/ }).hover()
+  await page.getByRole('radio', { name: /Leave it/ }).hover()
   await page.waitForTimeout(300)
 }
 
 // WorkspaceQuestionOther is drawn on question 3 with the first two answered and a Something else answer typed.
 async function typeOtherAnswer(page: Page) {
-  await stepToSecondQuestion(page)
-  await page.getByRole('button', { name: 'Next' }).click()
+  await page.getByRole('radio', { name: 'File it as its own issue' }).click()
+  await page.getByRole('radio', { name: 'The release candidate from Friday' }).click()
   await page.getByRole('radio', { name: 'Something else' }).click()
-  await page.getByRole('textbox', { name: 'Your answer' }).fill('Ask me again after the review')
+  await page.getByRole('textbox', { name: 'Your answer' }).fill('Only moved shots, plus the review screen')
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
@@ -263,6 +248,11 @@ async function openVersions(page: Page) {
   await page.getByRole('button', { name: 'Versions' }).click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
+}
+
+async function blurFocus(page: Page) {
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+  await page.waitForTimeout(200)
 }
 
 // The typing shots draw the composer focused, which takes a real focus. Focus also settles the plan glow at full.
@@ -321,16 +311,9 @@ async function focusListRow(page: Page) {
   await page.waitForTimeout(300)
 }
 
-// LeadChatTabBranch is the open chat tab hovered, long enough for its hover card to open: the title and what the chat follows.
-async function hoverChatTab(page: Page) {
-  await page.getByRole('tab', { name: 'Export invoices as PDF' }).hover()
-  await page.locator('.tooltip').waitFor()
-  await page.waitForTimeout(300)
-}
-
-// HeaderBranchTooltip is the header with the title hovered, long enough for the tooltip to open (KERNEL-413).
+// HeaderBranchTooltip is the header with the open chat tab hovered, long enough for the tooltip to open, which names the branch (KERNEL-413, Redesign 09).
 async function hoverTitle(page: Page) {
-  await page.locator('.ws-title-btn').hover()
+  await page.getByRole('tab', { selected: true }).first().hover()
   await page.locator('.tooltip').waitFor()
   await page.waitForTimeout(300)
 }
@@ -367,21 +350,84 @@ async function panelAtNarrowest(page: Page) {
   await page.waitForTimeout(400)
 }
 
-// PanelFilter is Changes with the filter open and "inbox" typed. Both are local to the tab, so open the field from the search button and type, as a person would (KERNEL-515).
-async function filterChanges(page: Page) {
-  await page.getByRole('button', { name: 'Filter changed files' }).click()
-  await page.getByRole('textbox', { name: 'Filter changed files' }).fill('inbox')
+// PanelFilter is Changes with the filter open and "journey" typed. Both are local to the tab, so open the field from the search button and type, as a person would (KERNEL-515).
+async function filterIn(page: Page, button: string, text: string) {
+  await page.getByRole('button', { name: button }).click()
+  if (text) await page.getByRole('textbox', { name: button }).fill(text)
+  await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
+const filterChanges = (page: Page) => filterIn(page, 'Filter changed files', 'journey')
 
-// PanelCompare is Changes with the ⋯ menu open. Whether it is open is local to the tab, so press the button and wait for the commit rows, which the menu reads when it opens (KERNEL-517).
-async function openCompare(page: Page) {
+// The compare menu (Pen 9.17, 9.21): open from the toolbar's "Against main", then one of its pages or picks. Whether it is open is local to the tab.
+async function openCompare(page: Page, then?: (page: Page) => Promise<void>) {
   await page.getByRole('button', { name: 'Compare changes' }).click()
-  await page.getByRole('menuitemradio', { name: /Drop Inbox rows/ }).waitFor()
+  await page.getByRole('menu', { name: 'Compare changes' }).waitFor()
+  await then?.(page)
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(400)
+}
+const compareBranches = (page: Page) => openCompare(page, async (p) => { await p.getByRole('menuitem', { name: /^Target branch/ }).click(); await p.getByRole('menu', { name: 'Target branch' }).waitFor() })
+const compareCommits = (page: Page) => openCompare(page, async (p) => { await p.getByRole('menuitem', { name: 'Commits' }).click(); await p.getByRole('menuitemradio').first().waitFor() })
+const compareUncommitted = (page: Page) => openCompare(page, (p) => p.getByRole('menuitemradio', { name: /^Uncommitted changes/ }).click())
+const compareOneCommit = (page: Page) => openCompare(page, async (p) => { await p.getByRole('menuitem', { name: 'Commits' }).click(); await p.getByRole('menuitemradio').first().click() })
+
+// The panel's own states that take a click (Pen 9.21): the Files filter with its scope, and what a filter with no match says.
+const filesFilter = (page: Page) => filterIn(page, 'Filter files', '')
+const filesNoMatch = (page: Page) => filterIn(page, 'Filter files', 'zebra')
+const changesNoMatch = (page: Page) => filterIn(page, 'Filter changed files', 'zebra')
+
+// WorkspaceSharedPanel is the Session rail with its Shared files row opened, which lists every file Teng shared. The row is local to the rail.
+async function openSharedList(page: Page) {
+  await page.getByRole('button', { name: /^Shared files/ }).click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
 
+// BottomPanelRunMenu is the Run split's menu, below its chevron.
+async function openRunMenu(page: Page) {
+  await page.getByRole('button', { name: 'Run scripts', exact: true }).click()
+  await page.getByRole('menu', { name: 'Run scripts' }).waitFor()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
+// TabRename is the open chat tab turned into its field by a double click.
+async function renameTab(page: Page) {
+  await page.getByRole('tab', { selected: true }).first().dblclick()
+  const field = page.getByRole('textbox', { name: 'Tab name' })
+  await field.fill('Review fixes')
+  await page.waitForTimeout(300)
+}
+
+// FileViewSendToAgent is a file with its last lines selected, which brings up Send to agent. The selection is the page's own, so make it as a drag would.
+async function selectLines(page: Page) {
+  const view = page.getByRole('region', { name: /^Contents of / })
+  await view.evaluate((el) => { el.scrollTop = el.scrollHeight })
+  await page.waitForTimeout(200)
+  await page.evaluate(() => {
+    const rows = [...document.querySelectorAll('.code-line .src')]
+    const from = rows[rows.length - 4]
+    const to = rows[rows.length - 2]
+    const range = document.createRange()
+    range.setStart(from.firstChild ?? from, 0)
+    range.setEnd(to.firstChild ?? to, (to.textContent ?? '').length)
+    const sel = document.getSelection()!
+    sel.removeAllRanges()
+    sel.addRange(range)
+  })
+  await page.getByRole('button', { name: 'Send to agent' }).waitFor()
+  await page.waitForTimeout(300)
+}
+
+// FileLinkSecret and FileLinkMissing are a link in the reply pressed: a file that may hold secrets asks first, and one that is gone says so in a toast.
+const pressLink = (name: string, wait: 'dialog' | 'toast') => async (page: Page) => {
+  await page.getByRole('button', { name }).click()
+  if (wait === 'dialog') await page.getByRole('alertdialog').or(page.getByRole('dialog')).first().waitFor()
+  else await page.waitForTimeout(600)
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
 
 // NewChatProjectPicker, NewChatMode, NewChatBranch and NewChatPlus are New chat with the project menu, the + menu or one of its Run in and Branch pickers open (KERNEL-786).
 // NewChatLocal has Local picked, which shows the chip beside +. NewChatBranchChip picks a branch from the + menu and shows its chip.
@@ -458,12 +504,14 @@ async function pickBuildHere(page: Page) {
   await page.waitForTimeout(300)
 }
 async function openBranchMenu(page: Page) {
+  await page.getByRole('button', { name: 'Build here' }).click()
   await openPlusPicker(page, /^Branch/, /invoice-table/)
   // The row with a workspace shows Open workspace while it is the active one, as on hover or focus.
   await page.getByRole('menuitemradio', { name: /t-12-invoice-schema/ }).focus()
   await page.waitForTimeout(300)
 }
 async function pickBranchChip(page: Page) {
+  await page.getByRole('button', { name: 'Build here' }).click()
   await openPlusPicker(page, /^Branch/, /invoice-table/)
   await page.getByRole('menuitemradio', { name: /t-14-invoice-table/ }).click()
   await page.mouse.move(0, 0)
@@ -473,72 +521,76 @@ async function pickBranchChip(page: Page) {
 // LeadNoChatsBranch is New chat with Kernel with the + menu's Branch picker open, main checked. The menu is the composer's own, so open it and wait for the
 // remote's branches, which the menu reads when it opens.
 async function openBaseBranch(page: Page) {
+  await page.getByRole('button', { name: 'Build here' }).click()
   await openPlusPicker(page, /^Branch/, /invoice-table/)
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
 
-// SettingsAddAccountApiKey is the Add account sheet on its API key step with a name and a key typed. The sheet and what is typed in it are local to the page (KERNEL-524).
-async function typeApiKey(page: Page) {
-  await pickAddAccount(page, 'API key', 0)
-  await page.locator('#acct-label').fill('Work key')
-  await page.locator('#acct-key').fill('sk-ant-api03-5f1c9d27a0b84e63')
-  await page.mouse.move(0, 0)
-  await page.waitForTimeout(300)
-}
-
-// Add account's menu lists Subscription and API key under Claude Code, then under Codex (KERNEL-680). `nth` 0 is Claude Code's, 1 Codex's.
-async function pickAddAccount(page: Page, kind: 'Subscription' | 'API key', nth: 0 | 1) {
+// The Add an account dialog (Redesign 15, Pen 15.5): the page's Add account row opens three cards, and Continue opens the step the pick needs. The dialog and the pick are local to the page.
+async function openAddAccount(page: Page, opts: { pick?: string; next?: string | true } = {}) {
   await page.getByRole('button', { name: 'Add account' }).click()
-  await page.getByRole('menuitem', { name: new RegExp(`^${kind}`) }).nth(nth).click()
-}
-
-// The Add account sheets (KERNEL-561): the sheet is opened from the page's menu, and Browser is the sheet after Sign in. Both are local to the page.
-async function openAddAccount(page: Page, nth: 0 | 1, signIn?: string) {
-  await pickAddAccount(page, 'Subscription', nth)
-  if (signIn) {
-    await page.getByRole('button', { name: signIn }).click()
-    await page.getByText('Finish signing in in your browser.').waitFor()
+  await page.getByRole('dialog', { name: 'Add an account' }).waitFor()
+  if (opts.pick) await page.getByRole('radio', { name: new RegExp(opts.pick) }).click()
+  if (opts.next) {
+    await page.getByRole('button', { name: 'Continue' }).click()
+    if (typeof opts.next === 'string') await page.getByText(opts.next).waitFor()
   }
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
-
-// SettingsAddAccountDuplicate is the sheet after Sign in with Claude, once the engine has refused an account Kernel already has (KERNEL-619).
-async function addDuplicate(page: Page) {
-  await pickAddAccount(page, 'Subscription', 0)
-  await page.getByRole('button', { name: 'Sign in with Claude' }).click()
-  await page.getByText('That account is already in Kernel').waitFor()
+// SettingsAddAccountApiKey is the dialog on its API key step with a key typed.
+async function typeApiKey(page: Page) {
+  await openAddAccount(page, { pick: 'API key', next: true })
+  await page.locator('#acct-key').fill('sk-ant-api03-5f1c9d27a0b84e634f2a')
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
 
-// SettingsAccountsMenu is Personal's menu open, SettingsAccountsRename its name turned into a field and SettingsAccountsRemove its Remove
+// SettingsAccountsMenu is 2nd account's menu open, SettingsAccountsRename its name turned into a field and SettingsAccountsRemove its Remove
 // asking first. The menu, the field and the dialog are local to the page, so click them open.
-async function personalMenu(page: Page, item?: string) {
-  await page.getByRole('button', { name: 'More for Personal' }).first().click()
+async function secondMenu(page: Page, item?: string) {
+  await page.getByRole('button', { name: 'More for 2nd account' }).first().click()
   if (item) await page.getByRole('menuitem', { name: item }).click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
 
-// SettingsAccountsAlsoCli is Work's details open, where the Sign-in source line is. The open state is local to the page.
-async function openDetails(page: Page, account: string) {
-  await page.getByRole('button', { name: new RegExp(account) }).and(page.locator('.ac-disc')).first().click()
+// SettingsAccountsAdvanced is the folded Advanced section opened. The fold is local to the page.
+async function openAdvanced(page: Page) {
+  await page.getByRole('button', { name: 'Advanced' }).click()
+  await page.waitForTimeout(300)
+}
+
+// The palette with a scope tab pressed, or words typed. Both are local to the palette (KERNEL-1098).
+async function pickScope(page: Page, name: string) {
+  await page.getByRole('tablist', { name: 'Search in' }).getByRole('tab', { name, exact: true }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+async function typeInPalette(page: Page, text: string) {
+  await page.getByRole('combobox', { name: 'Type a command or search' }).fill(text)
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
 
-// SearchSwitchAccount is the palette with "switch" typed. The query is local to the palette.
+// IssuesTrackerNoRemote and IssuesTrackerSignedOut are the Work header with the pointer on the dimmed GitHub side, long enough for its tooltip, which says why it is off (KERNEL-1098).
+async function hoverTracker(page: Page) {
+  await page.getByRole('radio', { name: /^GitHub, unavailable/ }).hover()
+  await page.locator('.tooltip').waitFor()
+  await page.waitForTimeout(300)
+}
+
+// SearchSwitchAccount is the palette with "account" typed. The query is local to the palette.
 async function typeSwitch(page: Page) {
-  await page.getByRole('combobox', { name: 'Type a command or search' }).fill('switch')
+  await page.getByRole('combobox', { name: 'Type a command or search' }).fill('account')
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
 
-// SearchArchived is the palette with "archived" typed, which lists the archived workspaces.
+// SearchArchived is the palette with "datatable" typed, which finds one archived workspace and nothing else (Pen 12.7).
 async function typeArchived(page: Page) {
-  await page.getByRole('combobox', { name: 'Type a command or search' }).fill('archived')
+  await page.getByRole('combobox', { name: 'Type a command or search' }).fill('datatable')
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
@@ -569,10 +621,10 @@ async function narrowSidebar(page: Page) {
   await page.waitForTimeout(300)
 }
 
-// UsageFooterNarrow is the window at 900px wide, where the footer drops the Fable number (KERNEL-697, KERNEL-949).
-async function narrowWindow(page: Page, app: ElectronApplication) {
-  await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.w, size.h), { w: 900, h: HEIGHT })
-  await page.waitForTimeout(400)
+// UsageFooter is the Usage button with the pointer on it, long enough for the hover card to open (Pen 14.1, KERNEL-1101).
+async function hoverUsage(page: Page) {
+  await page.getByRole('button', { name: /^Usage\./ }).hover()
+  await page.waitForTimeout(900)
 }
 
 // NewChatSwitchNarrow pins the chat column to 460px, which the window's minimum width never reaches on its own, to show the Hand off | Build here switch as two icons.
@@ -580,6 +632,33 @@ async function narrowWindow(page: Page, app: ElectronApplication) {
 const windowAt = (w: number) => async (page: Page, app: ElectronApplication) => {
   await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.w, size.h), { w, h: HEIGHT })
   await page.waitForTimeout(400)
+}
+
+// SettingsPRsInstructions is Create PR's sheet with a space added at the end of its text and left, so the footer says Saved (Redesign 15).
+async function editInstructions(page: Page) {
+  await page.getByRole('button', { name: 'Edit the Create PR instructions' }).click()
+  const field = page.getByRole('textbox', { name: 'Create PR' })
+  await field.press('Control+End')
+  await field.pressSequentially(' ')
+  await field.evaluate((el) => el.blur())
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
+// SettingsBigTerminalPreset is Add command with a name and a command typed (Redesign 15).
+async function addCommand(page: Page) {
+  await page.getByRole('button', { name: 'Add command' }).click()
+  await page.getByRole('textbox', { name: 'Name' }).fill('Dev server logs')
+  await page.getByRole('textbox', { name: 'Command' }).fill('tail -f logs/dev.log')
+  await page.waitForTimeout(300)
+}
+
+// A long Settings page drawn at its full length (Redesign 15): the window grows to the height of the page, so nothing on it is cut and the shot is as long as the page. `then` runs first.
+const fullLength = (then?: (page: Page, app: ElectronApplication) => Promise<void>) => async (page: Page, app: ElectronApplication) => {
+  await then?.(page, app)
+  const h = await page.locator('.set-page').evaluate((el) => (el as HTMLElement).scrollHeight)
+  await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.w, size.h), { w: WIDTH, h: Math.max(HEIGHT, h + 80) })
+  await page.waitForTimeout(500)
 }
 
 // SettingsPRsSaving, Saved and Clamped are Size limit typed and left (KERNEL-721). The note is local to the field. Saving holds main's answer back.
@@ -608,11 +687,11 @@ async function dragOverPane(page: Page) {
   await page.waitForTimeout(300)
 }
 async function dropWhileReading(page: Page) {
-  // An image read that never finishes in time for the shot, so the chips show as they land, before the read fills them in.
+  // An image read that never finishes in time for the shot, so the token shows as it lands with Attaching, before the read fills it in.
   await page.evaluate(() => { FileReader.prototype.readAsDataURL = function () { /* never loads */ } })
   await page.locator('.cmp-input').evaluate((box) => {
     const dt = new DataTransfer()
-    for (const n of ['invoice-table.png', 'staging-log.txt', 'Screenshot 2026-10-14 at 21.21.42.png']) dt.items.add(new File(['x'], n, { type: n.endsWith('.png') ? 'image/png' : 'text/plain' }))
+    for (const n of ['Review.png']) dt.items.add(new File(['x'], n, { type: 'image/png' }))
     box.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }))
   })
   await page.waitForTimeout(300)
@@ -624,25 +703,23 @@ async function openLegacyModels(page: Page) {
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
-// Settings, Models (KERNEL-988): the Kernel row's Model cell opens the picker, which starts on that role's provider.
-async function openRolePicker(page: Page, tab?: string, legacy = false) {
-  await page.getByRole('button', { name: /^Kernel model/ }).click()
-  if (tab) await page.getByRole('tab', { name: tab }).click()
+// Settings, Models (KERNEL-988, KERNEL-1056): the Kernel row's Claude or Codex cell opens a picker for that provider.
+async function openRolePicker(page: Page, provider = 'Claude Code', legacy = false, row = 'Kernel') {
+  await page.getByRole('button', { name: new RegExp(`^${row} ${provider} model`) }).click()
   if (legacy) await page.getByRole('button', { name: /Legacy models/ }).click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
 // KERNEL-995: the Backend row's count opens the agents popover, a row's chip opens its picker, and the Effort and Compact at rows open their flyouts.
 async function openRoleAgents(page: Page, row = 'Backend') {
-  await page.getByRole('row', { name: row }).getByRole('button', { name: /agents?$|No agents/ }).click()
+  await page.getByRole('row', { name: row, exact: true }).getByRole('button', { name: /, on / }).click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
-async function openRoleFlyout(page: Page, row: string, flyout: 'Effort' | 'Compact at') {
-  await page.getByRole('row', { name: row }).getByRole('button', { name: new RegExp(`^${row} model`) }).click()
-  await page.getByRole('button', { name: new RegExp(`^${flyout}`) }).hover()
-  await page.getByRole('menu', { name: flyout }).waitFor()
-  await page.waitForTimeout(300)
+async function openRoleEffort(page: Page, row: string) {
+  await page.getByRole('row', { name: row }).getByRole('button', { name: new RegExp(`^${row} Claude Code model`) }).click()
+  await page.getByRole('radio', { name: 'High', exact: true }).hover()
+  await page.waitForTimeout(500)
 }
 async function starModels(page: Page) {
   for (const name of ['Opus 5.5', 'Haiku 5.5']) {
@@ -655,9 +732,8 @@ async function starModels(page: Page) {
   await page.waitForTimeout(300)
 }
 async function openEffortFlyout(page: Page) {
-  await page.getByRole('button', { name: /^Effort/ }).hover()
-  await page.getByRole('menu', { name: 'Effort' }).waitFor()
-  await page.waitForTimeout(300)
+  await page.getByRole('radio', { name: 'High', exact: true }).hover()
+  await page.waitForTimeout(500)
 }
 async function hoverLockedProvider(page: Page) {
   await page.getByRole('tab', { name: 'Codex' }).hover()
@@ -665,18 +741,60 @@ async function hoverLockedProvider(page: Page) {
 }
 
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
+  ProjectSetupDetails: async (page) => { await page.getByRole('button', { name: 'Details' }).click(); await page.waitForTimeout(300) },
+  ConnectRepoNoMatch: async (page) => { await page.getByPlaceholder('Search').fill('kernel-docs'); await page.waitForTimeout(500) },
+  ConnectRepoCloning: async (page) => { await page.getByRole('radio').first().click(); await page.getByRole('button', { name: /^Clone repo/ }).click(); await page.waitForTimeout(300) },
   ComposerDragOver: dragOverPane,
-  WorkspaceModelPickerCodex: openLegacyModels,
+  // Part 8 (KERNEL-1095): a box with a draft shows the caret, and a menu over the word being typed reads the caret, so the shots focus the box.
+  ChatComposer: focusComposer,
+  // A popover opened without a pointer takes the focus ring on its first control, which a person who clicked doesn't see.
+  WorkspaceContextRingNear: async (page) => { await page.locator('.ctx-ring').hover(); await page.waitForTimeout(900) },
+  WorkspaceContextPopover: blurFocus,
+  WorkspaceContextPopoverFull: blurFocus,
+  ContextPopoverEmpty: blurFocus,
+  // Part 10 (KERNEL-1097): the pull request menus open without a pointer, so the first item doesn't wear a ring, and Continue says what it does on hover.
+  WorkspacePRMenu: blurFocus,
+  CreatePrMenu: blurFocus,
+  ContinueAfterMerge: async (page) => { await page.getByRole('button', { name: 'Continue', exact: true }).hover(); await page.waitForTimeout(900) },
+  WorkspaceReplyMenu: async (page) => { await page.getByRole('menuitem', { name: 'Fork into new tab' }).hover(); await page.waitForTimeout(300) },
+  WorkspaceRevertMenu: async (page) => { await page.getByRole('menuitem', { name: 'Revert files to here' }).hover(); await page.waitForTimeout(300) },
+  ComposerPlusMenu: async (page) => { await page.getByRole('menuitem', { name: /Add attachment/ }).hover(); await page.waitForTimeout(300) },
+  WorkspaceMention: focusComposer,
+  ComposerMentionFolders: focusComposer,
+  ComposerMentionReference: focusComposer,
+  WorkspaceSlash: focusComposer,
+  WorkspaceIssueChip: focusComposer,
+  WorkspacePaste: focusComposer,
+  WorkspacePasteWrap: focusComposer,
+  WorkspacePasteAfter: focusComposer,
+  ComposerChipKinds: focusComposer,
+  ComposerFileMixed: focusComposer,
+  ComposerFilePdf: focusComposer,
+  ComposerFileCap: focusComposer,
+  ComposerFileUnreadable: focusComposer,
   WorkspaceModelPickerLegacy: openLegacyModels,
-  WorkspaceModelPickerLegacyChat: openLegacyModels,
+  SettingsModels: fullLength(),
   SettingsModelsPicker: (page) => openRolePicker(page),
-  SettingsModelsPickerCodex: (page) => openRolePicker(page, 'Codex'),
-  SettingsModelsPickerLegacy: (page) => openRolePicker(page, undefined, true),
+  SettingsModelsPickerCodex: (page) => openRolePicker(page, 'Codex', false, 'Frontend'),
+  // The picker opens on a legacy pick with the Legacy models group already open.
+  SettingsModelsPickerLegacy: (page) => openRolePicker(page, undefined, false, 'Backend'),
   SettingsModelsAgents: (page) => openRoleAgents(page),
   SettingsModelsAgentsNone: (page) => openRoleAgents(page, 'QA'),
-  SettingsModelsPickerEffort: (page) => openRoleFlyout(page, 'Kernel', 'Effort'),
-  SettingsModelsPickerCompact: (page) => openRoleFlyout(page, 'Kernel', 'Compact at'),
-  SettingsModelsPickerCodexRole: async (page) => { await page.getByRole('button', { name: /^Frontend model/ }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
+  SettingsModelsFallback: (page) => scrollToSection(page, 'At a limit'),
+  SettingsModelsAgentTeams: (page) => scrollToSection(page, 'Teamwork'),
+  SettingsAgentSaveScope: async (page) => { await page.getByLabel('Description').fill('Builds UI and checks each screen.'); await page.getByRole('button', { name: /^Save changes/ }).click(); await page.getByRole('dialog', { name: 'Save changes to Christian' }).waitFor(); await page.mouse.move(0, 0); await page.waitForTimeout(400) },
+  SettingsModelsPickerEffort: (page) => openRoleEffort(page, 'Kernel'),
+  SettingsModelsPickerEffortCodex: async (page) => {
+    await page.getByRole('button', { name: /^Frontend Codex model/ }).click()
+    await page.getByRole('radio', { name: 'High', exact: true }).hover()
+    await page.waitForTimeout(500)
+  },
+  SettingsModelsPickerBoth: async (page) => { await openRolePicker(page); await page.getByRole('tab', { name: 'Codex' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
+  SettingsModelsPickerCompact: async (page) => { await openRolePicker(page, undefined, false, 'QA'); await page.getByPlaceholder('Search models').fill('hai'); await page.waitForTimeout(300) },
+  NewAgentDrafting: async (page) => { await page.getByRole('button', { name: 'Draft with Kernel' }).click(); await page.getByRole('button', { name: 'Drafting' }).waitFor() },
+  NewAgentPicker: async (page) => { await page.getByRole('button', { name: /^Model, / }).click(); await page.getByRole('dialog').last().waitFor() },
+  SettingsAgentEditPicker: async (page) => { await page.getByRole('button', { name: /^Model and effort, / }).click() },
+  SettingsModelsPickerCodexRole: async (page) => { await openRolePicker(page, undefined, false, 'Frontend'); await page.getByRole('tab', { name: 'Codex' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
   SettingsModelsNarrow: windowAt(720),
   WorkspaceModelPickerKeys: async (page) => { await page.keyboard.press('ArrowUp'); await page.waitForTimeout(300) },
   WorkspaceModelPickerFavorites: starModels,
@@ -686,10 +804,24 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   ComposerFileTip: hoverFileChip,
   NewChatSwitchTip: hoverLeadSwitch,
   ConfirmOverrule: openOverrule,
-  UsageFooterNarrow: narrowWindow,
+  UsageFooter: hoverUsage,
   AuditSidebarWide: async (page) => { const h = page.getByRole('separator', { name: 'Resize sidebar' }); await h.focus(); await page.keyboard.press('End'); await h.blur(); await page.waitForTimeout(300) },
   GroupedRowStatus: (page) => hoverRow(page, 'Client portal login'),
-  PanelCompare: openCompare,
+  PanelCompare: (page) => openCompare(page),
+  CompareMenu: (page) => openCompare(page),
+  CompareBranches: compareBranches,
+  CompareCommits: compareCommits,
+  CompareNothingUncommitted: compareUncommitted,
+  CompareCommitNoFiles: compareOneCommit,
+  FilesToolbar: filesFilter,
+  FilesFilterNoMatch: filesNoMatch,
+  ChangesFilterNoMatch: changesNoMatch,
+  WorkspaceSharedPanel: openSharedList,
+  BottomPanelRunMenu: openRunMenu,
+  TabRename: renameTab,
+  FileViewSendToAgent: selectLines,
+  FileLinkSecret: pressLink('Open .env.local', 'dialog'),
+  FileLinkMissing: pressLink('Open src/fixtures.ts', 'toast'),
   LeadNoChatsBranch: openBaseBranch,
   NewChatProjectPicker: (page) => openWhere(page, /^Project:/, /Client B/),
   NewChatMode: (page) => openPlusPicker(page, /^Run in/, /Local/).then(() => page.mouse.move(0, 0)).then(() => page.waitForTimeout(300)),
@@ -704,24 +836,37 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   NewChatPermissionMenu: openPermissionMenu,
   NewChatBuildHere: pickBuildHere,
   PanelFilter: filterChanges,
+  SettingsAccounts: fullLength(),
   SettingsAddAccountApiKey: typeApiKey,
-  SettingsAddAccount: (page) => openAddAccount(page, 0),
-  SettingsAddAccountBrowser: (page) => openAddAccount(page, 0, 'Sign in with Claude'),
-  SettingsAddAccountCodex: (page) => openAddAccount(page, 1),
-  SettingsAddAccountCodexBrowser: (page) => openAddAccount(page, 1, 'Sign in with ChatGPT'),
-  SettingsAddAccountDuplicate: addDuplicate,
-  SettingsAccountsAlsoCli: (page) => openDetails(page, 'Work'),
-  SettingsAccountsRename: (page) => personalMenu(page, 'Rename'),
-  SettingsAccountsMenu: (page) => personalMenu(page),
-  SettingsAccountsRemove: (page) => personalMenu(page, 'Remove'),
+  SettingsAddAccount: (page) => openAddAccount(page),
+  SettingsAddAccountBrowser: (page) => openAddAccount(page, { next: 'Finish signing in to Claude in your browser' }),
+  SettingsAddAccountCodex: (page) => openAddAccount(page),
+  SettingsAddAccountCodexBrowser: (page) => openAddAccount(page, { next: 'Finish signing in to ChatGPT in your browser' }),
+  SettingsAddAccountDuplicate: (page) => openAddAccount(page, { next: 'That account is already in Kernel.' }),
+  SettingsAccountsRename: (page) => secondMenu(page, 'Rename'),
+  SettingsAccountsMenu: (page) => secondMenu(page),
+  SettingsAccountsRemove: (page) => secondMenu(page, 'Remove'),
+  SettingsAccountsAdvanced: fullLength(openAdvanced),
+  SettingsAccountsFallback: (page) => scrollToSection(page, 'Limits'),
+  SettingsAccountsFallbackDisabled: (page) => scrollToSection(page, 'Limits'),
   SearchSwitchAccount: typeSwitch,
+  SearchQuery: (page) => typeInPalette(page, 'invoice'),
+  SearchNoMatches: (page) => typeInPalette(page, 'flux capacitor'),
+  SearchScope: async (page) => { await pickScope(page, 'Shared'); await typeInPalette(page, 'invoice') },
+  SearchShared: (page) => pickScope(page, 'Shared'),
   SearchArchived: typeArchived,
   GroupedChatArchive: hoverChatRow,
   HeaderBranchTooltip: hoverTitle,
-  LeadChatTabBranch: hoverChatTab,
   TurnFilesHover: hoverAndFocusRows,
   InboxRowFocused: focusListRow,
+  InboxPlanDoc: async (page) => { await page.getByText('Plan ready: Export invoices as PDF').click(); await page.waitForTimeout(300) },
   IssuesRowFocused: focusListRow,
+  InboxFilter: async (page) => { await page.keyboard.press('/'); await page.getByRole('searchbox', { name: 'Filter the inbox' }).fill('wants'); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
+  IssuesFilters: async (page) => { await page.getByRole('searchbox', { name: 'Search issues' }).fill('invoice'); await page.mouse.move(0, 0); await page.waitForTimeout(600) },
+  IssuesFilteredEmpty: async (page) => { await page.getByRole('searchbox', { name: 'Search issues' }).fill('flux capacitor'); await page.mouse.move(0, 0); await page.waitForTimeout(600) },
+  IssuesTrackerNoRemote: hoverTracker,
+  IssuesTrackerSignedOut: hoverTracker,
+  PullRequestsFilters: async (page) => { await page.getByRole('searchbox', { name: 'Filter pull requests' }).fill('invoice'); await page.mouse.move(0, 0); await page.waitForTimeout(400) },
   IssuesNoWork1280: windowAt(1280),
   ProjectsRowFocused: focusListRow,
   PullRequestsRowFocused: focusListRow,
@@ -745,25 +890,27 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceQuestionStates: questionStates,
   // UX audit motion runs: scroll up first so the button shows, and pick the first answer so Send is enabled.
   AuditScrollToBottomMotion: scrollUp,
-  AuditQuestionPicked: async (page) => { await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click(); await page.mouse.move(0, 0) },
-  AuditQuestionAnswerMotion: async (page) => { await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click({ force: true }); await page.locator('.tcard').getByRole('button', { name: 'Send', exact: true }).focus() },
+  AuditQuestionPicked: async (page) => { await page.getByRole('radio', { name: 'File it as its own issue' }).click(); await page.mouse.move(0, 0) },
+  AuditQuestionAnswerMotion: async (page) => { await page.getByRole('radio', { name: 'File it as its own issue' }).click({ force: true }); await page.locator('.tcard').getByRole('button', { name: 'Send', exact: true }).focus() },
   AuditRailJumpMotion: async (page) => { await page.getByRole('button', { name: 'Jump to message' }).focus() },
   AuditRailJumpSendMotion: async (page) => { await page.getByRole('button', { name: 'Jump to message' }).focus() },
-  AuditGroupCollapseMotion: async (page) => { await page.locator('.group-btn').first().focus() },
-  AuditGroupOpenMotion: async (page) => { await page.waitForTimeout(800); await page.locator('.group-btn').first().focus() },
+  AuditGroupCollapseMotion: async (page) => { await page.locator('.fold-head').first().focus() },
+  AuditGroupOpenMotion: async (page) => { await page.waitForTimeout(800); await page.locator('.fold-head').first().focus() },
   WorkspacePlanApproveDraft: askApprove,
+  WorkspaceLeadStepOpen: async (page) => { await page.locator('.fold-head').first().click(); await page.locator('.step .trow-btn:not(:disabled)').first().click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
+  WorkspaceLeadStepsOpen: async (page) => { for (const g of await page.locator('.fold-head').all()) await g.click(); await openEveryRow(page) },
   WorkspaceQuestionSteps: stepToSecondQuestion,
   WorkspaceQuestionOther: typeOtherAnswer,
   LeadOpenItemsOpen: async (page) => { await page.getByRole('button', { name: /3 open/ }).click(); await page.waitForTimeout(200) },
-  WorkspaceRowsOpen: (page) => openRows(page, ['Thought', 'Run unit tests', 'Edited']),
-  WorkspaceRowsFolded: (page) => openRows(page, ['Thought', 'Edited']),
+  SettingsProjectPrsDefault: (page) => scrollToSection(page, 'Rules'),
+  SettingsProjectPrsShared: (page) => scrollToSection(page, 'Rules'),
+  SettingsProjectPrsDetails: async (page) => { await page.getByRole('button', { name: 'Show details of the code review' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(200) },
+  WorkspaceRowsOpen: (page) => openRows(page, ['Ran step 6', 'Checked types']),
   WorkspaceTurnFoldedOpen: openEveryRow,
-  WorkspaceTurnFoldedCopy: async (page) => {
-    await page.locator('.trow-btn', { hasText: 'I will build the table first' }).focus()
-    await page.keyboard.press('Enter')
-    await page.keyboard.press('Tab')
-    await page.waitForTimeout(300)
-  },
+  WorkspaceTurnRunning: (page) => openRows(page, ['Ran steps 1 to 5']),
+  WorkspaceToolCalls: (page) => openRows(page, ['test/journey.test.ts', 'Checked types']),
+  WorkspaceHunks: (page) => openRows(page, ['test/journey.test.ts']),
+  AuditLongOutput: openEveryRow,
   WorkspaceStepCardBash: openEveryRow,
   WorkspaceStepCardMcp: openEveryRow,
   WorkspaceStepCardCodexDiff: openEveryRow,
@@ -774,19 +921,20 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
     await page.waitForTimeout(400)
   },
   TeamUpdateNotReviewedTip: async (page) => { await page.locator('.tucard-ev', { hasText: 'Not reviewed' }).first().hover(); await page.waitForTimeout(900) },
-  WorkspaceReadImagePreview: (page) => hoverPreview(page, page.locator('.trow-btn', { hasText: 'Read image' })),
-  WorkspacePasteImagePreview: (page) => hoverPreview(page, page.getByRole('button', { name: 'Open image.png' })),
+  // KERNEL-1068: the breakdown opened from the keyboard, over the rows after the plan card.
+  WorkspacePlanFinishedFollowed: async (page) => { await page.locator('.plan-attn-n').focus(); await page.waitForTimeout(300) },
+  WorkspacePlanFinishedLong: async (page) => { await page.locator('.plan-attn-n').focus(); await page.waitForTimeout(300) },
+  WorkspaceReadImagePreview: (page) => openRows(page, ['ReviewRc.png']),
+  WorkspacePasteImagePreview: (page) => hoverPreview(page, page.getByRole('button', { name: 'Open ReviewRc.png' })),
   WorkspacePasteTextPreview: (page) => hoverPreview(page, page.getByRole('button', { name: 'Open pasted_text_1.txt' })),
-  WorkspaceIssuePreview: (page) => hoverPreview(page, page.getByRole('button', { name: /^Open issue T-17/ })),
-  WorkspaceReadImageTab: (page) => clickReadImage(page, 'image.png'),
-  WorkspaceReadImageMissing: (page) => clickReadImage(page, 'image-2.png'),
-  WorkspaceJustSent: sendMessage,
+  WorkspaceIssuePreview: (page) => hoverPreview(page, page.getByRole('button', { name: /^Open issue KERNEL-1084/ })),
+  WorkspaceReadImageTab: async (page) => { await openRows(page, ['ReviewRc.png']); await page.getByRole('button', { name: 'Open in a tab' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(400) },
+  WorkspaceReadImageMissing: (page) => openRows(page, ['ReviewRc.png']),
   WorkspaceJustSentLong: sendMessage,
   WorkspaceJustSentDone: sendAndFinish,
   WorkspaceNewChatJustSent: sendFromNewChat,
   WorkspaceLeaveAndReturn: leaveAndReturn,
   WorkspaceScrolledUp: scrollUp,
-  WorkspaceQuietTranscriptNotes: openNotes,
   WorkspaceChatSwitchWorkingMotion: async (page) => { await page.getByRole('tab', { name: 'Snapshot tests' }).click(); await page.waitForTimeout(500); await page.getByRole('tab', { name: 'Empty state copy' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(500) },
   WorkspaceChatSwitchSavedSpotMotion: async (page) => { await scrollUp(page); await page.getByRole('tab', { name: 'Empty state copy' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(500) },
   ChatRestoredSpot: scrollUp,
@@ -800,19 +948,36 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceScrollComposerQueueMotion: (page) => focusComposer(page),
   WorkspaceScrollTurnFoldMotion: scrollUp,
   WorkspaceScrollPlanRoundTripReducedMotion: async (page) => { await reducedMotion(page); await toEnd(page) },
+  SettingsGit: fullLength(),
+  SettingsPRs: fullLength(),
+  SettingsPRsInstructions: editInstructions,
+  SettingsBigTerminalPreset: addCommand,
   SettingsPRsSaving: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsSaved: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsSavedLight: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsClamped: (page) => leaveSizeLimit(page, '999999'),
-  SettingsProjectScriptsRuns: (page) => scrollToSection(page, 'Archive script'),
-  SettingsProjectAgents: (page) => scrollToSection(page, 'Permissions'),
-  SettingsRunScriptAdd: async (page) => { await page.getByRole('button', { name: 'Add', exact: true }).click(); await page.getByRole('dialog', { name: 'Add run script' }).waitFor(); await page.getByRole('textbox', { name: 'Name' }).fill('run'); await page.waitForTimeout(300) },
+  SettingsIntegrationsLinearToken: async (page) => { await page.getByRole('button', { name: 'Connect', exact: true }).click(); await page.getByLabel('Linear API token').fill('lin_api_abcdefghijkl'); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
+  SettingsMcpSetUp: async (page) => { await page.getByRole('button', { name: /^Sign in to Linear/ }).click(); await page.getByRole('dialog', { name: 'Set up Linear' }).waitFor(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
+  SettingsProjectScripts: fullLength(),
+  SettingsProjectScriptsRuns: (page) => scrollToSection(page, 'Run scripts'),
+  SettingsPreviewUrlForm: async (page) => { await page.getByRole('button', { name: 'Add preview URL', exact: true }).click(); await page.getByRole('dialog', { name: 'Add preview URL' }).waitFor(); await page.getByRole('textbox', { name: 'Name' }).fill('Storybook'); await page.getByRole('textbox', { name: 'Address' }).fill('http://localhost:$((KERNEL_PORT + 1))'); await page.waitForTimeout(300) },
+  SettingsProjectEnvironment: fullLength(),
+  SettingsProjectSetupFiles: (page) => scrollToSection(page, 'Files to copy'),
+  SettingsProjectSetupProduction: (page) => scrollToSection(page, 'Files to copy'),
+  SettingsEnvironmentAdd: async (page) => { await page.getByRole('button', { name: 'Add env file', exact: true }).click(); await page.getByRole('textbox', { name: 'File' }).fill('.env.local'); await page.waitForTimeout(300) },
+  SettingsProjectAgents: fullLength(),
+  SettingsProjectAgentsRetired: fullLength(async (page) => { await page.getByRole('button', { name: /^Retired/ }).click() }),
+  SettingsSkillsFailed: (page) => scrollToSection(page, 'Skills'),
+  SettingsSkillsLoading: (page) => scrollToSection(page, 'Skills'),
+  SettingsProjectPermissionsMode: async (page) => { await scrollToSection(page, 'Permissions'); await page.keyboard.press('Escape'); await page.getByRole('button', { name: /Use app default/ }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
+  SettingsRunScriptAdd: async (page) => { await page.getByRole('button', { name: 'Add run script', exact: true }).click(); await page.getByRole('dialog', { name: 'Add a run script' }).waitFor(); await page.getByRole('textbox', { name: 'Name' }).fill('storybook'); await page.getByRole('textbox', { name: 'Command' }).fill('pnpm storybook dev --port $KERNEL_PORT'); await page.waitForTimeout(300) },
   SettingsProjectPrsSaved: async (page) => { await page.getByRole('switch', { name: 'UX review' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
   SettingsAccountsMoves: (page) => scrollToSection(page, 'Chats and accounts'),
   SettingsTeamOrigins: (page) => scrollToSection(page, 'In this repo'),
   SettingsTeamOwnAgents: (page) => scrollToSection(page, 'In this repo'),
-  ChatRail: async (page) => { await readFromMessage(page, 'Change of method for the conflict'); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
-  ChatRailOpen: async (page) => { await readFromMessage(page, 'Change of method for the conflict'); await openRail(page, 'Reword that in plain words') },
+  // 8.6 and 8.13 (KERNEL-1095): the pointer on a mark shows its message beside the rail, and the list opens from the keyboard with the pointer on one of its rows.
+  ChatRail: async (page) => { await readFromMessage(page, 'Post both shots on KERNEL-232'); await page.locator('.rail-m').nth(8).hover(); await page.waitForTimeout(300) },
+  ChatRailOpen: async (page) => { await readFromMessage(page, 'Post both shots on KERNEL-232'); await page.locator('.rail-btn').focus(); await page.getByRole('option', { name: 'Post both shots on KERNEL-232 as well, so the Lead sees it.', exact: true }).hover(); await page.waitForTimeout(300) },
   ChatRailLead: (page) => openRail(page, 'Christian, opened PR #162')
 }
 

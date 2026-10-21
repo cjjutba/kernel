@@ -1,13 +1,11 @@
 import { useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
 import type { PrInfo, Workspace } from '@shared/types'
 import { mergeBlock, mergeNeedsPr, mergeableState } from '@shared/merge'
 import { call, cleanError } from '../../../api'
 import { actions, useStore } from '../../../store'
 import { Button, Icon, Spinner, useBusy } from '../../../ui'
-import { ConfirmMergeAnyway } from '../ConfirmMergeAnyway'
 import { NO_RULES, PR_STATUS, blockersHold, busyLabel, failTitle, prStatus, type PrAction, type PrStatus, type Rules } from './model'
-import { request } from './PrHeader'
+import { request } from './usePr'
 import './pr.css'
 
 /**
@@ -50,7 +48,6 @@ export function MergeButton({ ws, short, icon }: { ws: Workspace; short?: boolea
   const reviewer = useStore((s) => s.agents[ws.projectId])
   const pending = useStore((s) => s.prPending[ws.id])
   const [busy, run] = useBusy()
-  const [confirm, setConfirm] = useState<{ reviewer: string; count: number } | null>(null)
   // The rule reads the PR's checks or head commit from GitHub. Until they arrive there is nothing true to say.
   const mergeable = mergeableState(ws.prState)
   const needsPr = mergeable && !pr && mergeNeedsPr(ws, rules)
@@ -64,12 +61,9 @@ export function MergeButton({ ws, short, icon }: { ws: Workspace; short?: boolea
   if (needsPr && !read) return null
 
   const view = mergeView(ws, pr, rules, (id) => reviewer?.find((a) => a.id === id)?.name ?? id, pending)
-  const merge = () => (view.kind === 'override' ? setConfirm({ reviewer: view.reviewer, count: view.count }) : void run(busyLabel.merge, () => mergeAndToast(ws.id)))
+  const merge = () => (view.kind === 'override' ? actions.ui.openModal({ name: 'confirm', kind: 'mergeAnyway', workspaceId: ws.id }) : void run(busyLabel.merge, () => mergeAndToast(ws.id)))
   return (
-    <>
-      <MergeSlot ws={ws} view={view} busy={busy} short={short} icon={icon} onMerge={merge} />
-      {confirm && createPortal(<ConfirmMergeAnyway ws={ws} {...confirm} onClose={() => setConfirm(null)} />, document.body)}
-    </>
+    <MergeSlot ws={ws} view={view} busy={busy} short={short} icon={icon} onMerge={merge} />
   )
 }
 
@@ -89,17 +83,13 @@ export function MergeSlot({ ws, view, busy, short, icon = true, onMerge }: { ws:
     case 'merged': return <span className="tucard-merged">{icon && <Icon name="merged" size={14} />}Merged</span>
     case 'blocked': return <span className="tucard-why" data-tip={view.reason}>{firstSentence(view.reason)}</span>
     case 'state': return <PrStatusTag status={view} icon={icon} />
-    case 'merging': return <PrStatusTag status={PR_STATUS.merging} icon={icon} />
+    // A merge that runs keeps the green Merge, spinning in its word, whoever started it: the row never offers Merge twice (KERNEL-520).
+    case 'merging': return <Button variant="merge" size="sm" busy busyLabel="Merging" aria-label={ws.prNumber ? `Merging PR #${ws.prNumber}` : 'Merging'}>Merge</Button>
     case 'ready': return (
-      <span className="pr-tone" data-tone="ready">
-        <Button className="pr-soft tucard-merge" busy={!!busy} busyPattern="ripple-in" busyLabel={busy ?? undefined} aria-label={ws.prNumber ? `Merge PR #${ws.prNumber}` : 'Merge PR'} onClick={onMerge}>{ws.prNumber && !short ? `Merge #${ws.prNumber}` : 'Merge'}</Button>
-      </span>
+      <Button variant="merge" size="sm" busy={!!busy} busyLabel={busy ?? undefined} aria-label={ws.prNumber ? `Merge PR #${ws.prNumber}` : 'Merge PR'} onClick={onMerge}>{ws.prNumber && !short ? `Merge #${ws.prNumber}` : 'Merge'}</Button>
     )
-    case 'override': return (
-      <span className="pr-tone" data-tone="idle">
-        <Button className="pr-outline tucard-merge" aria-label={ws.prNumber ? `Merge anyway, PR #${ws.prNumber}` : 'Merge anyway'} onClick={onMerge}>Merge anyway</Button>
-      </span>
-    )
+    // Merge anyway is an outline: the row's own state already says what is in the way (KERNEL-757).
+    case 'override': return <Button size="sm" aria-label={ws.prNumber ? `Merge anyway, PR #${ws.prNumber}` : 'Merge anyway'} onClick={onMerge}>Merge anyway</Button>
   }
 }
 

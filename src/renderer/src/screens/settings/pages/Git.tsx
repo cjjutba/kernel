@@ -34,20 +34,17 @@ export function Git({ s }: { s: AppSettings }) {
     try { await call('system.openInEditor', { path: s.worktreeRoot }) } catch (e) { actions.ui.toast({ title: 'Could not open the folder', sub: cleanError(e) }) }
   })
   return (
-    <Page title="Git and worktrees">
+    <Page title="Git and worktrees" desc="Where workspaces live, what their branches are called, and how they're cleaned up.">
       <Section title="New workspaces">
         <Row id="workspace-type" setting="workspace.mode" label="Workspace type" desc="A worktree is an isolated copy on its own branch.">
-          <SegmentedControl label="Workspace type" value={w.mode} onChange={(v) => set({ mode: v as Workspace['mode'] })} options={[{ value: 'worktree', label: 'New worktree' }, { value: 'current', label: 'Current branch' }]} />
+          <SegmentedControl label="Workspace type" value={w.mode} onChange={(v) => set({ mode: v as Workspace['mode'] })} options={[{ value: 'worktree', label: 'Worktree' }, { value: 'current', label: 'Current branch' }]} />
         </Row>
         <Row id="branch-from" setting="workspace.baseRef" label="Branch from"><Select label="Branch from" align="right" value={w.baseRef} options={withCurrent(branches, w.baseRef)} onChange={(v) => set({ baseRef: v })} /></Row>
         <Row id="remote" label="Remote" desc="Where agents push and open pull requests.">
           <Select label="Remote" align="right" value={w.remote} options={withCurrent(remotes.length ? remotes : ['origin'], w.remote)} onChange={(v) => set({ remote: v })} />
         </Row>
         <Row id="worktree-location" setting="worktreeRoot" label="Worktree location">
-          <span className="set-actions">
-            <span className="set-value">{home(s.worktreeRoot)}</span>
-            <Button busy={busy === 'reveal'} busyLabel="Opening" disabled={busy !== null} onClick={() => void reveal()}>Reveal</Button>
-          </span>
+          <Button className="sys-path" aria-label={`Reveal ${home(s.worktreeRoot)}`} busy={busy === 'reveal'} busyLabel="Opening" disabled={busy !== null} onClick={() => void reveal()}>{home(s.worktreeRoot)}</Button>
         </Row>
       </Section>
       <Section title="Branch names">
@@ -60,7 +57,6 @@ export function Git({ s }: { s: AppSettings }) {
       </Section>
       <Section title="Setup and archive" note="The scripts live on each project’s Scripts page.">
         <Row id="run-setup" setting="scripts.setupOnCreate" label="Run setup when a workspace is created"><Toggle label="Run setup when a workspace is created" checked={a.setupOnCreate} onChange={(v) => setScripts({ setupOnCreate: v })} /></Row>
-        <Row id="wait-for-setup" setting="workspace.leadWaitForSetup" child label="Wait for setup before agents start" desc="Briefs and first messages hold until setup passes."><Toggle label="Wait for setup before agents start" checked={w.leadWaitForSetup} onChange={(v) => set({ leadWaitForSetup: v })} /></Row>
         <Row id="run-after-setup" setting="scripts.runAfterSetup" label="Start the run script after setup"><Toggle label="Start the run script after setup" checked={a.runAfterSetup} onChange={(v) => setScripts({ runAfterSetup: v })} /></Row>
         <Row id="run-archive" label="Run the archive script on archive"><Toggle label="Run the archive script on archive" checked={a.archiveOnArchive} onChange={(v) => setScripts({ archiveOnArchive: v })} /></Row>
         <Row id="script-timeout" label="Stop setup and archive scripts after" desc="Run scripts have no limit.">
@@ -88,5 +84,5 @@ export function BranchPattern({ value, field = 'branchPattern', label = 'Branch 
     if (!next.includes('{slug}')) { setText(value); return }
     save(next)
   }
-  return <input className="set-inline set-boxed" aria-label={label} spellCheck={false} value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
+  return <input className="set-inline set-boxed sys-field" aria-label={label} spellCheck={false} value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
 }

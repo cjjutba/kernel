@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { call } from '../../../api'
 import { go, useStore } from '../../../store'
-import { Button, Icon, Kbd } from '../../../ui'
+import { Button, Icon, Kbd, Spinner } from '../../../ui'
 import { stripRemote } from '../../settings/remote'
 import { useRemote } from '../../settings/useSettings'
 import { branchLine, branchRows, type BranchRow } from './branchRows'
@@ -101,7 +101,7 @@ function BranchMenu({ projectId, target, fallback, remote, anchorRef, onClose, o
             )}
           </div>
         ))}
-        {read === null && <p className="where-note">Loading branches</p>}
+        {read === null && <p className="where-note" data-loading><Spinner label={null} pattern="arrow-down" />Loading branches</p>}
         {read && 'failed' in read && <p className="where-note">Could not list branches</p>}
         {!shown.length && read !== null && <p className="where-note">No branch matches</p>}
       </div>

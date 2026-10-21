@@ -1,41 +1,46 @@
-import { useState } from 'react'
-import { call, cleanError } from '../api'
+import { useEffect, useRef, useState } from 'react'
 import { actions, useStore } from '../store'
-import { Button } from '../ui'
+import { useRetryKey, failToast } from '../retry'
+import { Toast } from '../ui'
+import { UPDATE_CHECK_RETRY, UPDATE_INSTALL_RETRY, checkAgain, checkFailedReason, restartToUpdate } from './footer/updateActions'
 
 /**
- * The card a downloaded update shows in the bottom right (KERNEL-164). The footer's Update ready
- * pill (UpdateReady.png) stays as the way back once the card is closed. It sits last in the toast stack, so toasts
- * stack above it instead of covering it, and it steps aside while a modal or onboarding is up.
+ * An update that has downloaded, as a toast in the bottom right with See changes and Restart (Pen 17.1, KERNEL-1104). It stays until closed or
+ * answered, since it waits on the person, and the footer's Update pill (the title bar's, with the sidebar hidden) stays as the way back. It sits
+ * last in the toast stack, so toasts stack above it instead of covering it, and it steps aside while a modal or onboarding is up.
+ * It also owns the update's own Try again buttons: the toast for a download that failed and the ones that retry a check or a restart.
  */
 export function UpdateCard() {
-  const version = useStore((s) => (s.system.update?.status === 'ready' ? s.system.update.version : undefined))
+  const update = useStore((s) => s.system.update)
+  const online = useStore((s) => s.system.online)
+  const version = update?.status === 'ready' ? update.version : undefined
   const hidden = useStore((s) => !!s.ui.modal || s.ui.route.name === 'onboarding')
   // Closing it hides it for that version until Kernel restarts. A newer download brings it back.
   const [closedFor, setClosedFor] = useState<string>()
-  const [busy, setBusy] = useState(false)
+
+  useRetryKey(UPDATE_CHECK_RETRY, () => checkAgain(online))
+  useRetryKey(UPDATE_INSTALL_RETRY, restartToUpdate)
+
+  // A download that stops says why in a toast, once, and the footer goes back to its quiet button. A failed check raises its own toast where it was asked for.
+  const before = useRef(update?.status)
+  useEffect(() => {
+    const was = before.current
+    before.current = update?.status
+    if (was === 'downloading' && update?.status === 'error') {
+      failToast(update.version ? `Couldn't download Kernel ${update.version}` : "Couldn't download the update", checkFailedReason(update.error, online), UPDATE_CHECK_RETRY)
+    }
+  }, [update, online])
+
   if (!version || version === closedFor || hidden) return null
-  const seeChanges = () => {
-    // What's new has its own Later, so the card doesn't come back when it closes.
-    setClosedFor(version)
-    actions.ui.openModal({ name: 'whatsNew' })
-  }
-  // Kernel quits on success, so the button stays busy until it does. With agents working Kernel asks first, and
-  // Cancel keeps it running, so the button is usable again.
-  const restart = () => {
-    setBusy(true)
-    void call('update.install', undefined).then((r) => { if (r.canceled) setBusy(false) }, (e: unknown) => {
-      setBusy(false)
-      actions.ui.toast({ title: 'Could not restart to update', sub: cleanError(e) })
-    })
-  }
+  const close = () => setClosedFor(version)
   return (
-    <div className="update-card">
-      <span className="update-card-title">New update available</span>
-      <div className="update-card-actions">
-        <Button disabled={busy} onClick={seeChanges}>See changes</Button>
-        <Button variant="primary" busy={busy} busyPattern="rotate" busyLabel="Restarting" onClick={restart}>Restart</Button>
-      </div>
-    </div>
+    <Toast
+      title={`Kernel ${version} is ready`} sub="Restart to update. Running agents pause for a few seconds." glyph="download" stay onDismiss={close}
+      actions={[
+        // What's new has its own Later, so the toast doesn't come back when it closes.
+        { label: 'See changes', onClick: () => actions.ui.openModal({ name: 'whatsNew' }) },
+        { label: 'Restart', primary: true, onClick: () => void restartToUpdate() }
+      ]}
+    />
   )
 }

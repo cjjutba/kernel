@@ -161,7 +161,7 @@ async function stillThere(workspaceId: string, r: ResolvedFile): Promise<boolean
 
 /** Opens what a mention resolved to: a file or picture in a tab of the workspace, a folder in the Files panel, or with `diff` the file's diff when it changed. */
 export async function openMention(workspaceId: string, r: ResolvedFile, o: { diff?: boolean } = {}): Promise<void> {
-  if (!(await stillThere(workspaceId, r))) { actions.ui.toast({ title: 'This file no longer exists' }); return }
+  if (!(await stillThere(workspaceId, r))) { actions.ui.toast({ title: 'This file no longer exists', glyph: 'error' }); return }
   show(workspaceId)
   if (r.kind === 'dir') {
     actions.ui.setRightPanel(true)

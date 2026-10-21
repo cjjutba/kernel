@@ -3,20 +3,21 @@
 /* One review: its switch and Required or Optional at the right, and a line under the text for where it runs, who runs it and on what. */
 .rv-line { display: flex; align-items: center; gap: 8px; }
 .rv-line-label { flex-shrink: 0; width: 58px; font-size: var(--fs-code); color: var(--muted); }
-.rv-paths { flex: 1; min-width: 0; height: 30px; box-sizing: border-box; padding: 0 10px; border-radius: var(--r-sm); border: 1px solid var(--input-line); background: var(--panel); color: var(--ink-2); font: var(--fs-code) var(--mono); outline: none; text-overflow: ellipsis; user-select: text; }
+.rv-paths { flex: 1; min-width: 0; height: 30px; box-sizing: border-box; padding: 0 10px; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--panel); color: var(--ink-2); font: var(--fs-code) var(--mono); outline: none; text-overflow: ellipsis; user-select: text; }
 .rv-paths::placeholder { color: var(--ink-3); font: var(--fs-ui) var(--font); opacity: 1; }
-.rv-paths:focus { border-color: var(--ink-3); }
+.rv-paths:focus { border-color: var(--line-3); }
 /* The Run by and Model selects sit on the details line, each with its muted prefix inside the button. */
 .set-card .rv-line .select-trigger { max-width: 190px; }
 .set-card .rv-line .rv-by, .set-card .rv-line .rv-model { flex-shrink: 0; }
+.set-card .rv-line .rv-model .select-trigger { max-width: 320px; }
 /* A review that is off keeps its settings in view, quieter, and can't be edited until it is on. */
 .rv-off .rv-line { opacity: 0.5; }
 
-/* A whole number beside its unit */
+/* A whole number and its unit in one box: 400 lines. The box lights up with the field (Redesign 15). */
 .rv-number { flex-shrink: 0; display: flex; align-items: center; gap: 8px; }
-.rv-number input { width: 76px; height: 30px; box-sizing: border-box; padding: 0 10px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--panel); color: var(--ink-2); font: var(--fs-code) var(--mono); text-align: right; outline: none; user-select: text; }
-.rv-number input:focus { border-color: var(--ink-3); }
-.rv-number input:disabled { color: var(--muted); }
+.rv-box { display: flex; align-items: center; gap: 6px; height: 30px; box-sizing: border-box; padding: 0 10px; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--canvas); }
+.rv-box input { min-width: 3ch; padding: 0; border: 0; background: transparent; color: var(--ink-2); font: var(--fs-code) var(--font); field-sizing: content; text-align: left; user-select: text; }
+.rv-box input:disabled { color: var(--muted); }
 .rv-unit { font-size: var(--fs-code); color: var(--muted); }
 
 

@@ -3,9 +3,9 @@ import type { ChangedFile, NewChatPicks, Project, Workspace as WorkspaceModel, W
 import { call } from '../../api'
 import { actions, getState, loadWorkspace, panelShownIn, useStore } from '../../store'
 import { Icon } from '../../ui'
-import { isLeadChatWorkspace } from '@shared/leadWorkspace'
+import { isLeadChatWorkspace, onSharedFolder } from '@shared/leadWorkspace'
 import { leadModeOf } from '@shared/leadMode'
-import { PanelToggleSlot, RightPanelToggle, SidebarToggleSlot } from '../../components/PanelToggles'
+import { FocusChip, railShownIn, ViewToggles } from '../../components/PanelToggles'
 import { ResizeHandle, readWidth } from '../../components/ResizeHandle'
 import { isLeadWorkspace, leadOf, openProject } from '../../lead'
 import { currentThread, tabOf, threadIdOf } from '../../nav'
@@ -13,6 +13,7 @@ import { ProjectIcon } from '../../components/ProjectIcon'
 import { ChatTabs, diffTab, fileTab } from './ChatTabs'
 import { FileLinkScope } from './fileLinks'
 import { bringBoxOnAsk, leadHasNoChat, newChatOnScreen, showsNewChat } from './leadNoChat'
+import { bottomKindOf } from './bottomSplit'
 import { leadNewKey } from '../../components/sidebar/slots'
 import { NewChatHeader, NewChatTab, OneRowHeader } from './NewChatBar'
 import { NewLeadChat } from './NewLeadChat'
@@ -24,35 +25,36 @@ import { OpenItems } from './composer/OpenItems'
 import { DiffView, FileView, ImageView, TextView } from './FileView'
 import { BottomPanel, RightPanel } from './Panels'
 import { SharedView } from './shared/SharedView'
-import { LeadPrSummary } from './pr/LeadPrSummary'
-import { LocalMergeInfo } from './pr/LocalMerge'
 import { hasChanges } from './pr/model'
-import { copyBranch, PrHeader } from './pr/PrHeader'
+import { PrTitleBar } from './pr/PrTitleBar'
+import { SessionRail } from './SessionRail'
 import { SkipNotice } from './terminal/SkipNotice'
 import { TerminalView } from './terminal/Terminal'
-import { SetupWait } from './SetupWait'
+import { WorktreeWait } from './WorktreeWait'
 import { setupGate, skipsSetup } from './setupGate'
 import { Transcript } from './Transcript'
-import { useBanner, WorkspaceBanner } from './banners/Banners'
+import { useBanner, useProblemToast, WorkspaceBanner } from './banners/Banners'
 import { ChatMoveNotice, useMoveNotice } from './banners/ChatMoveNotice'
+import { FellBackLine } from './banners/FellBackLine'
 import { onRefreshChanges } from './changesBus'
 import { issueOpen, issueUrl } from './issueKey'
 import { useProjectTracker } from '../issues/useProjectTracker'
 import { useWorkspaceShortcuts } from './shortcuts'
 import './workspace.css'
+import './panel.css'
 
 const EMPTY_CHATS: never[] = []
 const NO_TABS: string[] = []
 const NO_CHANGES: ChangedFile[] = []
 const PANEL_MIN = 320
-const PANEL_MAX = 720
+const PANEL_MAX = 960
 const PANEL_KEY = 'kernel.rightPanelWidth'
 /** Letting go below this hides the panel. The saved width stays. */
 const PANEL_HIDE_BELOW = 240
 /** The chat column keeps at least this much, however wide the panel was saved. */
 const CHAT_MIN = 420
-/** What `.ws-aside` is until the user drags: 28% of the window between 320 and 400px (D-080), so its CSS and this agree. */
-const panelDefault = () => Math.min(400, Math.max(PANEL_MIN, Math.round(window.innerWidth * 0.28)))
+/** What `.ws-aside` is until the user drags: 48% of the window between 420 and 880px, so its CSS and this agree (KERNEL-1096). */
+const panelDefault = () => Math.min(880, Math.max(420, Math.round(window.innerWidth * 0.48)))
 let imageCount = 0
 let textCount = 0
 
@@ -107,7 +109,10 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const tabs = useStore((s) => s.ui.tabs[workspaceId])
   // A chat started from New chat keeps its panel closed until the toggle is pressed in it (KERNEL-788).
   const panels = useStore((s) => panelShownIn(s.ui, workspaceId))
-  const held = useStore((s) => s.ui.panelHeld.includes(workspaceId))
+  const railWanted = useStore((s) => railShownIn(s.ui, workspaceId))
+  const sidebar = useStore((s) => s.ui.sidebar)
+  // Expand: the panel takes the whole screen, chat included, until it is pressed again.
+  const [expanded, setExpanded] = useState(false)
   const bottomRatio = useStore((s) => s.ui.bottomRatio)
   // The changed files remember which workspace they were read for, so a late answer or a switch never shows another workspace's files.
   const [fetched, setFetched] = useState<{ workspaceId: string; files: ChangedFile[] }>({ workspaceId, files: NO_CHANGES })
@@ -146,11 +151,13 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const diffs = tabs?.diffs ?? NO_TABS
   const shared = tabs?.shared ?? NO_TABS
   const running = useStore((s) => (chat ? !!s.running[chat.id] : false))
-  // A chat waiting for setup holds its messages in main (KERNEL-430), so you can keep typing: they queue behind it.
-  const heldForSetup = useStore((s) => (chat ? !!s.queue[chat.id]?.length && s.queueWhy[chat.id] === 'setup' : false))
+  // A chat whose worktree isn't made yet holds its messages in main (KERNEL-430), so you can keep typing: they queue behind it. The
+  // setup script never holds them (KERNEL-1086).
+  const heldForSetup = useStore((s) => (chat ? !!s.queue[chat.id]?.length && s.queueWhy[chat.id] === 'worktree' : false))
   const skips = !!ws && skipsSetup(heldForSetup)
   const empty = useStore((s) => (chat ? !s.items[chat.id]?.length : true))
-  const found = useBanner(ws, chat, agent?.name ?? 'The agent', running, skips, !empty, heldForSetup)
+  const found = useBanner(ws, chat, agent?.name ?? 'The agent', running)
+  useProblemToast(found)
   const moveNotice = useMoveNotice(chat)
 
   // Images and pasted texts belong to the screen, not the store, so they start empty for each workspace. A tab of one left in the
@@ -192,18 +199,19 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   if (!ws) return <div className="panel" />
   // A Lead chat with work of its own shows its PR actions, Create PR included, like a teammate's (KERNEL-405, D-106).
   // In Build here the chat is a builder from its first turn, so its PR header shows before it has changes (KERNEL-780).
-  const ownPr = !isLead || (isLeadChatWorkspace(ws) && (leadModeOf(ws) === 'build' || hasChanges(ws) || !!ws.prNumber || ws.prState !== 'none'))
-  const title = headerTitle(ws)
+  const ownPr = !isLead || (isLeadChatWorkspace(ws) && (leadModeOf(ws) === 'build' || onSharedFolder(ws) || hasChanges(ws) || !!ws.prNumber || ws.prState !== 'none'))
   // the Lead's shared worktree and a current-branch workspace say what they follow instead of a branch. That label carries meaning, so it
   // stays, and it has no copy: the title is plain text there.
   const label = ws.mode === 'current' ? `current branch · ${ws.branch}` : ws.lead && ws.branch === 'HEAD' ? `latest ${leadBase(ws, project)}` : undefined
-  // A chat waiting for setup shows what waits and where setup stands (KERNEL-430). It draws a failed setup as its own card, so the
-  // banner doesn't say it a second time. A teammate's brief still on its way keeps the box shut, so nothing goes out before it. A chat
-  // with the Lead that isn't held shows its transcript and stays open while setup runs (KERNEL-490).
+  // A chat waiting for its worktree shows its message and what is under way (KERNEL-430). A teammate's brief still on its way keeps the
+  // box shut, so nothing goes out before it. A chat that isn't held shows its transcript and stays open while setup runs, and a run or
+  // a worktree that fails is a toast (KERNEL-490, KERNEL-1086, KERNEL-1093).
   const gate = setupGate({ status: ws.status, skips, held: heldForSetup, empty })
   const setupWait = gate.wait && chat?.kind !== 'terminal'
-  const banner = setupWait && found?.id === 'setup' ? undefined : found
-  const blocked = gate.shut || !!banner?.blocks
+  const problem = found
+  // Only a limit that needs a choice is a banner. Provider, network and Mac errors are a toast, and the box says why it can't send (Pen 14.7).
+  const banner = problem && !problem.as ? problem : undefined
+  const blocked = gate.shut || !!problem?.blocks
 
   // The tabs as ChatTabs lists them, left to right. Closing the open one goes back to the tab used before it (nextTab.ts).
   const order = [...chats.map((c) => c.id), ...files.map(fileTab), ...diffs.map(diffTab), ...shared.map((id) => `shared:${id}`), ...images.map((i) => i.id), ...texts.map((t) => t.id)]
@@ -251,44 +259,39 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const alone = newChatShown && !order.length
   const changed = filePath ? changes.some((c) => c.path === filePath) : false
 
-  // The header spans the chat column only. The right panel runs the full height and carries the PR actions at its top;
-  // while it is hidden they move into the header, in a capsule, so Create PR and Merge stay one click away. The panel toggle is window
-  // chrome, not a PR action: there is one, positioned against the screen's top right corner, so it is the same element at the same
-  // coordinates whether the panel is open or closed and never takes the band's tone. The header and the band each keep an empty slot
-  // under it (KERNEL-769).
+  // The header is one row over both columns (Pen 9.1): the project, then the chat and file tabs in one pill, then what acts on the workspace, then the view toggles. The panel and
+  // the Session rail are cards under it. A teammate's workspace shows its Session rail on the right while the panel is closed, and the title bar's toggles swap one for the
+  // other. Neither is Focus mode (KERNEL-1096).
+  const rail = railWanted && !newChatShown && !isLead
+  const focus = !sidebar && !panels && !rail
+  const tabsRow = alone ? <NewChatTab focusIn={workspaceId} /> : (
+    <ChatTabs
+      inline note={label} branch={isLead && ws.lead && ws.mode === 'worktree' && ws.branch !== 'HEAD' ? ws.branch : undefined} tip={isLead ? undefined : ws.branch}
+      workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} noChat={noChat} onNewChat={showNew} chats={chats} files={files} diffs={diffs} shared={shared}
+      images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={newChatShown ? undefined : tab}
+      onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText}
+    />
+  )
   return (
-    <div className="panel ws-panel">
-      {isLead ? (
-        <OneRowHeader project={project} end={!newChatShown && <>
-          <IssueKey ws={ws} project={project} />
-          <OpenIn ws={ws} />
-        {!panels && (ownPr ? <PrHeader ws={ws} capsule /> : <LeadPrSummary projectId={ws.projectId} capsule quiet={held} />)}
-        {!panels && <PanelToggleSlot />}
-        </>}>
-          {alone ? <NewChatTab focusIn={workspaceId} /> : <ChatTabs inline note={label} workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} noChat={noChat} onNewChat={showNew} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={newChatShown ? undefined : tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />}
-        </OneRowHeader>
-      ) : <header className="header">
-        <SidebarToggleSlot />
-        <ProjectIcon project={project} className="crumb-avatar" />
-        <button type="button" className="crumb" onClick={() => project && void openProject(project.id)}>{project?.name}</button>
-        <span className="muted"><Icon name="right" size={12} /></span>
-        {label ? <h1 className="ellipsis">{title}</h1> : <WorkspaceTitle branch={ws.branch} title={title} />}
-        {label && <span className="mono muted ellipsis ws-label">{label}</span>}
+    <div className="panel ws-panel" data-rail={rail || undefined} data-panel={(panels && !newChatShown) || undefined} data-expanded={(expanded && panels && !newChatShown) || undefined}>
+      <OneRowHeader project={project} end={!newChatShown && <>
+        {focus && <FocusChip />}
         <IssueKey ws={ws} project={project} />
-        <span className="grow" />
+        {/* The pull request's own place is the Session rail and the Pull request tab. With neither on screen, its state moves here: an icon, its number, a few words and the one action (Pen 10.3). */}
+        {ownPr && !rail && !(panels && !newChatShown) && <PrTitleBar ws={ws} />}
         <OpenIn ws={ws} />
-        {!panels && (ownPr ? <PrHeader ws={ws} capsule /> : <LeadPrSummary projectId={ws.projectId} capsule quiet={held} />)}
-        {!panels && <PanelToggleSlot />}
-      </header>}
+        <ViewToggles rail={!isLead} kind={bottomKindOf(getState(), ws)} />
+      </>}>
+        {tabsRow}
+      </OneRowHeader>
       <FileLinkScope.Provider value={workspaceId}>
       <OpenImage.Provider value={openImage}>
       <OpenText.Provider value={openText}>
       <OpenIssue.Provider value={issueCtx}>
         <section aria-label="Agent" className="ws-main">
-          {!isLead && <ChatTabs workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} noChat={noChat} onNewChat={showNew} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={newChatShown ? undefined : tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />}
-          <div className="col grow" style={{ minHeight: 0 }}>
+          <div className={viewer || (chat?.kind === 'terminal' && !setupWait && !showNewChat) ? 'col grow view-card' : 'col grow'} style={{ minHeight: 0 }}>
             {diffPath !== undefined
-              ? <DiffView ws={ws} path={diffPath} changes={changes} />
+              ? <DiffView ws={ws} path={diffPath} changes={changes} stepper={diffPath ? { index: Math.max(0, changes.findIndex((c) => c.path === diffPath)), total: changes.length, go: (i) => { const to = changes[i]?.path; if (to !== undefined) openDiff(to) } } : undefined} />
               : sharedId
                 ? <SharedView workspaceId={workspaceId} sharedId={sharedId} />
               : filePath
@@ -299,16 +302,16 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                   ? <TextView name={text.name} text={text.text} />
                 // A chat waiting for setup shows what waits and where setup stands, not a skeleton or the New chat suggestions.
                 : setupWait
-                  ? <SetupWait ws={ws} chat={chat} />
+                  ? <WorktreeWait ws={ws} chat={chat} />
                   : showNewChat
                     ? <NewLeadChat projectId={ws.projectId} focusIn={workspaceId} />
                   : chat?.kind === 'terminal'
                     ? <><SkipNotice chat={chat} /><TerminalView id={chat.id} label="Big terminal" /></>
                   : chat
-                    ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={edit} onOpenDiff={openDiff} onForked={select} />
+                    ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={edit} onOpenDiff={openDiff} onForked={select} moveNotice={banner ? null : moveNotice} />
                     : <div className="grow" />}
           </div>
-          {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} setupShown={setupWait} running={running} prefill={prefill} viewer={viewer ? { held: banner ? banner.actions.length > 0 : !!moveNotice } : undefined} banner={<>{isLead && chat.kind === 'chat' && <OpenItems chat={chat} />}{banner ? <WorkspaceBanner view={banner} ws={ws} chat={chat} /> : moveNotice && <ChatMoveNotice chat={chat} notice={moveNotice} />}</>} />}
+          {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} why={problem?.placeholder ?? (moveNotice && !banner ? 'Pick an account above to keep going' : undefined)} setupShown={setupWait} running={running} prefill={prefill} viewer={viewer ? { held: banner ? banner.actions.length > 0 : !!moveNotice } : undefined} banner={<>{isLead && chat.kind === 'chat' && <OpenItems chat={chat} />}{banner && <WorkspaceBanner view={banner} ws={ws} chat={chat} />}{chat.kind === 'chat' && <FellBackLine chat={chat} />}</>} />}
         </section>
       </OpenIssue.Provider>
       </OpenText.Provider>
@@ -320,18 +323,16 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
             targetRef={aside} edge="left" label="Resize panel" size={panelWidth ?? panelDefault()} min={PANEL_MIN} limit={panelLimit} defaultSize={panelDefault}
             storageKey={PANEL_KEY} hideBelow={PANEL_HIDE_BELOW} onHide={() => actions.ui.setRightPanel(false)} onCommit={setPanelWidth}
           />
-          <div className="ws-aside-head">
-            {ownPr ? <PrHeader ws={ws} spread toggle={<PanelToggleSlot />} /> : <LeadPrSummary projectId={ws.projectId} spread toggle={<PanelToggleSlot />} />}
-          </div>
-          {ownPr && <LocalMergeInfo ws={ws} />}
-          {/* Below the PR band the panel is two panes, 2/3 over 1/3 until the bottom is dragged. The one fraction is every chat's (KERNEL-513). */}
-          <div className="ws-split" style={{ '--bottom-ratio': bottomRatio } as CSSProperties}>
-            <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={openDiff} filePath={filePath} diffPath={diffPath || undefined} />
-            <BottomPanel ws={ws} />
-          </div>
+          <section className="side-card" aria-label="Panels">
+            {/* Below its tabs the panel is two panes, 2/3 over 1/3 until the bottom is dragged. The one fraction is every chat's (KERNEL-513). */}
+            <div className="ws-split" style={{ '--bottom-ratio': bottomRatio } as CSSProperties}>
+              <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={openDiff} filePath={filePath} diffPath={diffPath || undefined} expanded={expanded} onExpand={() => setExpanded((e) => !e)} />
+              <BottomPanel ws={ws} />
+            </div>
+          </section>
         </aside>
       )}
-      {!newChatShown && <RightPanelToggle name="panels" />}
+      {rail && <SessionRail ws={ws} />}
     </div>
   )
 }
@@ -349,17 +350,6 @@ export function LeadNewScreen({ projectId, source, picks }: { projectId: string;
         <div className="col grow" style={{ minHeight: 0 }}><NewLeadChat projectId={projectId} source={source} picks={picks} /></div>
       </section>
     </div>
-  )
-}
-
-/** The title, a real button: hovering shows the full branch and clicking copies it (HeaderBranchTooltip.png). It is the one thing in the header that gives way to a narrow window. */
-function WorkspaceTitle({ branch, title }: { branch: string; title: string }) {
-  return (
-    <h1 className="ws-title">
-      <button type="button" className="ws-title-btn" aria-label={`${title}, copy branch ${branch}`} data-tip={branch} data-tip-hint="Click to copy the branch" data-tip-align="start" onClick={() => void copyBranch(branch)}>
-        <span>{title}</span>
-      </button>
-    </h1>
   )
 }
 

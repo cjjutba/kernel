@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { PrInstructions } from '@shared/types'
 import { Button, Modal } from '../../../ui'
+import './system.css'
 import { SaveNote, useBlurSave, useFieldText, useSaveNote, type SaveResult } from '../kit'
 
 /** The four instructions a PR button sends, with their names and the button that sends each (Settings, Pull requests and a project's). */
@@ -18,8 +19,8 @@ export const INSTRUCTIONS: { key: keyof PrInstructions; label: string; file: str
  * text not yet saved (KERNEL-721).
  * Use default puts the fallback back and saves it at once. A save sends the text, or `null` when it is empty or the fallback.
  */
-export function InstructionSheet({ title, value, fallback, fallbackLabel = 'Use default', onSave, onClose }: {
-  title: string; value: string; fallback: string; fallbackLabel?: string; onSave: (text: string | null) => SaveResult; onClose: () => void
+export function InstructionSheet({ title, note: lead, value, fallback, fallbackLabel = 'Use default', onSave, onClose }: {
+  title: string; note?: string; value: string; fallback: string; fallbackLabel?: string; onSave: (text: string | null) => SaveResult; onClose: () => void
 }) {
   const [text, setText] = useFieldText(value)
   const note = useSaveNote()
@@ -48,7 +49,10 @@ export function InstructionSheet({ title, value, fallback, fallbackLabel = 'Use 
         </>
       )}
     >
-      <textarea ref={field} className="set-lines set-sheet-text" aria-label={title} spellCheck={false} value={text} onChange={(e) => { note.reset(); setText(e.target.value) }} onBlur={() => { if (!escaped.current) save.onBlur() }} onKeyDown={save.onKeyDown} />
+      <div className="modal-body sys-sheet">
+        {lead && <p className="sys-sheet-lead">{lead}</p>}
+        <textarea ref={field} className="set-lines set-sheet-text" aria-label={title} spellCheck={false} value={text} onChange={(e) => { note.reset(); setText(e.target.value) }} onBlur={() => { if (!escaped.current) save.onBlur() }} onKeyDown={save.onKeyDown} />
+      </div>
     </Modal>
   )
 }

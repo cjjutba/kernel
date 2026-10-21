@@ -1,7 +1,9 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { go, useStore } from '../../store'
 import { useRemembered } from '../../remember'
-import { Banner, Button } from '../../ui'
+import { Button, EmptyList, FailedState } from '../../ui'
+import { actions } from '../../store'
+import { failToast, useRetryKey } from '../../retry'
 import { GithubIssues } from './GithubIssues'
 import { LinearIssues } from './LinearIssues'
 import { IssueSkeleton, NoTracker, trackerChoice, type IssueTracker, type ProjectHead } from './parts'
@@ -30,8 +32,19 @@ export function Issues({ issueId, projectId, tracker }: { issueId?: string; proj
   // The choice is saved per project. A route that names a tracker, or an issue `#41`, shows that one without saving it.
   const [saved, save] = useRemembered(`kernel.issuesTracker:${project?.id ?? ''}`, trackerChoice)
 
-  // With no project there is no tracker to read, and Linear's list needs none.
-  if (!project) return <LinearIssues issueId={issueId} head={head} />
+  // Which tracker a project uses is read from the engine, and a failed read says so in a toast with Try again.
+  useRetryKey('issuesTracker', retry)
+  useEffect(() => { if (read.kind === 'error') failToast("Couldn't load issues", read.message, 'issuesTracker') }, [read.kind === 'error' && read.message])
+
+  // Issues are per project. With none there is nothing to read.
+  if (!project) {
+    return (
+      <div className="panel">
+        <WorkHeader tab="issues" head={head} counts={{ prs: prCount }} />
+        <EmptyList icon="folder" title="Pick a project" action={<Button onClick={() => actions.ui.openModal({ name: 'connectRepo' })}>Add a project</Button>}>Issues are per project. Pick one to see its issues.</EmptyList>
+      </div>
+    )
+  }
   if (read.kind === 'ready' && read.tracker.kind !== 'none') {
     const t = read.tracker
     const active = activeTracker(t, { issueId, route: tracker, saved })
@@ -47,13 +60,7 @@ export function Issues({ issueId, projectId, tracker }: { issueId?: string; proj
     <div className="panel">
       <WorkHeader tab="issues" head={head} counts={{ prs: prCount }} />
       {read.kind === 'loading' && <IssueSkeleton />}
-      {read.kind === 'error' && (
-        <div className="is-center">
-          <div className="is-fail">
-            <Banner kind="offline" title="Can't load issues" actions={<Button size="md" onClick={retry}>Try again</Button>}>{read.message}</Banner>
-          </div>
-        </div>
-      )}
+      {read.kind === 'error' && <FailedState icon="wifioff" title="Issues didn't load" onRetry={retry}>Kernel will try again on its own. Your agents keep working in the meantime.</FailedState>}
       {read.kind === 'ready' && read.tracker.kind === 'none' && <NoTracker project={project} />}
     </div>
   )

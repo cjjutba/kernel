@@ -15,7 +15,7 @@ import { LIMIT_LIFTED, SESSION_GONE_NOTE, Sessions, type SessionDeps } from '../
 import { mentionNote } from '../src/main/services/mentions'
 import { OpenItems, openReminder } from '../src/main/features/openItems'
 import type { Kernel } from '../src/main/kernel'
-import { ALWAYS_ASK, LEAD_GH_ISSUE, NETWORK_OFF, neverAllowed, pushOwnBranch, REFERENCE_READ_ONLY } from '../src/main/services/permissions'
+import { ALWAYS_ASK, NETWORK_OFF, neverAllowed, pushOwnBranch, REFERENCE_READ_ONLY } from '../src/main/services/permissions'
 import type { AppSettings } from '../src/main/services/settings'
 import { codexLimits, toCodexInput, unwrapShell } from '../src/main/services/providers/codex/runner'
 
@@ -207,6 +207,18 @@ describe('a chat on Codex (KERNEL-406)', () => {
     t.approvals.decide(retry.id, { behavior: 'allow' })
     await t.idle()
     expect(await t.answers('item/commandExecution/requestApproval')).toEqual([{ decision: 'decline' }, { decision: 'accept' }])
+  })
+
+  it('lets a review run read-only commands without asking and asks about one that writes (KERNEL-1074)', async () => {
+    const t = track(await setup({ mode: 'default', ws: { reviewOf: 'ws-0' } }))
+    const ask = (id: string, command: string) => ({ request: 'item/commandExecution/requestApproval', params: { kind: 'command', threadId: '$thread', turnId: '$turn', itemId: id, startedAtMs: 1, environmentId: 'local', command } })
+    await t.sessions.send('chat', [{ type: 'text', text: script(ask('c1', '/bin/zsh -lc "git diff origin/main...HEAD"'), ask('c2', '/bin/zsh -lc "gh pr view 12"'), ask('c3', '/bin/zsh -lc "git commit -am x"')) }])
+    const card = await t.pending()
+    expect(card).toMatchObject({ toolName: 'Bash', title: 'Run git commit -am x' })
+    t.approvals.decide(card.id, { behavior: 'deny' })
+    await t.idle()
+    expect(await t.answers('item/commandExecution/requestApproval')).toEqual([{ decision: 'accept' }, { decision: 'accept' }, { decision: 'decline' }])
+    expect(t.store.approvals({}).map((a) => a.title)).toEqual(['Run git commit -am x'])
   })
 
   it('asks the user for Always ask commands and for every command in Ask, and saves "Always allow in this project"', async () => {
@@ -593,33 +605,6 @@ describe("an agent file's tools on Codex (KERNEL-451)", () => {
     expect(mcpOverrides(undefined, user)).toEqual({})
     expect(mcpOverrides(undefined, user, ['notion', 'my.server', 'absent'])).toEqual({ 'mcp_servers.notion.enabled': false })
     expect(mcpOverrides(policy, user, ['linear'])).toEqual({ 'mcp_servers.linear.enabled': false, 'mcp_servers.figma.enabled': false, 'mcp_servers.notion.enabled': false })
-  })
-
-  it("turns off a Lead's tracker issue writes and declines its gh issue create, in Bypass permissions too (feat-lead-files-tracker-issues-only-with)", async () => {
-    const lead = { ...sean, id: 'kernel', name: 'Kernel', lead: true } as AgentDef
-    const t = track(await setup({ mode: 'bypassPermissions', agent: lead, mcp: JSON.stringify(servers) }))
-    const ask = (id: string, command: string) => ({ request: 'item/commandExecution/requestApproval', params: { kind: 'command', threadId: '$thread', turnId: '$turn', itemId: id, startedAtMs: 1, environmentId: 'local', command } })
-    await t.sessions.send('chat', [{ type: 'text', text: script(ask('c1', '/bin/zsh -lc "gh issue create --title Crash"'), ask('c2', 'gh issue view 41')) }])
-    await t.idle()
-    expect((await t.sent('thread/start'))[0].params.config).toEqual({
-      'mcp_servers.linear.disabled_tools': ['save_issue', 'create_issue', 'update_issue', 'save_comment', 'create_comment', 'delete_comment'],
-      'mcp_servers.github.disabled_tools': ['delete_repo', 'issue_write', 'create_issue', 'update_issue', 'add_issue_comment', 'update_issue_comment', 'sub_issue_write']
-    })
-    expect(await t.answers('item/commandExecution/requestApproval')).toEqual([{ decision: 'decline' }, { decision: 'accept' }])
-    expect(t.of('note').map((n) => n.text)).toEqual([LEAD_GH_ISSUE])
-    // A teammate keeps them.
-    const mate = track(await setup({ mode: 'bypassPermissions', agent: sean, mcp: JSON.stringify(servers) }))
-    await mate.sessions.send('chat', [{ type: 'text', text: script(ask('c1', 'gh issue create --title Crash')) }])
-    await mate.idle()
-    expect(await mate.answers('item/commandExecution/requestApproval')).toEqual([{ decision: 'accept' }])
-  })
-
-  it("turns off a Lead's issue writes on a server the project aliases to Linear (feat-lead-files-tracker-issues-only-with)", async () => {
-    const lead = { ...sean, id: 'kernel', name: 'Kernel', lead: true } as AgentDef
-    const t = track(await setup({ agent: lead, mcp: JSON.stringify({ tracker: { command: 'linear-mcp', enabled: true }, sentry: { command: 'sentry-mcp', enabled: true } }), aliases: { linear: 'tracker' } }))
-    await t.sessions.send('chat', [{ type: 'text', text: 'hello' }])
-    await t.idle()
-    expect((await t.sent('thread/start'))[0].params.config).toEqual({ 'mcp_servers.tracker.disabled_tools': ['save_issue', 'create_issue', 'update_issue', 'save_comment', 'create_comment', 'delete_comment'] })
   })
 
   describe('in Bypass permissions (bypass-allows-unlisted-mcp)', () => {

@@ -7,7 +7,7 @@ import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { git } from '../src/main/services/exec'
 import { decide, type ReviewState, type TeamEvent } from '../src/main/services/leadUpdates'
-import { kernelTools, NO_OVERRULE, type KernelToolDeps } from '../src/main/services/kernelMcp'
+import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import { tempRepo, freePort } from './helpers'
 
 // KERNEL-732: the user, or the Lead on the user's quoted words, overrules the reviews' blockers on a PR's head commit.
@@ -153,7 +153,7 @@ describe('overrule_blockers', () => {
     { id: 'w1', projectId: 'project', name: 'w1', agentId: 'christian', status: 'ready', prState: 'ready', prNumber: 54 } as Workspace,
     { id: 'rv', projectId: 'project', name: 'rv', agentId: 'artkin', status: 'ready', prState: 'none', reviewOf: 'w1' } as Workspace
   ]
-  function lead(o: { said?: string; userTurn?: boolean; fails?: string } = {}) {
+  function lead(o: { userTurn?: boolean; fails?: string } = {}) {
     const all = list()
     const overrule = vi.fn(async (id: string, note?: string) => {
       if (o.fails) throw new Error(o.fails)
@@ -164,31 +164,23 @@ describe('overrule_blockers', () => {
       projectId: 'project', lead: { id: 'kernel', lead: true } as AgentDef, agents: async () => [], workspaces: () => all,
       createWorkspace: async () => all[0], messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
       archiveWorkspace: async () => undefined, isRunning: () => false, unsaved: async () => false,
-      overrule, userTurn: () => o.userTurn ?? true, userSaid: () => ({ text: o.said ?? 'Those blockers are fine, ignore them and merge.', at: 1 })
+      overrule, userTurn: () => o.userTurn ?? true
     }
     const tool = kernelTools(deps).find((t) => t.name === 'overrule_blockers')!
-    const call = async (a: { workspace_id: string; go_ahead: string; note?: string }) => (await tool.handler(a as never, {})) as { content: { text: string }[]; isError?: boolean }
+    const call = async (a: { workspace_id: string; note?: string }) => (await tool.handler(a as never, {})) as { content: { text: string }[]; isError?: boolean }
     return { call, overrule }
   }
 
-  it("overrules on the user's quoted words, and a review's id on the PR it reviewed", async () => {
-    const t = lead()
-    const r = await t.call({ workspace_id: 'rv', go_ahead: 'those blockers are fine', note: 'on purpose' })
+  it("overrules without quoting the user, in a turn Kernel started too, and a review's id on the PR it reviewed (KERNEL-1113)", async () => {
+    const t = lead({ userTurn: false })
+    const r = await t.call({ workspace_id: 'rv', note: 'on purpose' })
     expect(r.isError).toBeUndefined()
     expect(t.overrule).toHaveBeenCalledWith('w1', 'on purpose')
     expect(r.content[0].text).toBe("Overruled the code review's blockers on PR #54 at aaaaaaa. A merge goes ahead without Merge anyway until a new commit. Merge it with merge_workspace only if the user asked.")
   })
 
-  it("refuses without a go_ahead from the user's latest message, or in a turn Kernel started", async () => {
-    for (const [o, quote] of [[{}, 'merge it anyway'], [{}, ''], [{ userTurn: false }, 'those blockers are fine']] as const) {
-      const t = lead(o)
-      expect(await t.call({ workspace_id: 'w1', go_ahead: quote })).toEqual({ content: [{ type: 'text', text: NO_OVERRULE }], isError: true })
-      expect(t.overrule).not.toHaveBeenCalled()
-    }
-  })
-
   it("passes on the feature's refusal", async () => {
     const t = lead({ fails: 'No review found blockers on the latest commit of PR #54, so there is nothing to overrule.' })
-    expect(await t.call({ workspace_id: 'w1', go_ahead: 'ignore them' })).toMatchObject({ content: [{ text: 'Not overruled: No review found blockers on the latest commit of PR #54, so there is nothing to overrule.' }], isError: true })
+    expect(await t.call({ workspace_id: 'w1' })).toMatchObject({ content: [{ text: 'Not overruled: No review found blockers on the latest commit of PR #54, so there is nothing to overrule.' }], isError: true })
   })
 })

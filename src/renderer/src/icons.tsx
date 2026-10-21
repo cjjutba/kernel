@@ -3,6 +3,8 @@ import type { Provider } from '@shared/types'
 import {
   Add01Icon,
   Alert02Icon,
+  AlertCircleIcon,
+  BanIcon,
   ArrowDown01Icon,
   ArrowDown02Icon,
   ArrowLeft01Icon,
@@ -14,6 +16,9 @@ import {
   ArrowUpRight01Icon,
   Asterisk02Icon,
   Attachment01Icon,
+  CalendarClockIcon,
+  CalendarXIcon,
+  ChartNoAxesColumnIcon,
   BookOpen01Icon,
   CancelCircleIcon,
   Chat01Icon,
@@ -22,15 +27,22 @@ import {
   CodeIcon,
   ComputerIcon,
   ContrastIcon,
+  DashboardSpeed01Icon,
   Copy01Icon,
   Delete02Icon,
   Download02Icon,
+  EyeIcon,
   File01Icon,
+  FileAddIcon,
   FlaskConicalIcon,
   Folder01Icon,
+  GaugeIcon,
+  GitCommitIcon,
   GitForkIcon,
+  GlobeIcon,
   GridViewIcon,
   HelpCircleIcon,
+  HourglassIcon,
   HistoryIcon,
   Home01Icon,
   Image01Icon,
@@ -40,10 +52,12 @@ import {
   Layers01Icon,
   ListTreeIcon,
   MinusSignIcon,
+  MessageSquareOffIcon,
   MoreHorizontalIcon,
   Notification01Icon,
   PauseIcon,
   PlayIcon,
+  PowerIcon,
   RefreshIcon,
   ReplyIcon,
   Search01Icon,
@@ -105,6 +119,7 @@ const H = {
   shield: Shield01Icon,
   providers: ServerStack01Icon,
   copy: Copy01Icon,
+  eye: EyeIcon,
   flask: FlaskConicalIcon,
   info: InformationCircleIcon,
   checkCircle: CheckmarkCircle02Icon,
@@ -123,11 +138,28 @@ const H = {
   wifioff: WifiOff01Icon,
   key: Key01Icon,
   warning: Alert02Icon,
+  alertCircle: AlertCircleIcon,
   xCircle: CancelCircleIcon,
   clip: Attachment01Icon,
   book: BookOpen01Icon,
   listTree: ListTreeIcon,
-  download: Download02Icon
+  download: Download02Icon,
+  /** The footer's Usage button: bars that take the tone of the tightest window (KERNEL-1101). */
+  usage: ChartNoAxesColumnIcon,
+  gauge: GaugeIcon,
+  circleGauge: DashboardSpeed01Icon,
+  calendarClock: CalendarClockIcon,
+  calendarX: CalendarXIcon,
+  /** The glyphs of the transcript's steps and turn ends (KERNEL-1094): a new file, the waiting hourglass, a refused step, a quit, and a chat that didn't load. */
+  filePlus: FileAddIcon,
+  hourglass: HourglassIcon,
+  ban: BanIcon,
+  power: PowerIcon,
+  chatOff: MessageSquareOffIcon,
+  /** A shared page (Pen 9.19). */
+  globe: GlobeIcon,
+  /** A commit in the compare menu (Pen 9.21). */
+  commit: GitCommitIcon
 }
 
 /**
@@ -149,6 +181,13 @@ const K = {
   plan: <><path d="M1.8 4L5.6 2.6L10.4 4.2L14.2 2.8V12L10.4 13.4L5.6 11.8L1.8 13.2Z"/><path d="M5.6 2.6V11.8"/><path d="M10.4 4.2V13.4"/></>,
   keyboard: <><rect x="1.5" y="3.5" width="13" height="9" rx="2.2"/><path d="M4.8 6.4V6.5"/><path d="M8 6.4V6.5"/><path d="M11.2 6.4V6.5"/><path d="M4.8 9.6V9.7"/><path d="M8 9.6V9.7"/><path d="M11.2 9.6V9.7"/></>,
   lock: <><rect x="3" y="7.2" width="10" height="6.8" rx="2"/><path d="M5.3 7.2V5A2.7 2.7 0 0 1 10.7 5V7.2"/></>,
+  /** A token whose file left the disk (KERNEL-1095): a page with a cross, and an image frame struck through. */
+  /** Plan mode (KERNEL-1095): a checked line above two plain ones. */
+  checklist: <><path d="M2.4 4.2L3.6 5.4L5.6 3"/><path d="M7.6 4.2H13.6"/><path d="M2.4 10.2L3.6 11.4L5.6 9"/><path d="M7.6 10.2H13.6"/></>,
+  /** A skill in the / menu: a square with a pen stroke (KERNEL-1095). */
+  squarePen: <><rect x="2.2" y="2.2" width="11.6" height="11.6" rx="2.4"/><path d="M10.2 5.8L5.8 10.2"/></>,
+  fileX: <><path d="M3.8 1.8H9.2L12.4 5V12.6A1.6 1.6 0 0 1 10.8 14.2H5.2A1.6 1.6 0 0 1 3.6 12.6V3.4A1.6 1.6 0 0 1 3.8 1.8Z"/><path d="M9.2 1.8V5H12.4"/><path d="M6.3 7.8L9.7 11.2"/><path d="M9.7 7.8L6.3 11.2"/></>,
+  imageOff: <><path d="M5.2 2.4H10.8A2.8 2.8 0 0 1 13.6 5.2V10.8"/><path d="M3.4 4.2A2.8 2.8 0 0 0 2.4 5.2V10.8A2.8 2.8 0 0 0 5.2 13.6H10.8A2.8 2.8 0 0 0 11.6 13.5"/><path d="M2.4 11L5.6 7.8L8.4 10.6"/><path d="M1.8 1.8L14.2 14.2"/></>,
   eyeoff: <><path d="M1.5 8C3 5.2 5.3 3.9 8 3.9S13 5.2 14.5 8C13 10.8 10.7 12.1 8 12.1S3 10.8 1.5 8Z"/><path d="M2.8 13.4L13.2 2.6"/></>,
   link: <><path d="M9 4.2L9.6 3.6A2.9 2.9 0 0 1 13.7 7.7L11.7 9.7A2.9 2.9 0 0 1 7.6 9.7"/><path d="M7 11.8L6.4 12.4A2.9 2.9 0 0 1 2.3 8.3L4.3 6.3A2.9 2.9 0 0 1 8.4 6.3"/></>,
   plug: <><path d="M6 1.8V5"/><path d="M10 1.8V5"/><path d="M4 5H12V7.6A4 4 0 0 1 4 7.6Z"/><path d="M8 11.6V14.2"/></>,
@@ -162,7 +201,15 @@ const K = {
   sparkle: <path d="M8 1.8C8.5 5.5 10.5 7.5 14.2 8C10.5 8.5 8.5 10.5 8 14.2C7.5 10.5 5.5 8.5 1.8 8C5.5 7.5 7.5 5.5 8 1.8Z"/>,
   close: <><path d="M4 4L12 12"/><path d="M12 4L4 12"/></>,
   term: <><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2.4"/><path d="M4.8 6.4L7 8.4L4.8 10.4"/><path d="M8.8 10.6H11.4"/></>,
-  pen: <><path d="M10.4 2.8L13.2 5.6L5.8 13L2.6 13.4L3 10.2Z"/><path d="M8.8 4.4L11.6 7.2"/></>
+  pen: <><path d="M10.4 2.8L13.2 5.6L5.8 13L2.6 13.4L3 10.2Z"/><path d="M8.8 4.4L11.6 7.2"/></>,
+  /** The title bar's view toggles and the right panel's header (KERNEL-1096): the bottom pane, the Session rail as a list, Expand and Locate in the file tree. */
+  panelBottom: <><rect x="1.8" y="2.4" width="12.4" height="11.2" rx="2.4"/><path d="M1.8 9.4H14.2"/></>,
+  railList: <><path d="M2.4 4V4.1"/><path d="M2.4 8V8.1"/><path d="M2.4 12V12.1"/><path d="M5.6 4H13.6"/><path d="M5.6 8H13.6"/><path d="M5.6 12H13.6"/></>,
+  maximize: <><path d="M9.6 2.4H13.6V6.4"/><path d="M6.4 13.6H2.4V9.6"/><path d="M13.6 2.4L9.2 6.8"/><path d="M2.4 13.6L6.8 9.2"/></>,
+  /** The shared viewer's widths (Pen 9.13): a tablet and a phone. The desktop is `computer`. */
+  tablet: <><rect x="3" y="1.8" width="10" height="12.4" rx="2"/><path d="M7 12H9"/></>,
+  phone: <><rect x="4.4" y="1.8" width="7.2" height="12.4" rx="2"/><path d="M7 12H9"/></>,
+  locate: <><circle cx="8" cy="8" r="4.2"/><path d="M8 1.8V3.6"/><path d="M8 12.4V14.2"/><path d="M1.8 8H3.6"/><path d="M12.4 8H14.2"/></>
 }
 
 /** The permission and Build here glyphs, drawn on a 24 unit grid at stroke 2, which scales to the 1.4 of the 16 grid. */

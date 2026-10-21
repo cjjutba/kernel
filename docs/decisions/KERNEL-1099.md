@@ -1,0 +1,5 @@
+**The sidebar's Archived row opens History.** A row above the footer reads "Archived (N)" with a hairline and a chevron, and opens History for every project. The project menu's Archived item and the palette still open it too, scoped to one project and for everyone. The row shows even at zero, so its place never moves between windows. KERNEL-1099.
+
+**Delete from History keeps its unpushed-branch box.** The confirm now lists each branch that was never pushed, with the workspace it belongs to, but Delete still leaves those branches alone until the box is ticked. The engine's safeguard from KERNEL-333 is unchanged, so the dialog's words describe what Delete does, not a stronger delete. KERNEL-1099.
+
+**Discard keeps the worktree and branch.** The confirm is titled and labelled like the Pen frame ("Discard Ivy's work?", "Discard work") and lists the files that go, but its words stay true to the engine: it throws away uncommitted changes after a checkpoint, and the worktree and branch stay. KERNEL-1099.

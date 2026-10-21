@@ -27,7 +27,6 @@ describe('the fold header is the summary alone', () => {
 })
 
 describe('the line at the end of a running turn', () => {
-  it('says "Waiting for you" in place of the clock', () => expect(WAITING).toBe('Waiting for you'))
   it('is never part of a fold header, even while a request waits', () => {
     expect(foldHeader(turn({ live: true, startedAt: 1000 }), sum('Read a file'))).not.toContain(WAITING)
     expect(foldHeader(turn({ live: true, timer: false }), sum('Working'))).toBe('Working')

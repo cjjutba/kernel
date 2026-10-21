@@ -1,4 +1,4 @@
-import type { AccountProfile, BannerKind, Chat, ClaudeAccount, HookStatus, ModelId, Provider, RateLimit, ScriptLine, Workspace } from '@shared/types'
+import type { AccountProfile, BannerKind, Chat, ClaudeAccount, HookStatus, ModelId, Provider, RateLimit, ToastAction, Workspace } from '@shared/types'
 import { MODELS, PROVIDERS } from '@shared/types'
 import { chatProvider, limitProvider } from '@shared/providers'
 import { clock, nearLimit, pctLabel, resetPhrase, switchChoices, WEEKLY_WARN } from '@shared/usage'
@@ -11,10 +11,10 @@ export { clock, resetPhrase }
 export type BannerAction =
   | 'queue' | 'notify' | 'usage' | 'wait' | 'switch'
   | 'newChat' | 'compact' | 'switchModel' | 'retryNow' | 'tryAgain'
-  | 'terminal' | 'signIn' | 'editScript' | 'runAgain' | 'checkHooks' | 'reconnect' | 'archive' | 'switchAccount' | 'providers'
-  | 'switchBack' | 'models' | 'signInAccount'
+  | 'terminal' | 'signIn' | 'checkHooks' | 'reconnect' | 'archive' | 'switchAccount' | 'providers'
+  | 'switchBack' | 'models' | 'signInAccount' | 'dismiss'
 
-export type BannerId = 'folder' | 'signedOut' | 'offline' | 'setup' | 'weekly' | 'session' | 'model' | 'accountNearLimit' | 'nearLimit' | 'weeklyWarn' | 'switchWarning' | 'overloaded' | 'context' | 'hooks'
+export type BannerId = 'folder' | 'signedOut' | 'offline' | 'weekly' | 'session' | 'model' | 'accountNearLimit' | 'nearLimit' | 'weeklyWarn' | 'switchWarning' | 'overloaded' | 'context' | 'hooks'
 
 export interface BannerView {
   id: BannerId
@@ -35,6 +35,15 @@ export interface BannerView {
   signIn?: { provider: Provider; accountId: string; label: string; cli: boolean }
   /** Set on the banners the user can close until their window resets (KERNEL-595), the near-limit offer to switch accounts too (KERNEL-569). */
   dismissKey?: string
+  /**
+   * Where it shows (Pen 14.7). Only a limit that needs a choice is a banner above the composer. Provider, network and Mac errors are a toast, raised once when the condition starts,
+   * and `none` has neither: the composer's placeholder says it all.
+   */
+  as?: 'toast' | 'none'
+  /** The toast for `as: 'toast'`. `key` names the condition, so it is raised once until the condition clears. */
+  toast?: { key: string; title: string; sub: string; actions: ToastAction[] }
+  /** What the composer's placeholder says while this holds, so a person sees why a message can't go (Pen 14.7). */
+  placeholder?: string
 }
 
 /**
@@ -55,19 +64,10 @@ export interface BannerInput {
   online: boolean
   hooks: HookStatus | null
   retry?: { attempt: number; of: number; nextAt: number }
-  /** The workspace's script output, for the setup command that failed. */
-  scripts?: ScriptLine[]
-  setupCode?: number | null
   /** The workspace is the Lead's. The near-limit hold doesn't apply to it, so it has no banner for it (KERNEL-224). */
   isLead?: boolean
   /** The Lead's name, for "Kernel can still answer you". */
   leadName?: string
-  /** Nothing in the chat is held for setup, so setup running or failing doesn't hold it and the composer stays open (KERNEL-490, KERNEL-1012). */
-  skipsSetup?: boolean
-  /** The chat has history, so setup doesn't lock its box (KERNEL-1018). */
-  hasHistory?: boolean
-  /** Messages in the chat wait for setup in main. Only then does the banner say messages queue (KERNEL-1018). */
-  heldForSetup?: boolean
   /** The limit banners the user closed, by `limitBannerKey`. Only the near-limit, 80% and switch-account banners look here (KERNEL-595). */
   dismissed?: ReadonlySet<string>
   /** Settings, Providers: Kernel switches this chat's provider on its own at a limit, so the near-limit offer would only nag (KERNEL-569). */
@@ -102,13 +102,6 @@ export function fallbackModel(current: string, usage: RateLimit[], now: number):
   return MODELS.filter((m) => !m.legacy).map((m) => m.id).find((m) => m !== current && !limited.has(m))
 }
 
-/** "pnpm install" from the script's "$ pnpm install --frozen-lockfile && cp …" line. */
-export function setupCommand(lines: ScriptLine[] = []): string | undefined {
-  const cmd = [...lines].reverse().find((l) => l.kind === 'setup' && l.line.startsWith('$ '))?.line.slice(2).split(' && ')[0]
-  const words = cmd?.split(/\s+/).filter((w) => w && !w.startsWith('-')).slice(0, 2)
-  return words?.length ? words.join(' ') : undefined
-}
-
 /** The one banner this workspace shows, most pressing first, or null. */
 export function bannerFor(i: BannerInput): BannerView | null {
   const { ws, chat, agentName: name, now } = i
@@ -136,7 +129,7 @@ export function bannerFor(i: BannerInput): BannerView | null {
   const subscriptions = choices.headroom.filter((a) => a.auth !== 'apiKey')
   const alt = choices.headroom[0]
   const switchAccount = alt ? { provider, accountId: alt.id, label: alt.label } : undefined
-  const switchAction = alt ? [{ id: 'switchAccount' as const, label: `Switch to ${alt.label}`, primary: true }] : []
+  const switchAction = alt ? [{ id: 'switchAccount' as const, label: alt.auth === 'apiKey' ? 'Use API key' : `Switch to ${alt.label}`, primary: true }] : []
   // No account has headroom and one that would is signed out: the banner says so and offers its sign-in, which is how a limit gets past (KERNEL-618, KERNEL-619).
   const signedOut = choices.signedOut
   const signIn = signedOut ? { provider, accountId: signedOut.id, label: signedOut.label, cli: signedOut.cli } : undefined
@@ -149,50 +142,38 @@ export function bannerFor(i: BannerInput): BannerView | null {
   if (ws.folderGone) return {
     id: 'folder', kind: 'setup', title: "This workspace's folder is gone",
     sub: `${ws.path} was deleted outside Kernel. Archive it, then restore it from History to make the folder again.`,
-    actions: [{ id: 'archive', label: 'Archive', primary: true }], blocks: true
+    actions: [], blocks: true, as: 'none', placeholder: "This chat's folder is gone. Archive the chat, or put the folder back."
   }
 
   const codexOut = provider === 'codex' && accounts.find((a) => a.active && !a.signedIn)
   if (codexOut) return {
     id: 'signedOut', kind: 'auth', title: 'Codex is signed out', sub: 'Agents on Codex cannot run until you sign in. Workspaces and chats are safe.',
-    actions: [{ id: 'providers', label: 'Sign in', primary: true }], blocks: true
+    actions: [{ id: 'providers', label: 'Sign in', primary: true }], blocks: true, as: 'toast', placeholder: 'Sign in to Codex to keep going',
+    toast: { key: `signedOut:codex:${codexOut.id}`, title: 'Codex is signed out', sub: 'Agents on Codex cannot run until you sign in. Workspaces and chats are safe.', actions: [{ label: 'Sign in', route: { name: 'settings', page: 'accounts', tab: 'codex' }, primary: true }] }
   }
 
   // An account Kernel added signs in from its row in Settings, Accounts, in its own folder. `claude /login` in a terminal and the
   // banner's own sign-in would sign in the CLI's login instead (KERNEL-941).
-  if (provider === 'claude' && i.account && !i.account.signedIn) return {
-    id: 'signedOut', kind: 'auth', title: current && !current.cli && !current.alsoCli ? `${current.label} is signed out` : 'Claude Code is signed out',
-    sub: 'Agents cannot run until you sign in. Workspaces and chats are safe.',
-    actions: current && !current.cli && !current.alsoCli
-      ? [{ id: 'providers', label: 'Sign in', primary: true }]
-      : [{ id: 'terminal', label: 'Open terminal' }, { id: 'signIn', label: 'Sign in', primary: true }],
-    blocks: true
+  if (provider === 'claude' && i.account && !i.account.signedIn) {
+    const added = !!current && !current.cli && !current.alsoCli
+    const title = added ? `${current.label} is signed out` : 'Claude Code is signed out'
+    return {
+      id: 'signedOut', kind: 'auth', title, sub: 'Agents cannot run until you sign in. Workspaces and chats are safe.',
+      actions: added ? [{ id: 'providers', label: 'Sign in', primary: true }] : [{ id: 'terminal', label: 'Open terminal' }, { id: 'signIn', label: 'Sign in', primary: true }],
+      blocks: true, as: 'toast', placeholder: `Sign in to ${added ? current.label : 'Claude Code'} to keep going`,
+      toast: added
+        ? { key: `signedOut:claude:${current.id}`, title, sub: 'Sign in again from Settings, Accounts to use it.', actions: [{ label: 'Sign in', route: { name: 'settings', page: 'accounts', tab: 'claude' }, primary: true }] }
+        : { key: 'signedOut:claude:cli', title, sub: 'Run claude auth login in Terminal, then try again.', actions: [{ label: 'Copy command', copy: 'claude auth login' }, { label: 'Try again', recheckAccount: true, primary: true }] }
+    }
   }
 
   if (!i.online) return {
-    id: 'offline', kind: 'offline', title: "You're offline", sub: 'Messages send when you reconnect. Agents finish their step, then wait.',
-    actions: [{ id: 'tryAgain', label: 'Try again' }], blocks: false
+    id: 'offline', kind: 'offline', title: "You're offline", sub: 'Messages you send wait in the queue.',
+    actions: [], blocks: false, as: 'toast', placeholder: "You're offline. Messages queue until you're back.",
+    toast: { key: 'offline', title: "You're offline", sub: 'Messages you send wait in the queue.', actions: [] }
   }
 
-  // Setup failed and nothing waits for it: the chat keeps working, so the banner says so and never blocks (KERNEL-1012). That is a
-  // failed setup in a chat that isn't held, whether main marked the workspace failed (no worktree, nothing sent) or let it run on.
-  const run = ws.setupRun
-  const ranOn = ws.status === 'ready' && !!run?.endedAt && run.end !== 0 && run.end !== null && run.end !== undefined
-  if ((ws.status === 'failed' && i.skipsSetup) || ranOn) return {
-    id: 'setup', kind: 'setup', title: 'Setup failed', sub: `${name} keeps working without it.`,
-    actions: [{ id: 'editScript', label: 'Edit script' }, { id: 'runAgain', label: 'Rerun setup', primary: true }], blocks: false
-  }
-
-  if (ws.status === 'failed') {
-    const cmd = setupCommand(i.scripts)
-    const what = cmd ? `${cmd} exited` : 'The setup script exited'
-    const code = i.setupCode
-    return {
-      id: 'setup', kind: 'setup', title: 'Setup script failed',
-      sub: `${code === null || code === undefined ? `${cmd ?? 'The setup script'} did not finish` : `${what} with code ${code}`}.${i.hasHistory ? (i.heldForSetup ? ' Messages you send queue until setup passes.' : '') : ` ${name} waits until setup passes.`}`,
-      actions: [{ id: 'editScript', label: 'Edit script' }, { id: 'runAgain', label: 'Run again', primary: true }], blocks: !i.hasHistory
-    }
-  }
+  // A setup run that didn't pass is a toast, and so is a worktree git couldn't make: the chat keeps working, and the message stays as Not sent (KERNEL-1093).
 
   // Fable's own weekly limit (`seven_day_overage_included`) is a model limit, shown below.
   // "Notify me" knows the Claude login's windows, so a Codex window or an added account's offers its other actions.
@@ -201,9 +182,9 @@ export function bannerFor(i: BannerInput): BannerView | null {
   if (weekly) {
     const held = i.codexInUse ? `Agents on ${providerName} wait until it resets.` : 'Every project is paused.'
     return {
-      id: 'weekly', kind: 'limit', title: `You've used your ${named('weekly limit')}`,
+      id: 'weekly', kind: 'limit', title: i.codexInUse ? `You've hit ${providerName}'s weekly limit` : "You've hit this week's limit",
       sub: `${weekly.resetsAt ? `Resets ${resetPhrase(weekly.resetsAt, now)}. ${held}${keepGoing}` : i.codexInUse ? `${held}${keepGoing}` : 'Every project is paused until it resets.'}${billed}${signedOutNote}`,
-      actions: [...(provider === 'claude' ? [{ id: 'usage' as const, label: 'View usage' }] : []), ...(notify ? [{ id: 'notify' as const, label: 'Notify me', primary: !alt && !signedOut }] : []), ...switchAction, ...signInAction],
+      actions: [...(notify ? [{ id: 'notify' as const, label: 'Notify me', primary: !alt && !signedOut }] : []), ...switchAction, ...signInAction],
       blocks: !alt, limit: weekly.type, switchAccount, signIn
     }
   }
@@ -215,8 +196,8 @@ export function bannerFor(i: BannerInput): BannerView | null {
       id: 'session', kind: 'limit', title: `You've hit your ${named('5-hour limit')}`,
       sub: `${session.resetsAt ? `Resets ${resetPhrase(session.resetsAt, now)}. ` : ''}${after}${keepGoing}${billed}${signedOutNote}`,
       actions: alt || signedOut
-        ? [...(notify ? [{ id: 'notify' as const, label: 'Notify me' }] : [{ id: 'queue' as const, label: 'Queue message' }]), ...switchAction, ...signInAction]
-        : [{ id: 'queue', label: 'Queue message' }, ...(notify ? [{ id: 'notify' as const, label: 'Notify me', primary: true }] : [])],
+        ? [...(notify ? [{ id: 'notify' as const, label: 'Notify me' }] : []), ...switchAction, ...signInAction]
+        : notify ? [{ id: 'notify' as const, label: 'Notify me', primary: true }] : [],
       blocks: false, limit: 'five_hour', switchAccount, signIn
     }
   }
@@ -226,9 +207,9 @@ export function bannerFor(i: BannerInput): BannerView | null {
     const to = fallbackModel(chat.model, usage, now)
     const when = own.resetsAt ? `It resets ${resetPhrase(own.resetsAt, now)}.` : 'It resets on its own.'
     return {
-      id: 'model', kind: 'limit', title: `You've reached your ${modelLabel(chat.model)} limit`,
-      sub: to ? `${when} ${modelLabel(to)} can pick up where this left off.` : when,
-      actions: to ? [{ id: 'wait', label: 'Wait' }, { id: 'switch', label: `Switch to ${modelLabel(to)}`, primary: true }] : [],
+      id: 'model', kind: 'limit', title: `${modelLabel(chat.model)}'s own limit is used up`,
+      sub: to ? `${name} can carry on with ${modelLabel(to)} until it resets${own.resetsAt ? ` ${resetPhrase(own.resetsAt, now)}` : ''}.` : when,
+      actions: to ? [{ id: 'wait', label: 'Not now' }, { id: 'switch', label: `Use ${modelLabel(to)}`, primary: true }] : [],
       blocks: false, limit: own.type, switchTo: to
     }
   }
@@ -242,9 +223,9 @@ export function bannerFor(i: BannerInput): BannerView | null {
     const key = limitBannerKey('accountNearLimit', near.resetsAt, `${provider}:${active}`)
     if (!i.dismissed?.has(key)) return {
       id: 'accountNearLimit', kind: 'limit',
-      title: `${current.label} is ${near.utilization === undefined ? 'close to' : `at ${pctLabel(near.utilization)} of`} its ${named(near.type === 'five_hour' ? '5-hour limit' : 'weekly limit')}`,
-      sub: `${roomy.label} has usage left.`,
-      actions: [{ id: 'switchAccount', label: `Switch to ${roomy.label}`, primary: true }],
+      title: `${current.label} is ${near.utilization === undefined ? 'close to' : `at ${pctLabel(near.utilization)} of`} its ${named(near.type === 'five_hour' ? '5-hour window' : 'weekly window')}`,
+      sub: `${roomy.label} has room. New work can move there now.`,
+      actions: [{ id: 'dismiss', label: 'Not now' }, { id: 'switchAccount', label: 'Move new work', primary: true }],
       blocks: false, switchAccount: { provider, accountId: roomy.id, label: roomy.label }, dismissKey: key
     }
   }
@@ -259,50 +240,55 @@ export function bannerFor(i: BannerInput): BannerView | null {
     const back = accounts.find((a) => a.id !== current.id && a.signedIn && a.auth !== 'apiKey' && !a.missingModels?.length)
     const agents = [...new Set(lacks.flatMap((m) => m.agents))]
     if (!i.dismissed?.has(key)) return {
-      id: 'switchWarning', kind: 'warn', title: `${current.label}\u2019s plan doesn\u2019t include ${names(lacks.map((m) => m.label))}`,
+      id: 'switchWarning', kind: 'warn', title: `${current.label}\u2019s plan has no ${names(lacks.map((m) => m.label))}`,
       sub: `${names(agents)} ${agents.length === 1 ? 'uses' : 'use'} ${lacks.length === 1 ? 'it' : 'them'}.`,
-      actions: [...(back ? [{ id: 'switchBack' as const, label: `Switch back to ${back.label}` }] : []), { id: 'models', label: 'Models and effort', primary: true }],
+      actions: [...(back ? [{ id: 'switchBack' as const, label: `Switch back to ${back.label}` }] : []), { id: 'models', label: 'Change roles', primary: true }],
       blocks: false, switchAccount: back ? { provider, accountId: back.id, label: back.label } : undefined, dismissKey: key
     }
   }
 
   // A window close to its limit holds teammates' new work (KERNEL-220). Nothing is blocked: turns that run go on, and the Lead can still answer.
   // Only this chat's provider counts, as in the engine (KERNEL-406).
-  const usageAction = provider === 'claude' ? [{ id: 'usage' as const, label: 'View usage' }] : []
+  const usageAction = provider === 'claude' ? [{ id: 'usage' as const, label: 'See usage' }] : []
   // Closing one is remembered for its window (KERNEL-595). The next banner in line shows in its place, and so does the 80% one when
   // the week that holds teammates is the one the user closed: it would say the same thing about the same window.
   const closed = (id: BannerId, resetsAt: number) => !!i.dismissed?.has(limitBannerKey(id, resetsAt))
   const held = !i.isLead && i.usageSettings?.pauseNearLimit !== false ? near : undefined
   if (held?.resetsAt && !closed('nearLimit', held.resetsAt)) return {
-    id: 'nearLimit', kind: 'limit', title: `Close to your ${named(held.type === 'five_hour' ? '5-hour limit' : 'weekly limit')}`,
-    sub: `New work from teammates waits until ${untilPhrase(held.resetsAt, now)}. ${i.leadName ?? 'Kernel'} can still answer you.`,
-    actions: usageAction, blocks: false, dismissKey: limitBannerKey('nearLimit', held.resetsAt)
+    id: 'nearLimit', kind: 'limit', title: `${held.utilization === undefined ? 'Most' : pctLabel(held.utilization)} of the ${named(held.type === 'five_hour' ? '5-hour window' : 'weekly window')} used`,
+    sub: `Turns in progress finish. New work waits until ${untilPhrase(held.resetsAt, now)}.`,
+    actions: notify ? [{ id: 'notify', label: 'Notify me' }] : usageAction, blocks: false, limit: held.type, dismissKey: limitBannerKey('nearLimit', held.resetsAt)
   }
 
   const week = usage.find((l) => l.type === 'seven_day' && l.resetsAt !== undefined && l.resetsAt * 1000 > now && (l.utilization ?? 0) >= WEEKLY_WARN)
   if (week?.resetsAt && i.usageSettings?.warnBeforeWeekly !== false && !closed('weeklyWarn', week.resetsAt) && !closed('nearLimit', week.resetsAt)) return {
-    id: 'weeklyWarn', kind: 'limit', title: `You've used ${pctLabel(week.utilization ?? WEEKLY_WARN)} of this week's ${named('limit')}`,
+    id: 'weeklyWarn', kind: 'limit', title: `${pctLabel(week.utilization ?? WEEKLY_WARN)} of this week's ${named('limit')} used`,
     sub: `It resets ${resetPhrase(week.resetsAt, now)}.`, actions: usageAction, blocks: false, dismissKey: limitBannerKey('weeklyWarn', week.resetsAt)
   }
 
   if (i.retry) {
     const secs = Math.max(0, Math.ceil((i.retry.nextAt - now) / 1000))
+    const vendor = provider === 'codex' ? 'OpenAI' : 'Anthropic'
+    const left = (n: number) => `${n} second${n === 1 ? '' : 's'}`
     return {
-      id: 'overloaded', kind: 'retry', title: 'Claude is overloaded',
+      id: 'overloaded', kind: 'retry', title: `${vendor} is overloaded`,
       sub: `${secs > 0 ? `Retrying in ${secs}s` : 'Retrying now'}, attempt ${i.retry.attempt} of ${i.retry.of}. Your message is safe.`,
-      actions: [{ id: 'switchModel', label: 'Switch model' }, { id: 'retryNow', label: 'Retry now', primary: true }], blocks: false
+      actions: [{ id: 'switchModel', label: 'Switch model' }, { id: 'retryNow', label: 'Retry now', primary: true }], blocks: false, as: 'toast',
+      placeholder: secs > 0 ? `Kernel retries in ${left(secs)}` : 'Kernel retries now',
+      toast: { key: `overloaded:${chat?.id ?? ''}`, title: `${vendor} is overloaded`, sub: `Kernel retries ${name}'s turn ${secs > 0 ? `in ${left(secs)}` : 'now'}.`, actions: chat ? [{ label: 'Retry now', retryNow: chat.id, primary: true }] : [] }
     }
   }
 
   if (chat && (chat.context ?? 0) >= CONTEXT_WARN) return {
-    id: 'context', kind: 'context', title: 'Context is almost full', sub: 'Compacting keeps a summary and frees space. A new tab starts clean in this chat.',
-    actions: [{ id: 'newChat', label: 'New tab' }, { id: 'compact', label: 'Compact now', primary: true }], blocks: false
+    id: 'context', kind: 'context', title: `This chat's context is ${(chat.context ?? 0) >= 100 ? 'full' : 'almost full'}`, sub: `Compact it to keep going. ${name} keeps a summary of what happened.`,
+    actions: [{ id: 'compact', label: 'Compact now', primary: true }], blocks: false
   }
 
   // Out-of-date hooks Kernel couldn't rewrite at start get a 401, so outside sessions are as cut off as with the server down.
   if (i.hooks && (!i.hooks.listening || i.hooks.needsInstall)) return {
-    id: 'hooks', kind: 'hooks', title: 'Hooks are disconnected', sub: 'Agent statuses stop updating. Agents keep working, approvals fall back to the terminal.',
-    actions: [{ id: 'checkHooks', label: 'Check hooks' }, { id: 'reconnect', label: 'Reconnect', primary: true }], blocks: false
+    id: 'hooks', kind: 'hooks', title: "Kernel can't hear from agents", sub: "Hooks stopped. Statuses stop updating until they're back.",
+    actions: [{ id: 'checkHooks', label: 'Check hooks' }, { id: 'reconnect', label: 'Reconnect', primary: true }], blocks: false, as: 'toast',
+    toast: { key: 'hooks', title: "Kernel can't hear from agents", sub: "Hooks stopped. Statuses stop updating until they're back.", actions: [{ label: 'Check hooks', modal: { name: 'checkHooks' }, primary: true }] }
   }
 
   return null

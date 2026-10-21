@@ -7,6 +7,7 @@ import { mergeBlock } from '@shared/merge'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { git } from '../src/main/services/exec'
+import { fakeCodex } from './helpers/fakeCodex'
 import { loadRepoSettings, reviewOf, reviewPolicyOf, saveAlwaysReview, saveReviewSettings, sharedMergeOf, upsertTomlTable } from '../src/main/services/settings'
 import { inPaths, kindsFor, lensAgent } from '../src/main/services/lenses'
 import { toolPolicy } from '../src/main/services/agentTools'
@@ -37,7 +38,7 @@ async function setup(o: { settings?: string; files?: Record<string, string>; app
   const repo = await tempRepo({ ...AGENTS, ...(o.settings ? { '.kernel/settings.toml': o.settings } : {}), ...o.files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ version: 2, hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { autoReview: true }, ...o.app }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ version: 2, hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { autoReview: true }, ...o.app }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   onTestFinished(() => k.stop({ budgetMs: 0 }))
@@ -127,7 +128,7 @@ describe('which reviews a PR gets', () => {
     // The code review is asked to look at the new commit, once, and the new kind gets its brief.
     const [code, ux] = k.store.chats(rws.id)
     expect(sent.map((m) => m.chatId)).toEqual([code.id, ux.id])
-    expect(sent[0].text).toMatch(new RegExp(`^PR #${ws.prNumber} has new commits, up to [0-9a-f]{7}\\. Review it again`))
+    expect(sent[0].text).toMatch(new RegExp(`^PR #${ws.prNumber} has new commits\\. Your worktree is now on its head commit [0-9a-f]{40}\\. Review it again`))
     expect(sent[1].text).toBe(`Run the UX review of PR #${ws.prNumber} "Task 1" by Christian.`)
     await k.reviews.onReady(ws.id)
     expect(sent).toHaveLength(2)
@@ -171,6 +172,92 @@ describe('which reviews a PR gets', () => {
     expect(lenses(rws)).toEqual([{ kind: 'code' }, { kind: 'security', agent: 'wren', optional: true }])
     expect(chatOf(rws, 'security')).toMatchObject({ title: 'Security review', model: 'claude-haiku-4-5-20251001' })
     expect(k.sessions['d'].agentFor(rws, chatOf(rws, 'security'))).toMatchObject({ id: 'wren' })
+  })
+
+  it("starts a kind's chat on the reviewer's other side while its own provider is at its limit (KERNEL-1055)", async () => {
+    const { k, pr, reviewsOf, chatOf } = await setup({ settings: '[review.security]\nagent = "wren"\nrequired = false\nmodel = "claude-haiku-4-5-20251001"\n' })
+    ;(k.providers as unknown as { load: () => { codex: { cli?: { signedIn?: boolean } } } }).load().codex.cli = { signedIn: true }
+    k.store.saveMeta('limits', [{ type: 'five_hour', status: 'rejected', resetsAt: Math.round(Date.now() / 1000) + 3600 }])
+    const pushed: unknown[] = []
+    const listen = (e: { type: string }) => { if (e.type === 'providerFellBack') pushed.push(e) }
+    bus.on('push', listen)
+    onTestFinished(() => { bus.off('push', listen) })
+    const ws = await pr({ 'a.txt': 'a\n' })
+    await k.reviews.onReady(ws.id)
+    const [rws] = reviewsOf(ws.id)
+    const reviewer = k.settings.models.roles.reviewer.codex
+    expect(chatOf(rws, 'security')).toMatchObject({ provider: 'codex', model: reviewer.model, effort: reviewer.effort })
+    expect(chatOf(rws, 'code')).toMatchObject({ provider: 'codex', model: reviewer.model })
+    expect(pushed).toContainEqual({ type: 'providerFellBack', workspaceId: rws.id, from: 'claude', to: 'codex' })
+  })
+
+  describe('cross-model review (KERNEL-1059)', () => {
+    const codexUp = (k: Awaited<ReturnType<typeof setup>>['k'], o: { limits?: object[]; signedIn?: boolean } = {}) => {
+      ;(k.providers as unknown as { load: () => { codex: { cli?: { signedIn?: boolean } } } }).load().codex.cli = { signedIn: o.signedIn ?? true }
+      k.store.saveMeta('limits', o.limits ?? [{ type: 'five_hour', status: 'allowed', provider: 'codex', utilization: 0.1 }])
+    }
+    const ran = async (o: Parameters<typeof setup>[0], prep: (k: Awaited<ReturnType<typeof setup>>['k']) => void, builder?: 'codex') => {
+      const s = await setup(o)
+      prep(s.k)
+      const ws = await s.pr({ 'a.txt': 'a\n' })
+      if (builder) for (const c of s.k.store.chats(ws.id)) s.k.store.saveChat({ ...c, provider: builder })
+      await s.k.reviews.onReady(ws.id)
+      return { ...s, rws: s.reviewsOf(ws.id)[0] }
+    }
+
+    it('reviews a Claude-built PR on Codex, and a Codex-built PR on Claude', async () => {
+      const a = await ran({}, (k) => codexUp(k))
+      expect(a.chatOf(a.rws, 'code')).toMatchObject({ provider: 'codex' })
+      const b = await ran({}, (k) => codexUp(k, { limits: [{ type: 'five_hour', status: 'allowed', provider: 'codex' }, { type: 'five_hour', status: 'allowed' }] }), 'codex')
+      expect(b.chatOf(b.rws, 'code').provider ?? 'claude').toBe('claude')
+    })
+
+    it("stays on the builder's provider when Codex isn't signed in or is at its limit", async () => {
+      const out = await ran({}, (k) => codexUp(k, { signedIn: false }))
+      expect(out.chatOf(out.rws, 'code').provider ?? 'claude').toBe('claude')
+      const full = await ran({}, (k) => codexUp(k, { limits: [{ type: 'five_hour', status: 'rejected', provider: 'codex', resetsAt: Math.round(Date.now() / 1000) + 3600 }] }))
+      expect(full.chatOf(full.rws, 'code').provider ?? 'claude').toBe('claude')
+      const near = await ran({ app: { usage: { pauseNearLimit: true } } }, (k) => codexUp(k, { limits: [{ type: 'five_hour', status: 'allowed', provider: 'codex', utilization: 0.99, resetsAt: Math.round(Date.now() / 1000) + 3600 }] }))
+      expect(near.chatOf(near.rws, 'code').provider ?? 'claude').toBe('claude')
+    })
+
+    it('reviews on Codex right after sign-in, before any usage read (KERNEL-1076)', async () => {
+      const fresh = await ran({}, (k) => codexUp(k, { limits: [] }))
+      expect(fresh.chatOf(fresh.rws, 'code')).toMatchObject({ provider: 'codex' })
+    })
+
+    it("stays on the builder's provider when Codex's usage read failed", async () => {
+      const failed = await ran({}, (k) => {
+        codexUp(k, { limits: [] })
+        ;(k.providers as unknown as { usageFailed: Set<string> }).usageFailed.add('codex:cli')
+      })
+      expect(failed.chatOf(failed.rws, 'code').provider ?? 'claude').toBe('claude')
+    })
+
+    it("stays on the builder's provider when Codex reads the account but not its rate limits (KERNEL-1076)", async () => {
+      const fake = await fakeCodex()
+      const s = await setup()
+      codexUp(s.k, { limits: [] })
+      ;(s.k.providers as unknown as { binary: () => { path: string } }).binary = () => ({ path: fake.bin })
+      process.env.FAKE_CODEX_LIMITS_FAIL = '1'
+      try { await s.k.providers.readUsage({ provider: 'codex', force: true }) } finally { delete process.env.FAKE_CODEX_LIMITS_FAIL }
+      expect(s.k.providers.usageReadFailed('codex')).toBe(true)
+      const ws = await s.pr({ 'a.txt': 'a\n' })
+      await s.k.reviews.onReady(ws.id)
+      expect(s.chatOf(s.reviewsOf(ws.id)[0], 'code').provider ?? 'claude').toBe('claude')
+    })
+
+    it('lets an explicit provider in [review] decide', async () => {
+      const s = await ran({ settings: '[review.code]\nprovider = "claude"\n' }, (k) => codexUp(k))
+      expect(s.chatOf(s.rws, 'code').provider ?? 'claude').toBe('claude')
+    })
+
+    it('records the provider on the verdict', async () => {
+      const s = await ran({}, (k) => codexUp(k))
+      const chat = s.chatOf(s.rws, 'code')
+      await s.k.reviews.submitReview(s.rws.id, { verdict: 'approved', summary: 'ok' }, chat.id)
+      expect(s.k.store.workspace(s.rws.reviewOf!)!.reviews![0].provider).toBe('codex')
+    })
   })
 
   it("never lets an agent review its own PR with its own prompt", async () => {
@@ -483,5 +570,92 @@ describe('paths and prompts', () => {
     expect(lensAgent('ux').prompt).toContain('The code and security reviews cover those.')
     const rule = reviewRule({ author: 'Christian', task: 'T', workspaceId: 'w', branch: 'feat/x', base: 'origin/main', lens: 'security', others: ['code', 'ux'] })
     expect(rule).toContain('You run the security review of it. The code and UX reviews run in other chats of this workspace, so block only on what the security review covers and leave the rest to them.')
+  })
+})
+
+describe('the review worktree is on the PR head before the session starts (KERNEL-1083)', () => {
+  /** Gives the project an origin, so Kernel fetches before a round. */
+  async function withOrigin_(s: Awaited<ReturnType<typeof setup>>) {
+    const bare = await mkdtemp(join(tmpdir(), 'kernel-origin-'))
+    await git(bare, 'init', '-q', '--bare')
+    await git(s.repo, 'remote', 'add', 'origin', bare)
+    await git(s.repo, 'push', '-q', 'origin', 'HEAD')
+    return s
+  }
+  const headOf = async (path: string) => (await git(path, 'rev-parse', 'HEAD')).trim()
+
+  it('puts the worktree on the exact head SHA, even when the branch is ahead of it, before any turn', async () => {
+    const s = await withOrigin_(await setup())
+    const ws = await s.pr({ 'a.txt': 'a\n' })
+    const head = ws.prHead!
+    await writeFile(join(ws.path, 'b.txt'), 'b\n')
+    await git(ws.path, 'add', '-A')
+    await git(ws.path, 'commit', '-qm', 'ahead of the PR head')
+    // The first turn waits for setup, so it can't have run before the worktree moved.
+    const sent: string[] = []
+    s.k.sessions.send = async (_id, parts) => { sent.push(parts.map((p) => (p.type === 'text' ? p.text : '')).join('')); return { queued: false } }
+    await s.k.reviews.onReady(ws.id)
+    const [rws] = s.reviewsOf(ws.id)
+    expect(await headOf(rws.path)).toBe(head)
+  })
+
+  it('moves the worktree to the new head on a re-review and names it in the message', async () => {
+    const s = await withOrigin_(await setup())
+    const ws = await s.pr({ 'a.txt': 'a\n' })
+    await s.k.reviews.onReady(ws.id)
+    const [rws] = s.reviewsOf(ws.id)
+    const sent: string[] = []
+    s.k.sessions.send = async (_id, parts) => { sent.push(parts.map((p) => (p.type === 'text' ? p.text : '')).join('')); return { queued: false } }
+    await writeFile(join(ws.path, 'c.txt'), 'c\n')
+    await git(ws.path, 'add', '-A')
+    await git(ws.path, 'commit', '-qm', 'second')
+    const next = await headOf(ws.path)
+    s.k.store.saveWorkspace({ ...s.k.store.workspace(ws.id)!, prHead: next })
+    expect(await headOf(rws.path)).not.toBe(next)
+    await s.k.reviews.onReady(ws.id)
+    expect(await headOf(rws.path)).toBe(next)
+    expect(sent[0]).toContain(next)
+  })
+
+  it('starts no round when the fetch fails: no workspace, no session', async () => {
+    const s = await withOrigin_(await setup())
+    const ws = await s.pr({ 'a.txt': 'a\n' })
+    await git(s.repo, 'remote', 'set-url', 'origin', join(tmpdir(), 'kernel-no-such-origin'))
+    const sent: string[] = []
+    s.k.sessions.send = async (_id, parts) => { sent.push(parts.map((p) => (p.type === 'text' ? p.text : '')).join('')); return { queued: false } }
+    const notes: string[] = []
+    const note = (e: { warn?: boolean; text: string; object?: string }) => { if (e.warn) notes.push(`${e.text} ${e.object}`) }
+    bus.on('activity', note)
+    await s.k.reviews.onReady(ws.id)
+    bus.off('activity', note)
+    expect(s.reviewsOf(ws.id)).toHaveLength(0)
+    expect(sent).toHaveLength(0)
+    expect(notes).toContain(`couldn't start the review of PR #${ws.prNumber}`)
+  })
+
+  it('stops a re-review before any message when the fetch fails', async () => {
+    const s = await withOrigin_(await setup())
+    const ws = await s.pr({ 'a.txt': 'a\n' })
+    await s.k.reviews.onReady(ws.id)
+    const [rws] = s.reviewsOf(ws.id)
+    const before = await headOf(rws.path)
+    await writeFile(join(ws.path, 'c.txt'), 'c\n')
+    await git(ws.path, 'add', '-A')
+    await git(ws.path, 'commit', '-qm', 'second')
+    s.k.store.saveWorkspace({ ...s.k.store.workspace(ws.id)!, prHead: await headOf(ws.path) })
+    await git(s.repo, 'remote', 'set-url', 'origin', join(tmpdir(), 'kernel-no-such-origin'))
+    const sent: string[] = []
+    s.k.sessions.send = async (_id, parts) => { sent.push(parts.map((p) => (p.type === 'text' ? p.text : '')).join('')); return { queued: false } }
+    await s.k.reviews.onReady(ws.id)
+    expect(sent).toHaveLength(0)
+    expect(await headOf(rws.path)).toBe(before)
+  })
+
+  it('has no instruction to fetch or reset in any review rule, and names the commit', () => {
+    for (const lens of [undefined, 'code', 'security', 'ux'] as const) {
+      const rule = reviewRule({ author: 'Christian', task: 'T', workspaceId: 'w', branch: 'feat/x', head: 'abc123def456', base: 'origin/main', pr: { number: 7 }, ...(lens ? { lens } : {}) })
+      expect(rule).not.toMatch(/reset --hard|git reset|git fetch/)
+      expect(rule).toContain('at commit abc123def456')
+    }
   })
 })

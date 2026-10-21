@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Chat, ScriptLine, Workspace } from '@shared/types'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { call } from '../../../api'
@@ -6,26 +6,28 @@ import { isLeadWorkspace, leadOf } from '../../../lead'
 import { actions, getState, go, loadWorkspace, useStore } from '../../../store'
 import { archiveChatFromSidebar } from '../archiveChat'
 import { archiveByHand } from '../byHand'
-import { Banner, Button, useBusy } from '../../../ui'
+import { Button, Icon, IconButton, useBusy, type IconName } from '../../../ui'
+import { useSwipeDismiss } from '../../../ui/useSwipeDismiss'
 import { attempt } from '../MessageActions'
 import { commandComposer, focusComposerWhenOpen } from '../composer/bus'
-import { bannerFor, setupCommand, type BannerAction, type BannerView } from './model'
+import { bannerFor, type BannerAction, type BannerId, type BannerView } from './model'
 import { chatProvider } from '@shared/providers'
 import { useCodexInUse } from '../composer/providerModels'
 import { dismissLimitBanner, useLimitDismissed } from './limitDismissed'
+import { retryNow } from './retryNow'
 import './banners.css'
 
 /** What a banner button says while its call runs. Actions that only move focus or open a screen have none. */
 const BUSY_LABEL: Partial<Record<BannerAction, string>> = {
   notify: 'Setting up', switch: 'Switching', newChat: 'Starting', compact: 'Compacting', retryNow: 'Retrying',
-  tryAgain: 'Checking', terminal: 'Opening', signIn: 'Signing in', runAgain: 'Starting', reconnect: 'Reconnecting', archive: 'Archiving', switchAccount: 'Switching', switchBack: 'Switching', signInAccount: 'Signing in'
+  tryAgain: 'Checking', terminal: 'Opening', signIn: 'Signing in', reconnect: 'Reconnecting', archive: 'Archiving', switchAccount: 'Switching', switchBack: 'Switching', signInAccount: 'Signing in'
 }
 
 /**
  * The banner this workspace shows right now, from the store. Ticks once a second while a retry counts down, and redraws at
  * local midnight so a reset time read as "tomorrow" becomes "at 4:00 AM". Midnight changes only the wording, never a status.
  */
-export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, agentName: string, running: boolean, skipsSetup = false, hasHistory = false, heldForSetup = false): BannerView | null {
+export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, agentName: string, running: boolean): BannerView | null {
   const usage = useStore((s) => s.usage)
   const account = useStore((s) => s.account)
   const accounts = useStore((s) => s.accounts)
@@ -33,11 +35,6 @@ export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, age
   const online = useStore((s) => s.system.online)
   const hooks = useStore((s) => s.system.hooks)
   const retry = useStore((s) => (chat ? s.retry[chat.id] : undefined))
-  // Only a failed setup reads the script log, and only for the command that failed. Selecting that string, not the log, keeps a
-  // noisy script from rendering the workspace for every line it prints.
-  const setupCmd = useStore((s) => (ws?.status === 'failed' ? setupCommand(s.scripts[ws.id]) : undefined))
-  const scripts = useMemo<ScriptLine[] | undefined>(() => (setupCmd ? [{ kind: 'setup', line: `$ ${setupCmd}`, stream: 'stdout' }] : undefined), [setupCmd])
-  const setupCode = useStore((s) => (ws ? s.scriptExit[ws.id]?.setup : undefined))
   // The near-limit hold leaves the Lead alone, and its banner names the Lead (KERNEL-224).
   const isLead = useStore((s) => !!ws && isLeadWorkspace(ws, ws.projectId, leadOf(s.agents, ws.projectId)?.id))
   const leadName = useStore((s) => (ws ? leadOf(s.agents, ws.projectId)?.name : undefined))
@@ -64,7 +61,7 @@ export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, age
     return () => clearTimeout(t)
   }, [])
   if (!ws) return null
-  return bannerFor({ ws, chat, agentName, running, usage, account, accounts, codexInUse, online, hooks, retry, scripts, setupCode, isLead, leadName, skipsSetup, hasHistory, heldForSetup, dismissed, switchAtLimit, keepChats, usageSettings: { pauseNearLimit, warnBeforeWeekly }, now: retry ? now : Date.now() })
+  return bannerFor({ ws, chat, agentName, running, usage, account, accounts, codexInUse, online, hooks, retry, isLead, leadName, dismissed, switchAtLimit, keepChats, usageSettings: { pauseNearLimit, warnBeforeWeekly }, now: retry ? now : Date.now() })
 }
 
 /**
@@ -78,8 +75,6 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
   // "Notify me" and "Wait" settle the banner without clearing it, as the canvas does. Keyed by banner, so a new one starts fresh.
   const [settled, setSettled] = useState<{ id: string; notified?: boolean } | null>(null)
   const mine = settled?.id === view.id ? settled : null
-  // A failed setup opens its log, which is where the reason is.
-  useEffect(() => { if (view.id === 'setup') actions.ui.setWorkspaceView({ bottom: 'setup' }) }, [view.id])
   // Signed out: coming back from a terminal where the user ran `claude /login` checks again at once. Main also checks every 10s.
   useEffect(() => {
     if (view.id !== 'signedOut') return
@@ -98,6 +93,7 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
         setSettled({ id: view.id, notified: true })
       })
       case 'usage': return go({ name: 'settings', page: 'accounts' })
+      case 'dismiss': return view.dismissKey && dismissLimitBanner(view.dismissKey)
       case 'wait': return setSettled({ id: view.id })
       case 'switch': return chat && view.switchTo && run(id, 'Could not switch the model', async () => {
         await call('chats.configure', { chatId: chat.id, model: view.switchTo })
@@ -139,11 +135,6 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
         })
         : go({ name: 'settings', page: 'accounts', tab: view.signIn.provider }))
       case 'providers': return go({ name: 'settings', page: 'accounts', tab: chat ? chatProvider(chat) : 'claude' })
-      case 'editScript': return go({ name: 'settings', page: 'project', projectId: ws.projectId, section: 'setup' })
-      case 'runAgain': return run(id, 'Could not run setup', async () => {
-        actions.ui.setWorkspaceView({ bottom: 'setup' })
-        await call('scripts.run', { workspaceId: ws.id, kind: 'setup' })
-      })
       case 'checkHooks': return actions.ui.openModal({ name: 'checkHooks' })
       case 'reconnect': return run(id, 'Could not restart the hook server', async () => actions.system.setHooks(await call('hooks.restart', {})))
       // A Lead chat archives with the workspaces it started, the way its row does (KERNEL-405).
@@ -157,24 +148,55 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
 
   const sub = mine?.notified ? 'You will get a notification when it resets.' : view.sub
   const shown = mine ? [] : view.actions
+  const dismiss = view.dismissKey ? () => dismissLimitBanner(view.dismissKey!) : undefined
   return (
-    <Banner
-      key={view.dismissKey ?? view.id} kind={view.kind} title={view.title} onDismiss={view.dismissKey ? () => dismissLimitBanner(view.dismissKey!) : undefined}
+    <LimitBanner
+      key={view.dismissKey ?? view.id} view={view} title={view.title} onDismiss={dismiss}
       actions={shown.length ? <span className="wsb-actions">{shown.map((a) => (
         <Button key={a.id} variant={a.primary ? 'primary' : 'secondary'} className="wsb-btn" busy={busy === a.id || (switchingHere && (a.id === 'switchAccount' || a.id === 'switchBack'))} busyLabel={BUSY_LABEL[a.id]} disabled={busy !== null || (switching !== null && (a.id === 'switchAccount' || a.id === 'switchBack'))} onClick={() => act(a.id)}>{a.label}</Button>
       ))}</span> : undefined}
-    >{sub}</Banner>
+    >{sub}</LimitBanner>
+  )
+}
+
+/** The glyph in front of a banner: what it is about, never a status color. */
+const GLYPH: Partial<Record<BannerId, IconName>> = {
+  session: 'gauge', weekly: 'calendarX', model: 'burst', accountNearLimit: 'gauge', nearLimit: 'gauge', weeklyWarn: 'calendarClock', switchWarning: 'warning', context: 'circleGauge'
+}
+
+/**
+ * The banner above the composer (Pen 14.4 and 14.7): a `surface` card with a 28px glyph tile, a title, one line under it and the choice as buttons. A limit that stops work and has nowhere to go
+ * wears the red `del-fill` on its glyph, one with a choice offered the amber `needs-fill`, and everything else the quiet ink. It is never a red background. A banner with a `dismissKey` closes with
+ * a drag or swipe to the right, as a toast does.
+ */
+function LimitBanner({ view, title, children, actions, onDismiss }: { view: BannerView; title: string; children?: ReactNode; actions?: ReactNode; onDismiss?: () => void }) {
+  const { ref, leaving, leave, handlers } = useSwipeDismiss<HTMLDivElement>(onDismiss)
+  const hard = view.id === 'session' || view.id === 'weekly'
+  const tone = hard ? (view.switchAccount || view.signIn ? 'needs' : 'del') : undefined
+  return (
+    <div role="alert" className="banner lb" data-kind={view.kind} data-dismissible={onDismiss ? '' : undefined} data-leaving={leaving || undefined} ref={ref} {...handlers}>
+      <span className="lb-glyph" data-tone={tone} aria-hidden="true"><Icon name={GLYPH[view.id] ?? 'warning'} size={14} /></span>
+      <div className="grow"><div className="banner-title">{title}</div>{children && <div className="lb-sub">{children}</div>}</div>
+      {actions}
+      {onDismiss && <IconButton className="banner-close" icon="close" label="Dismiss" size={12} onClick={leave} />}
+    </div>
   )
 }
 
 /**
- * Retry now: send the last message again at once. The waiting retry is interrupted and the copy goes first. The engine
- * sends it with its sender, so a Kernel update sent again is still Kernel's, not the user's (KERNEL-127).
+ * Provider, network and Mac errors are a toast, raised when the condition starts (Pen 14.7), and again when a chat shows it afresh. Its `key` names the condition, so a chat tab that
+ * changes under the same condition doesn't raise it twice, and neither does a render that runs an effect twice. The composer's placeholder says why a message can't go, so the toast can leave.
  */
-async function retryNow(chatId: string) {
-  const items = await call('chats.items', { chatId })
-  const user = [...items].reverse().find((i) => i.kind === 'user')
-  if (user?.kind !== 'user') return
-  await call('chats.retry', { chatId, itemId: user.id, now: true })
-  actions.chats.setQueue(chatId, await call('chats.queue', { chatId }))
+export function useProblemToast(view: BannerView | null | undefined) {
+  const key = view?.toast?.key
+  // A condition that changes while its toast is still up (the account loads, then the accounts) replaces it, so one problem never shows two toasts.
+  const shown = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    const t = view?.toast
+    if (!t) return
+    if (getState().ui.toasts.some((x) => x.title === t.title && x.sub === t.sub)) return
+    if (shown.current) actions.ui.dismissToast(shown.current)
+    const [action, other] = [...t.actions].reverse()
+    shown.current = actions.ui.toast({ title: t.title, sub: t.sub, glyph: 'error', ...(action ? { action } : {}), ...(other ? { other } : {}) })
+  }, [key])
 }

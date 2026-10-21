@@ -78,20 +78,26 @@ export function filterAgents(team: AgentDef[], query: string, limit = 5): AgentD
 
 /**
  * The @ menu: its rows under their headings. Agents (KERNEL-746) come first and only in the Lead's chat, which passes
- * the team; every other composer passes none. Files and folders share Files.
+ * the team; every other composer passes none. Rows from a reference folder (KERNEL-750) are Reference folders, with the project's own under This project.
+ * Otherwise a search that finds only folders lists Folders, and the rest Files.
  */
 export function mentionMenu(entries: FileEntry[], agents: AgentDef[] = []): { label: string; rows: MentionRow[] }[] {
+  const rows = (list: FileEntry[]): MentionRow[] => list.map((entry): MentionRow => ({ kind: 'file', entry }))
+  const reference = entries.filter((e) => e.reference)
+  const own = entries.filter((e) => !e.reference)
   return [
-    { label: 'Agents', rows: agents.map((agent): MentionRow => ({ kind: 'agent', agent })) },
-    { label: 'Files', rows: entries.map((entry): MentionRow => ({ kind: 'file', entry })) }
+    { label: 'Teammates', rows: agents.map((agent): MentionRow => ({ kind: 'agent', agent })) },
+    ...(reference.length
+      ? [{ label: 'Reference folders', rows: rows(reference) }, { label: 'This project', rows: rows(own) }]
+      : [{ label: own.length && own.every((e) => e.dir) ? 'Folders' : 'Files', rows: rows(own) }])
   ].filter((g) => g.rows.length)
 }
 
-/** What picking an @ row inserts. A teammate becomes an agent part. A folder's path ends in `/`, so the agent gets the folder, not the files in it. */
+/** What picking an @ row inserts. A teammate becomes an agent part. A folder's path ends in `/`, so the agent gets the folder, not the files in it, and its token reads that whole path. */
 export function mentionPart(r: MentionRow): ChatPart {
   if (r.kind === 'agent') return { type: 'agent', name: r.agent.name, agentId: r.agent.id }
   const f = r.entry
-  return f.dir ? { type: 'file', name: `${baseName(f.path)}/`, path: `${f.path}/`, dir: true } : { type: 'file', name: baseName(f.path), path: f.path }
+  return f.dir ? { type: 'file', name: `${f.path}/`, path: `${f.path}/`, dir: true } : { type: 'file', name: baseName(f.path), path: f.path }
 }
 
 export const baseName = (path: string) => path.slice(path.lastIndexOf('/') + 1)

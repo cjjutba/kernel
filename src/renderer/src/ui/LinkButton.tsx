@@ -15,7 +15,7 @@ export interface LinkButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>
 }
 
 /** The one text button that acts like a link (DESIGN.md, Buttons). Drive `busy` with `useBusy`, as for Button. */
-export function LinkButton({ variant = 'inline', size, busy, busyLabel, busyPattern = 'ripple-out', disabled, className, children, type = 'button', ...rest }: LinkButtonProps) {
+export function LinkButton({ variant = 'inline', size, busy, busyLabel, busyPattern = 'ripple', disabled, className, children, type = 'button', ...rest }: LinkButtonProps) {
   return (
     <button type={type} className={['link-button', className].filter(Boolean).join(' ')} data-variant={variant} data-size={size} disabled={disabled || busy} aria-busy={busy || undefined} {...rest}>
       {busy && <Spinner label={null} pattern={busyPattern} />}

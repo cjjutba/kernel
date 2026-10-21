@@ -60,8 +60,6 @@ export const APP_SETTING_TIMING: Record<string, SettingTiming> = {
   'workspace.oneCurrentBranchPerProject': 'newWorkspaces',
   // The branch a new Lead chat starts on, in features/workspaces.ts and features/lead.ts.
   'workspace.leadBranchPattern': 'newChats',
-  // features/lead.ts, when a Lead chat starts.
-  'workspace.leadWaitForSetup': 'newChats',
   // features/lead.ts, when a Lead chat is archived.
   'workspace.archiveChatWorkspaces': 'now',
   // features/setup.ts, when a workspace is made.
@@ -93,6 +91,8 @@ export const APP_SETTING_TIMING: Record<string, SettingTiming> = {
   'providers.codex.useSystem': 'nextTurn',
   // The Codex runner passes it to thread/start and thread/resume, when a chat's process starts.
   'providers.codex.personality': 'newChats',
+  // Team.pickFor in features/team.ts, when a chat or workspace starts.
+  'providers.fallback': 'newChats',
   // The renderer seeds a new project's agents with it (screens/projects/draft.ts).
   'team.defaultTemplate': 'newProjects',
   // newLeadChat() in features/lead.ts, when a chat with Kernel starts. Open chats keep their mode (KERNEL-770).
@@ -119,6 +119,8 @@ export const APP_SETTING_TIMING: Record<string, SettingTiming> = {
   'pr.autoReview': 'now',
   // features/lead.ts, on each merge_workspace call.
   'pr.leadMerge': 'now',
+  // features/evidence.ts, on each update of a PR's evidence.
+  'pr.evidenceComment': 'now',
   // features/prs.ts, on each PR change.
   'pr.autoMerge': 'now',
   // prInstructions() in features/prs.ts, when the action is sent.
@@ -136,7 +138,11 @@ export const APP_SETTING_TIMING: Record<string, SettingTiming> = {
   'terminal.custom': 'now',
   // features/tools.ts adds share_file to the tools a chat's process starts with.
   'experimental.sharing': 'newChats',
-  'privacy.telemetry': 'now'
+  'privacy.telemetry': 'now',
+  // Onboarding's choices seed the team of a project added after them (KERNEL-1088).
+  'onboarding.done': 'now',
+  'onboarding.out': 'newProjects',
+  'onboarding.reviewer': 'newProjects'
 }
 
 type Project = Omit<Required<ProjectSettings>, 'sources' | 'missingReferences'>
@@ -170,7 +176,6 @@ export const PROJECT_SETTING_TIMING: Record<ProjectSettingPath, SettingTiming> =
   'workspace.baselineCurrentBranch': 'newWorkspaces',
   'workspace.oneCurrentBranchPerProject': 'newWorkspaces',
   'workspace.leadBranchPattern': 'newChats',
-  'workspace.leadWaitForSetup': 'newChats',
   'workspace.archiveChatWorkspaces': 'now',
   // disabledFor() in features/sessionDeps.ts, when a chat's process starts.
   'disabled.skills': 'newChats',

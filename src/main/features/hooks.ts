@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import type { Server } from 'node:http'
 import type { AnyHook } from '@shared/hookSchemas'
-import type { AgentStatus, HookProblem, HookStatus } from '@shared/types'
+import type { AgentStatus, HookProblem, HookStatus, Role } from '@shared/types'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
 import { hooksPolicy, type HooksPolicy } from '../services/claudeSettings'
@@ -180,7 +180,7 @@ export class Hooks extends Feature {
 
   private async preflight() {
     const shell = (await this.o.refreshPath?.()) ?? undefined
-    const codex = Object.values(this.settings.models.roles).some((r) => r.provider === 'codex') ? { bin: this.k.providers.binary('codex').path } : undefined
+    const codex = (Object.keys(this.settings.models.roles) as Role[]).some((r) => this.k.team.pickRole(r).provider === 'codex') ? { bin: this.k.providers.binary('codex').path } : undefined
     // gh only while a project's PRs go to GitHub, so a Mac with only local projects sees no gh warning (KERNEL-477).
     return runPreflight({ hookPort: this.settings.hookPort, hookServerUp: !!this.hookServer?.listening, codex, shell, gh: this.k.codeHost.usesGitHub() })
   }

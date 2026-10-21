@@ -1,52 +1,51 @@
 /* Agents group pages: Models and effort, Agents, MCP servers, Permissions, Environment (KERNEL-680). Tokens only. */
 .ag-roles .select { display: block; }
-.ag-roles .select-trigger { width: 100%; }
+.ag-roles .set-table-head { height: 36px; padding: 0 16px; background: transparent; }
+.ag-roles .set-table-row { padding: 0 16px; }
 /* The role menus share the model picker's rows: 36px tall, 10px in, 2px apart (KERNEL-987, KERNEL-988). */
 .ag-roles .select-opt { height: 36px; padding: 0 10px; font-size: var(--fs-row); }
 .ag-roles .select-opt + .select-opt { margin-top: 2px; }
-.ag-role-row { height: 64px; box-sizing: border-box; }
-.ag-role-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ag-role-row { height: 56px; box-sizing: border-box; }
+.ag-role-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-right: 16px; }
+.ag-role-name .set-desc { font-size: var(--fs-meta); }
 .ag-role-name .set-label { display: block; }
 .ag-role-sub { position: relative; display: flex; align-items: baseline; gap: 5px; min-width: 0; white-space: nowrap; font-size: var(--fs-meta); }
-.ag-count { min-width: 0; padding: 0; border: 0; background: transparent; color: var(--ink-2); font: inherit; text-decoration: underline; text-decoration-color: var(--line-4); text-underline-offset: 2px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; }
-.ag-count:hover, .ag-count[aria-expanded='true'] { color: var(--ink); }
+.ag-count { min-width: 0; padding: 0; border: 0; background: transparent; color: var(--ink-3); font: inherit; cursor: pointer; overflow: hidden; text-overflow: ellipsis; }
+.ag-count:hover, .ag-count[aria-expanded='true'] { color: var(--ink); text-decoration: underline; text-decoration-color: var(--line-3); text-underline-offset: 2px; }
+.ag-count[data-none] { cursor: default; }
 .ag-who { width: 460px; max-width: calc(100vw - 48px); max-height: 320px; overflow-y: auto; padding: 6px; white-space: normal; z-index: var(--z-popover); }
 .ag-who-head { margin: 0; padding: 6px 8px 4px; font-size: var(--fs-meta); color: var(--muted); }
 .ag-who-head:not(:first-child) { margin-top: 4px; }
 .ag-who-list { margin: 0; padding: 0; list-style: none; }
-.ag-who-line { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-height: 28px; box-sizing: border-box; padding: 4px 8px; font-size: var(--fs-code); color: var(--ink-2); }
+.ag-who-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; box-sizing: border-box; padding: 4px 8px; font-size: var(--fs-code); color: var(--ink-2); }
 .ag-who-name { min-width: 0; flex: 0 1 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-size: inherit; }
 .ag-who-right { min-width: 0; flex: 1 1 auto; text-align: right; color: var(--muted); }
-.ag-chip { width: 100%; gap: 8px; white-space: nowrap; }
-.ag-chip-name { flex-shrink: 0; }
+.ag-chip { width: 100%; min-width: 0; gap: 8px; white-space: nowrap; overflow: hidden; }
+.ag-side { min-width: 0; }
+.ag-side .select { display: inline-block; max-width: 100%; }
+.ag-roles .ag-chip { width: auto; max-width: 100%; }
+.ag-chip-name { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ag-chip-detail { flex: 1; min-width: 0; text-align: left; color: var(--muted); }
 
 .ag-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .ag-bar:empty { display: none; }
 .ag-bar-gap { flex: 1; }
 .ag-summary { font-size: var(--fs-code); color: var(--muted); }
-.ag-filter { position: relative; display: flex; align-items: center; width: 220px; max-width: 100%; }
-.ag-filter.wide { width: 100%; }
+.ag-filter { position: relative; display: flex; align-items: center; width: 280px; max-width: 100%; }
 .ag-filter svg { position: absolute; left: 11px; color: var(--muted); pointer-events: none; }
-.ag-filter input { width: 100%; height: 34px; box-sizing: border-box; padding: 0 12px 0 31px; border-radius: var(--r-md); border: 1px solid var(--input-line); background: var(--input-bg); color: var(--ink); font-size: var(--fs-ui); outline: none; user-select: text; }
+.ag-filter input { width: 100%; height: 34px; box-sizing: border-box; padding: 0 12px 0 31px; border-radius: var(--r); border: 1px solid var(--line-3); background: transparent; color: var(--ink); font-size: var(--fs-ui); outline: none; user-select: text; }
 .ag-filter input::placeholder { color: var(--muted); }
-.ag-filter input:focus { border-color: var(--ink-3); }
+.ag-filter input:focus { border-color: var(--line-3); }
 .ag-empty { margin: 0; padding: 24px 0; text-align: center; font-size: var(--fs-ui); color: var(--muted); }
 
-.ag-group { display: flex; flex-direction: column; gap: 10px; }
-.ag-group-head { align-self: flex-start; display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 2px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
-.ag-group-head > svg { color: var(--muted); transition: transform var(--dur-turn); }
-.ag-group-head[aria-expanded='true'] > svg { transform: rotate(90deg); }
-.ag-group-head:focus-visible { outline-offset: 3px; border-radius: var(--r-xs); }
-
-.ag-agent { min-height: 58px; padding-top: 10px; padding-bottom: 10px; flex-wrap: nowrap; }
-.ag-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
-.ag-avatar { width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--input-bg); font-size: var(--fs-meta); font-weight: var(--fw-semibold); color: var(--ink-2); }
-.ag-lines { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.ag-title { display: flex; align-items: baseline; gap: 6px; min-width: 0; white-space: nowrap; }
-.ag-title b { font-size: var(--fs-row); font-weight: var(--fw-medium); color: var(--ink); }
-.ag-title span { font-size: var(--fs-code); color: var(--muted); }
+.ag-agent { flex-wrap: nowrap; }
+.ag-open { flex: 1; min-width: 0; display: flex; align-items: center; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
+.ag-lines { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ag-title { font-size: var(--fs-row); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ag-desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-code); color: var(--muted); }
+/* The role or the plugin an agent comes from, a small pill before its button. */
+.ag-tag { flex-shrink: 0; display: inline-flex; align-items: center; height: 22px; box-sizing: border-box; padding: 0 9px; border-radius: var(--r-pill); border: 1px solid var(--pill-line); color: var(--ink-3); font-size: var(--fs-chip); white-space: nowrap; }
+.ag-where { font-family: var(--mono); }
 
 .ag-more { position: relative; display: inline-flex; }
 
@@ -62,11 +61,11 @@
 
 .ag-modes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .ag-mode { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-height: 104px; box-sizing: border-box; padding: 12px 12px 12px 13px; border-radius: var(--r-md); border: 1px solid var(--card-line); background: var(--card-bg); color: inherit; font: inherit; text-align: left; }
-.ag-mode:hover:not([aria-disabled='true']) { border-color: var(--line-4); }
+.ag-mode:hover:not([aria-disabled='true']) { border-color: var(--line-3); }
 .ag-mode[aria-checked='true'] { border-color: var(--ink); background: var(--surface-2); }
 .ag-mode[aria-disabled='true'] { opacity: 0.55; cursor: default; }
 .ag-mode-head { width: 100%; display: flex; align-items: center; gap: 8px; font-size: var(--fs-row); font-weight: var(--fw-medium); color: var(--ink); }
-.ag-ring { width: 14px; height: 14px; flex-shrink: 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--line-4); }
+.ag-ring { width: 14px; height: 14px; flex-shrink: 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--line-3); }
 .ag-mode[aria-checked='true'] .ag-ring { border-color: var(--ink); }
 .ag-ring::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: transparent; }
 .ag-mode[aria-checked='true'] .ag-ring::after { background: var(--ink); }
@@ -82,3 +81,24 @@
 .ag-kernel code { font: var(--fs-meta) var(--mono); color: var(--ink-2); }
 .ag-kernel span { font-size: var(--fs-code); color: var(--muted); }
 .ag-wt { margin-top: 10px; }
+
+/* An agent's page (Pen 15.9): the avatar beside the name and its source line, then the card of fields and the instructions under it. */
+.set-top[data-lead] { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; align-items: center; }
+.set-top[data-lead] > .set-agent-back { grid-column: 1 / -1; justify-self: start; margin-bottom: 22px; }
+.set-top[data-lead] > .set-lead-mark { grid-row: 2 / span 2; display: inline-flex; }
+.set-top[data-lead] > .set-head, .set-top[data-lead] > .set-lede { grid-column: 2; }
+.set-top[data-lead] > .set-lede { margin-top: 2px; }
+.ae-input { width: 260px; max-width: 100%; height: 34px; box-sizing: border-box; padding: 0 10px; border-radius: var(--r); border: 1px solid var(--line-3); background: transparent; color: var(--ink-2); font: inherit; font-size: var(--fs-row); outline: none; user-select: text; }
+.ae-input:disabled { color: var(--ink-3); }
+.ae-input.ae-area { width: 380px; height: auto; min-height: 34px; padding: 7px 10px; line-height: var(--lh-snug); resize: none; }
+.ae-key { margin-left: 8px; font-size: var(--fs-chip); font-weight: var(--fw-regular); opacity: 0.6; }
+.ae-add { position: relative; display: inline-flex; }
+.ae-model .select { display: inline-block; }
+.ae-model .ag-chip { width: auto; }
+.ae-card .set-tag-add { border-color: transparent; }
+.ae-card .set-tag-add:hover:not(:disabled) { border-color: var(--line-3); }
+
+/* The save scope's two choices (Pen 15.38): a ring that fills when picked. */
+.ae-opt input { appearance: none; flex-shrink: 0; width: 18px; height: 18px; margin: 0; border-radius: 50%; border: 1px solid var(--line-3); background: transparent; }
+.ae-opt input:checked { border: 5px solid var(--ink); background: var(--panel); }
+.ae-opt input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

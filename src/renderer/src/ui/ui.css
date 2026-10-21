@@ -2,9 +2,10 @@
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .btn:focus-visible, .icon-btn:focus-visible, .pill:focus-visible, .tab:focus-visible { outline-offset: 2px; }
 .icon-btn[aria-pressed='true'] { background: var(--surface-3); color: var(--ink); }
-.input:focus { border-color: var(--ink-3); }
+.input:focus { border-color: var(--line-3); }
 
 /* button xs and sm and icon button boxes (Button size, IconButton box). The 28px default is .btn and .icon-btn in tokens.css. */
+.btn.danger:disabled:not([aria-busy='true']) { opacity: 1; background: var(--surface-3); border-color: var(--surface-3); color: var(--muted); }
 .btn.xs { height: 24px; padding: 0 8px; border-radius: var(--r-sm); font-size: var(--fs-meta); }
 .btn.sm { height: 26px; padding: 0 10px; border-radius: var(--r-sm); font-size: var(--fs-meta); }
 .icon-btn.md { width: 26px; height: 26px; }
@@ -26,20 +27,20 @@
 
 /* select (Select.tsx, KERNEL-680): a button and a .menu listbox. The fill means the list is open, never hover alone (DESIGN.md). */
 .select { position: relative; display: inline-flex; align-items: center; max-width: 100%; flex-shrink: 0; }
-.select-trigger { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; height: 28px; padding: 0 9px 0 11px; border: 1px solid var(--input-line); border-radius: var(--r); background: var(--surface); color: var(--ink-2); font-weight: var(--fw-medium); font-size: var(--fs-code); text-align: left; }
+.select-trigger { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; height: 28px; padding: 0 9px 0 11px; border: 1px solid var(--line-3); border-radius: var(--r); background: var(--surface); color: var(--ink-2); font-weight: var(--fw-medium); font-size: var(--fs-code); text-align: left; }
 .select-trigger:hover:not(:disabled) { border-color: var(--ink-3); }
 .select-trigger[aria-expanded='true'] { background: var(--surface-3); border-color: var(--ink-3); }
 .select-trigger:disabled { opacity: 0.5; cursor: default; }
 .select-trigger > svg { flex-shrink: 0; color: var(--muted); }
 .select-trigger[data-variant='chip'] { gap: 6px; padding: 0 10px; background: var(--surface-2); font-weight: var(--fw-regular); white-space: nowrap; }
-.select-trigger[data-variant='chip']:hover:not(:disabled), .select-trigger[data-variant='chip'][aria-expanded='true'] { background: var(--surface-3); border-color: var(--input-line); }
+.select-trigger[data-variant='chip']:hover:not(:disabled), .select-trigger[data-variant='chip'][aria-expanded='true'] { background: var(--surface-3); border-color: var(--line-3); }
 .select-trigger[data-variant='plain'] { height: auto; gap: 6px; padding: 0; border: 0; background: transparent; font-weight: var(--fw-regular); font-size: inherit; color: inherit; }
 .select-trigger[data-variant='plain']:hover:not(:disabled), .select-trigger[data-variant='plain'][aria-expanded='true'] { background: transparent; color: var(--ink); }
 .select-value { flex: 1; min-width: 0; }
 .select-prefix { flex-shrink: 0; color: var(--muted); font-weight: var(--fw-regular); }
-.select-pop { top: calc(100% + 4px); left: 0; min-width: max(100%, 200px); max-width: 360px; max-height: 320px; overflow-y: auto; box-sizing: border-box; }
+.select-pop { top: calc(100% + var(--menu-gap)); left: 0; min-width: max(100%, 200px); max-width: 360px; max-height: 320px; overflow-y: auto; box-sizing: border-box; }
 .select-pop[data-align='right'] { left: auto; right: 0; }
-.select-pop[data-side='top'] { top: auto; bottom: calc(100% + 4px); }
+.select-pop[data-side='top'] { top: auto; bottom: calc(100% + var(--menu-gap)); }
 .select-opt { color: var(--ink-2); }
 .select-opt[aria-selected='true'] { color: var(--ink); }
 .select-opt[aria-selected='true'] > svg:last-child { color: var(--ink); }
@@ -61,6 +62,7 @@
 .menu-anchor .menu, .submenu .menu { position: static; }
 .menu-row { position: relative; }
 .submenu { position: absolute; z-index: var(--z-submenu); left: 100%; top: -7px; padding-left: 4px; }
+.submenu[data-up] { top: auto; bottom: -7px; }
 .menu-item { padding: 0 8px; }
 .menu-item[data-danger], .menu-item[data-danger] svg { color: var(--danger); }
 .menu-item:disabled { color: var(--faint); cursor: default; background: transparent; }
@@ -75,36 +77,48 @@
 .menu-title { display: flex; align-items: center; gap: 8px; padding: 8px 8px 4px; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--ink-2); }
 .menu-item[data-rich] { height: auto; flex-direction: column; align-items: stretch; gap: 1px; padding: 7px 8px; }
 .menu-sep { height: 1px; margin: 5px 2px; background: var(--line-3); }
-.popover { position: absolute; z-index: var(--z-popover); top: calc(100% + 6px); min-width: 220px; padding: 12px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }
-.popover[data-side='top'] { top: auto; bottom: calc(100% + 6px); }
+.popover { position: absolute; z-index: var(--z-popover); top: calc(100% + var(--menu-gap)); min-width: 220px; padding: 12px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }
+.popover[data-side='top'] { top: auto; bottom: calc(100% + var(--menu-gap)); }
 /* The one tooltip (Tooltips.tsx). Fixed at 0,0 and moved into place with a transform once measured. */
 .tooltip { position: fixed; top: 0; left: 0; z-index: var(--z-tooltip); max-width: 280px; padding: 4px 8px; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--surface-2); color: var(--ink-2); font-size: var(--fs-meta); line-height: 16px; pointer-events: none; }
+.tooltip[data-mono] { font-family: var(--mono); }
 .tooltip-kbd { margin-left: 8px; font: var(--fs-chip) var(--mono); color: var(--muted); }
 /* With a hint: the text is a mono line (a branch, which can be long) and the hint a muted line under it (HeaderBranchTooltip). */
 .tooltip[data-hint] { display: flex; flex-direction: column; gap: 2px; width: max-content; max-width: min(560px, calc(100vw - 12px)); padding: 6px 9px; overflow-wrap: anywhere; font: var(--fs-chip)/16px var(--mono); color: var(--ink-2); }
 .tooltip-hint { font: var(--fs-chip)/16px var(--font); color: var(--muted); white-space: pre-line; }
 
 /* modal */
-.confirm-body { display: flex; flex-direction: column; gap: 10px; padding: 20px 20px 16px; }
-.confirm-body h2 { margin: 0; font-size: var(--fs-dialog); font-weight: var(--fw-semibold); color: var(--ink); letter-spacing: -0.2px; }
+.confirm-body { display: flex; flex-direction: column; gap: 14px; padding: 8px 20px 20px; font-size: var(--fs-row); }
 .confirm-body p { margin: 0; color: var(--ink-2); line-height: var(--lh-prose); }
 .modal-body { padding: 4px 18px 18px; line-height: var(--lh); }
 .modal:focus { outline: 0; }
 
-/* toast: WorkspaceToast.png, with the title over the sub and no close button, on the Usage popover's surface (toast-motion-and-swipe) */
-.toast-stack { position: fixed; z-index: var(--z-toast); right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; width: 360px; }
+/* toast (Pen 18.1, 18.3): 400px wide, 20px above the window's bottom edge (the composer's gap) and 16px from its right edge (the Session card's gap), on every screen. A glyph, the title over its sub, a close button, and up to two actions under them. */
+.toast-stack { position: fixed; z-index: var(--z-toast); right: 16px; bottom: 20px; display: flex; flex-direction: column; gap: 8px; width: 400px; }
 /* Each toast's slot opens before it slides in and closes after it slides out, so the toasts above glide instead of jumping. The -8px takes up the stack's gap. A flex item keeps its content height unless min-height is 0. */
 .toast-slot { min-height: 0; interpolate-size: allow-keywords; animation: toast-open var(--dur-base) ease-out, toast-clip var(--dur-base); }
 .toast-slot[data-leaving] { animation: toast-close var(--dur-base) ease-in var(--dur-slow) forwards, toast-clip var(--dur-base) var(--dur-slow) forwards; }
-.toast { display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 14px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); transition: transform var(--dur-slow) ease-out; animation: toast-in var(--dur-enter) ease-out var(--dur-base) backwards; }
+/* The Pen's 12 12 12 14 padding sits inside its 1px stroke, so the border takes one off each side: a toast is the frame's 400 wide, 102 tall with an action and 64 with two lines, and its text column 318 wide. */
+.toast { display: flex; flex-direction: column; gap: 10px; padding: 11px 11px 11px 13px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); transition: transform var(--dur-slow) ease-out; animation: toast-in var(--dur-enter) ease-out var(--dur-base) backwards; }
+.toast-top { display: flex; align-items: flex-start; gap: 10px; }
+.toast-glyph { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 16px; height: 20px; color: var(--ink); }
+.toast-glyph[data-glyph='merged'] { color: var(--merged); }
+.toast-close { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 20px; height: 20px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.toast-close svg { color: var(--faint); }
+.toast-close:hover svg { color: var(--ink); }
+.toast-actions { display: flex; justify-content: flex-end; gap: 8px; padding-left: 26px; }
 .toast[data-swiping] { transition: none; }
 .toast-slot[data-leaving] > .toast { animation: toast-sink var(--dur-slow) ease-in forwards; }
 .toast-slot[data-leaving='right'] > .toast { animation-name: toast-out-right; }
 .toast-slot[data-leaving='down'] > .toast { animation-name: toast-out-down; }
-.toast-text { display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
-.toast-title { font-weight: var(--fw-medium); color: var(--ink); }
-.toast-sub { color: var(--muted); }
-.toast-action { padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: var(--fs-code); font-weight: var(--fw-medium); text-decoration: none; cursor: pointer; }
+.toast-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-row); line-height: var(--lh-snug); }
+.toast-title { font-weight: var(--fw-semibold); color: var(--ink); }
+.toast-sub { color: var(--muted); font-size: var(--fs-code); line-height: var(--lh-ui); }
+.toast-detail { color: var(--muted); font-size: var(--fs-meta); line-height: var(--lh-ui); }
+.toast-action { height: 28px; padding: 0 11px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: var(--fs-code); font-weight: var(--fw-medium); cursor: pointer; transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
+.toast-action:hover { background: var(--surface-3); color: var(--ink); }
+.toast-action[data-primary] { border-color: var(--ink); background: var(--ink); color: var(--on-ink); }
+.toast-action[data-primary]:hover { background: color-mix(in srgb, var(--ink) 88%, var(--on-ink)); color: var(--on-ink); }
 /* The slot clips only while its height animates, so the toast can rise from below and sink or swipe down past its slot unclipped. */
 @keyframes toast-clip { from, to { overflow-y: clip; } }
 @keyframes toast-open { from { height: 0; margin-top: -8px; } }
@@ -149,19 +163,27 @@
 /* kbd, avatar */
 .kbd { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface); font: var(--fs-badge) var(--mono); color: var(--muted); }
 .avatar { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface); color: var(--ink); font-weight: var(--fw-semibold); }
+.agent-avatar { display: inline-block; flex-shrink: 0; border-radius: var(--r-pill); outline: 1px solid var(--line-2); outline-offset: -1px; background: linear-gradient(135deg, var(--pal-a), var(--pal-b)); }
+.agent-avatar[data-palette='ivy'] { --pal-a: var(--agent-ivy-a); --pal-b: var(--agent-ivy-b); }
+.agent-avatar[data-palette='rio'] { --pal-a: var(--agent-rio-a); --pal-b: var(--agent-rio-b); }
+.agent-avatar[data-palette='sky'] { --pal-a: var(--agent-sky-a); --pal-b: var(--agent-sky-b); }
+.agent-avatar[data-palette='rose'] { --pal-a: var(--agent-rose-a); --pal-b: var(--agent-rose-b); }
+.agent-avatar[data-palette='sand'] { --pal-a: var(--agent-sand-a); --pal-b: var(--agent-sand-b); }
+.agent-avatar[data-palette='iris'] { --pal-a: var(--agent-iris-a); --pal-b: var(--agent-iris-b); }
+.agent-avatar[data-palette='kernel'] { --pal-a: var(--surface-3); --pal-b: var(--faint); }
 .avatar[data-solid='true'] { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
 
 /* skeleton, empty state */
 .skeleton { display: block; border-radius: var(--r-xs); background: var(--surface-3); animation: pulse var(--dur-pulse) ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.5; } }
-.empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px 20px; text-align: center; }
-.empty-icon { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface); color: var(--muted); }
-.empty-title { font-size: var(--fs-chat); font-weight: var(--fw-medium); color: var(--ink); }
+.empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 40px 20px; text-align: center; }
+.empty-icon { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--card-bg); color: var(--muted); }
+.empty-title { font-size: var(--fs-sub); font-weight: var(--fw-semibold); color: var(--ink-2); }
+.empty > .muted { font-size: var(--fs-ui); max-width: 380px; text-wrap: balance; }
+.empty-action { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 6px; }
 .state-center { flex: 1; display: flex; align-items: center; justify-content: center; padding: 0 40px; }
-.state-loading { gap: 8px; color: var(--muted); }
-.state-fail { width: 100%; max-width: 560px; padding-bottom: 60px; }
-.state-fail .banner { padding: 10px 10px 10px 14px; gap: 12px; border-radius: var(--r-md); }
-.state-fail .banner-title { font-size: var(--fs-ui); }
+.state-loading { gap: 8px; color: var(--muted); font-size: var(--fs-code); }
+.state-inline { display: flex; align-items: center; padding: 0 14px 14px; }
 
 /* dev page */
 .devui { height: 100%; display: flex; flex-direction: column; background: var(--canvas); color: var(--ink-2); user-select: text; }
@@ -184,8 +206,8 @@
 @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } .toggle span { transition: none; } .toast-slot, .toast-slot > .toast { animation: none !important; transition: none !important; } .toast-slot[data-leaving] { visibility: hidden; } }
 
 /* CodeLines: a script field with a line-number gutter (KERNEL-914) */
-.code-lines { display: flex; width: 100%; min-width: 0; border: 1px solid var(--input-line); border-radius: var(--r); background: var(--code-bg); overflow: hidden; }
-.code-lines:focus-within { border-color: var(--ink-3); }
+.code-lines { display: flex; width: 100%; min-width: 0; border: 1px solid var(--line-3); border-radius: var(--r); background: var(--code-bg); overflow: hidden; }
+.code-lines:focus-within { border-color: var(--line-3); }
 .code-lines[data-invalid='true'] { border-color: var(--ink); }
 .code-lines[data-disabled='true'] { opacity: 0.6; }
 .code-gutter { flex: 0 0 auto; min-width: 40px; box-sizing: border-box; padding: 8px 10px 8px 12px; border-right: 1px solid var(--line-2); overflow: hidden; font: var(--fs-code)/20px var(--mono); color: var(--muted); text-align: right; user-select: none; }

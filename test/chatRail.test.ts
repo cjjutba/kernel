@@ -2,7 +2,7 @@ import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { ChatItem, TeamUpdateEvent, TeamUpdateRow } from '../src/shared/types'
-import { atEnd, entryInView, markFit, railEntries, railKey, RAIL_MIN, sameEntries, updateLabel, type RailEntry } from '../src/renderer/src/screens/workspace/railEntries'
+import { atEnd, entryInView, markFit, railEntries, railKey, sameEntries, updateLabel, type RailEntry } from '../src/renderer/src/screens/workspace/railEntries'
 import { ChatRail, RailView } from '../src/renderer/src/screens/workspace/ChatRail'
 
 // KERNEL-599: the chat rail lists the user's messages, and in Kernel's chat the Team updates, and marks the one in view.
@@ -189,7 +189,6 @@ describe('the rail', () => {
   const html = (entries: RailEntry[]) => renderToStaticMarkup(React.createElement(ChatRail, { entries, scroller: { current: null } }))
 
   it('is hidden until the chat has 2 entries to list', () => {
-    expect(RAIL_MIN).toBe(2)
     expect(html([])).toBe('')
     expect(html(list(1))).toBe('')
     const two = html(list(2))

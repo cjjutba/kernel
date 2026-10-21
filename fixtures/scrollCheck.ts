@@ -1,6 +1,7 @@
 import type { Fixture } from './types'
 import { ids } from './base'
 import { teamFixtures } from './team'
+import { talkFixtures } from './talk'
 import { workspaceFixtures } from './workspace'
 
 // Long versions of the screens the scroll check drives (KERNEL-923, scripts/scrollCheck.ts). Each is an existing fixture with more rows,
@@ -66,8 +67,8 @@ export const scrollCheckFixtures: Record<string, Fixture> = {
   ScrollCheckHistory: manyHistory(teamFixtures.History, 8),
   ScrollCheckHistoryProject: manyHistory(teamFixtures.HistoryProject, 8),
   ScrollCheckProjects: manyProjects(teamFixtures.Projects, 6),
-  ScrollCheckFile: { ...workspaceFixtures.WorkspaceFile, fileText: { [ids.table]: { 'src/app/invoices/table.tsx': longFile } } },
-  ScrollCheckDiff: { ...workspaceFixtures.WorkspaceDiffTab, diffs: { [ids.table]: longDiff('src/app/invoices/page.tsx') } },
+  ScrollCheckFile: { ...workspaceFixtures.WorkspaceFile, fileText: { [ids.table]: { 'test/journey.test.ts': longFile } } },
+  ScrollCheckDiff: { ...workspaceFixtures.WorkspaceDiffTab, diffs: { [ids.table]: longDiff('test/journey.test.ts') } },
   ScrollCheckLog: (() => {
     const f = workspaceFixtures.PanelToolbarChecks
     const more = runLines.map((line) => ({ type: 'script.output' as const, workspaceId: ids.table, kind: 'run' as const, lines: [{ line, stream: 'stdout' as const }] }))
@@ -76,7 +77,7 @@ export const scrollCheckFixtures: Record<string, Fixture> = {
   ScrollCheckIssueDetail: longIssue(teamFixtures.IssuesMany),
   ScrollCheckLeadChat: workspaceFixtures.ChatRailLead,
   ScrollCheckInboxPane: longPlan(teamFixtures.Inbox),
-  ScrollCheckChat: workspaceFixtures.ChatNewMessages,
+  ScrollCheckChat: talkFixtures.ChatNewMessages,
   ScrollCheckFiles: workspaceFixtures.PanelToolbarFiles,
   ScrollCheckChanges: (() => {
     const f = workspaceFixtures.PanelToolbarChanges

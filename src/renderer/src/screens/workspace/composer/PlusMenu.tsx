@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import type { ChatPart, WorkspaceMode } from '@shared/types'
+import type { ChatPart, LeadMode, WorkspaceMode } from '@shared/types'
 import { Button, Icon, IconButton, Menu, MENU_SEPARATOR } from '../../../ui'
 import { BranchPanel } from './BranchPicker'
 import { IssuePicker, PrPicker, WorkspacePicker } from './LinkPicker'
@@ -14,8 +14,12 @@ export type PlusPanel = 'plus' | 'linkIssue' | 'linkPr' | 'linkWorkspaces' | 'ru
  */
 export interface PlusWhere {
   place: WorkspaceMode; picked: string; branch: string; local: string
+  /** The chat's mode. In Hand off the chat reads the latest main on the shared folder, so there is no branch to pick until Build here (KERNEL-1052). */
+  lead?: LeadMode
   onPlace: (m: WorkspaceMode) => void; onBranch: (ref: string) => void
 }
+
+const readsLine = (place: WorkspaceMode) => `Hand off reads the latest main. Build here ${place === 'current' ? 'uses your current branch' : 'makes a worktree'}`
 
 const ABOVE = { right: 0, bottom: 'calc(100% + 8px)' } as const
 
@@ -48,7 +52,8 @@ export function PlusMenu({ panel, onPanel, anchorRef, projectId, workspaceId, pl
     if (refocus) anchorRef.current?.querySelector<HTMLElement>('[aria-label="Add context"]')?.focus()
   }
   // Local or a branch other than the default is worth saying beside +. The default, a worktree from the default branch, says nothing.
-  const chip = where && (where.place === 'current'
+  const reads = where?.lead === 'handoff'
+  const chip = where && !reads && (where.place === 'current'
     ? { icon: 'computer' as const, text: 'Local', label: 'Run in Local, change', to: 'runIn' as const }
     : where.picked ? { icon: 'branch' as const, text: `from ${where.branch}`, label: `New branch from ${where.branch}, change`, to: 'branch' as const } : undefined)
   return (
@@ -58,7 +63,7 @@ export function PlusMenu({ panel, onPanel, anchorRef, projectId, workspaceId, pl
           <Icon name={chip.icon} size={14} /><span className="cmp-where-text ellipsis">{chip.text}</span>
         </Button>
       )}
-      <IconButton icon="plus" label="Add context" disabled={disabled && !!where} aria-haspopup="menu" aria-expanded={panel !== null} onClick={() => onPanel(panel ? null : 'plus')} />
+      <IconButton icon="plus" box="sm" label="Add context" disabled={disabled && !!where} aria-haspopup="menu" aria-expanded={panel !== null} onClick={() => onPanel(panel ? null : 'plus')} />
       {panel === 'plus' && (
         <Menu label="Add" anchorRef={anchorRef} onClose={close} style={{ ...ABOVE, width: where ? 296 : 248 }} items={[
           { id: 'issue', label: 'Link issue', icon: 'link', shortcut: '⌘I', disabled: !projectId, onSelect: () => { next.current = 'linkIssue' } },
@@ -72,7 +77,9 @@ export function PlusMenu({ panel, onPanel, anchorRef, projectId, workspaceId, pl
               MENU_SEPARATOR,
               { id: 'runIn', label: 'Run in', icon: where.place === 'current' ? 'computer' as const : 'fork' as const, note: where.place === 'current' ? 'Local' : 'Worktree', onSelect: () => { next.current = 'runIn' } },
               // Local works on the checkout's branch and never cuts one, so the row only says which.
-              { id: 'branch', label: 'Branch', icon: 'branch' as const, note: where.place === 'current' ? where.local : where.branch, disabled: where.place === 'current', ariaLabel: where.place === 'current' ? `Branch: ${where.local}. Local works on your checkout's current branch` : undefined, onSelect: () => { next.current = 'branch' } }
+              reads
+                ? { id: 'branch', label: 'Branch', icon: 'branch' as const, disabled: true, ariaLabel: `Branch: latest main. ${readsLine(where!.place)}`, content: <><Icon name="branch" /><span className="where-tx"><span className="where-t">Latest main</span><span className="where-d">{readsLine(where!.place)}</span></span></> }
+                : { id: 'branch', label: 'Branch', icon: 'branch' as const, note: where.place === 'current' ? where.local : `New from ${where.branch}`, disabled: where.place === 'current', ariaLabel: where.place === 'current' ? `Branch: ${where.local}. Local works on your checkout's current branch` : undefined, onSelect: () => { next.current = 'branch' } }
             ]
             : []),
           MENU_SEPARATOR,

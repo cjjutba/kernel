@@ -3,7 +3,7 @@ import type { SharedFile, SharedVersion } from '@shared/types'
 import { call } from '../../../api'
 import { actions, useStore } from '../../../store'
 import { oneOf, useRemembered } from '../../../remember'
-import { Button, Icon, Menu, SegmentedControl, useBusy, type MenuEntry } from '../../../ui'
+import { Button, Icon, IconButton, Menu, useBusy, type IconName, type MenuEntry } from '../../../ui'
 import { Markdown } from '../markdown'
 import { attempt } from '../MessageActions'
 import { CommentLayer } from './CommentLayer'
@@ -14,14 +14,29 @@ import { useImageZoom } from './useImageZoom'
 import { ZoomControl } from './ZoomControl'
 import './shared.css'
 
-const WIDTHS: { value: PreviewWidth; label: string }[] = [{ value: 'desktop', label: 'Desktop' }, { value: 'tablet', label: 'Tablet' }, { value: 'phone', label: 'Phone' }]
+const WIDTHS: { value: PreviewWidth; label: string; icon: IconName }[] = [{ value: 'desktop', label: 'Desktop', icon: 'computer' }, { value: 'tablet', label: 'Tablet', icon: 'tablet' }, { value: 'phone', label: 'Phone', icon: 'phone' }]
+
+/** The page's width, one icon each (Pen 9.13): a radio group, so the arrow keys move between them like the segmented control they replace. */
+function WidthPicker({ value, onChange }: { value: PreviewWidth; onChange: (w: PreviewWidth) => void }) {
+  return (
+    <div role="radiogroup" aria-label="Preview width" className="shared-widths">
+      {WIDTHS.map((w, i) => (
+        <button
+          key={w.value} type="button" role="radio" aria-checked={w.value === value} aria-label={w.label} tabIndex={w.value === value ? 0 : -1} data-tip={w.label}
+          onClick={() => onChange(w.value)}
+          onKeyDown={(e) => { const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0; if (!step) return; e.preventDefault(); onChange(WIDTHS[(i + step + WIDTHS.length) % WIDTHS.length].value) }}
+        ><Icon name={w.icon} size={14} /></button>
+      ))}
+    </div>
+  )
+}
 
 /**
- * A shared file in its `shared:<id>` tab: its title and who shared it, the version picker, Desktop, Tablet and Phone widths for a page, Reload
- * for a page, Open in Preview for a PDF and Show in Finder, then the file (WorkspaceSharedHtml.png and the others). The tab follows the latest
- * version until an older one is picked. A page and a PDF go in `PreviewSurface`; an image and Markdown are drawn here. A PDF has no live view
- * and so nothing to reload (KERNEL-306): Open in Preview takes the place of Reload on the canvas. Comment, for everything but a PDF, turns on comment
- * mode: `CommentLayer` over the file (KERNEL-311). An image has a zoom control beside Comment and opens at Fit (KERNEL-598).
+ * A shared file in its `shared:<id>` tab: its title and who shared it, the version picker, the Desktop, Tablet and Phone widths for a page, zoom for an
+ * image, Comment, Open in the browser (or in Preview for a PDF) and Show in Finder, then the file (WorkspaceSharedHtml.png and the others). A page that
+ * stops responding offers Reload on its own canvas. The tab follows the latest version until an older one is picked. A page and a PDF go in
+ * `PreviewSurface`; an image and Markdown are drawn here. Comment, for everything but a PDF, turns on comment mode: `CommentLayer` over the file
+ * (KERNEL-311). An image has a zoom control beside Comment and opens at Fit (KERNEL-598).
  */
 export function SharedView({ workspaceId, sharedId }: { workspaceId: string; sharedId: string }) {
   const file = useStore((s) => s.shared[sharedId])
@@ -35,7 +50,6 @@ export function SharedView({ workspaceId, sharedId }: { workspaceId: string; sha
 function Loaded({ workspaceId, file, version }: { workspaceId: string; file: SharedFile; version: SharedVersion }) {
   const by = useSharer(file)
   const [width, setWidth] = useRemembered<PreviewWidth>('kernel.previewWidth', oneOf<PreviewWidth>(['desktop', 'tablet', 'phone'], 'desktop'))
-  const [again, setAgain] = useState(0)
   const [versions, setVersions] = useState(false)
   const anchor = useRef<HTMLSpanElement>(null)
   const [busy, run] = useBusy<'open'>()
@@ -71,23 +85,22 @@ function Loaded({ workspaceId, file, version }: { workspaceId: string; file: Sha
       <div className="shared-tools">
         <span ref={anchor} style={{ position: 'relative' }}>
           <Button size="sm" className="shared-ver" aria-label="Versions" aria-haspopup="menu" aria-expanded={versions} onClick={() => setVersions(!versions)}>
-            v{version.n}<Icon name="chevron" size={12} />
+            Version {version.n}<Icon name="chevron" size={12} />
           </Button>
           {versions && <Menu label="Versions" anchorRef={anchor} onClose={() => setVersions(false)} style={{ left: 0, top: 'calc(100% + 6px)', width: 380 }} items={entries} />}
         </span>
-        {page && <span className="shared-width"><SegmentedControl label="Preview width" value={width} onChange={(w) => setWidth(w as PreviewWidth)} options={WIDTHS} /></span>}
+        {page && <WidthPicker value={width} onChange={setWidth} />}
         {file.kind === 'image' && <ZoomControl zoom={zoom} />}
         {!pdf && (
           <span ref={toggle} style={{ display: 'contents' }}><Button size="sm" className="shared-comment" aria-pressed={commenting} disabled={!ready} icon="comment" onClick={() => setCommenting(!commenting)}>Comment</Button></span>
         )}
-        {page && <Button size="sm" icon="refresh" onClick={() => setAgain(again + 1)}>Reload</Button>}
-        {pdf && <Button size="sm" icon="ext" busy={busy === 'open'} busyLabel="Opening" onClick={() => void openInPreview()}>Open in Preview</Button>}
-        <Button size="sm" icon="folder" onClick={reveal}>Show in Finder</Button>
+        <IconButton icon="ext" size={14} box="sm" label={page ? 'Open in browser' : 'Open in Preview'} busy={busy === 'open'} busyLabel="Opening" onClick={() => void openInPreview()} />
+        <IconButton icon="folder" size={14} box="sm" label="Show in Finder" onClick={reveal} />
       </div>
       </div>
       <div className="shared-body">
         <div ref={area} className="shared-area" data-kind={file.kind}>
-          {(page || pdf) && <PreviewSurface workspaceId={workspaceId} file={file} version={version} width={width} again={again} comment={page ? { on: commenting, by, archived, onExit: stop } : undefined} />}
+          {(page || pdf) && <PreviewSurface workspaceId={workspaceId} file={file} version={version} width={width} comment={page ? { on: commenting, by, archived, onExit: stop } : undefined} />}
           {file.kind === 'image' && read.dataUrl && (
             <div
               ref={scroller} className="shared-zoom" data-zoomed={zoom.zoomed || undefined} data-pan={zoom.pannable && !commenting ? (zoom.dragging ? 'on' : 'ready') : undefined}

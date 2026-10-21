@@ -9,15 +9,15 @@ export type ComposerMode = PermissionMode | 'plan'
 /** The order of the menu and of Shift+Tab (ComposerModes.png, KERNEL-435). */
 export const MODE_ORDER: readonly ComposerMode[] = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions']
 
-export const MODE_ICON: Record<ComposerMode, IconName> = { default: 'lock', acceptEdits: 'filePen', plan: 'plan', auto: 'shieldCheck', bypassPermissions: 'unlock' }
+export const MODE_ICON: Record<ComposerMode, IconName> = { default: 'lock', acceptEdits: 'filePen', plan: 'checklist', auto: 'shieldCheck', bypassPermissions: 'unlock' }
 
-/** One line a mode, shorter than Settings' sentences (ComposerModeMenu.png). */
+/** What each mode does, as the Permission mode menu says it (KERNEL-1095). */
 export const MODE_DESC: Record<ComposerMode, string> = {
-  default: 'Asks before every edit and command',
-  acceptEdits: 'Edits files without asking',
-  plan: 'Plans first and changes nothing until you approve',
-  auto: 'A classifier approves routine work',
-  bypassPermissions: 'Skips every prompt, Always ask included'
+  default: 'Asks before every edit and command.',
+  acceptEdits: 'Edits files without asking. Commands still ask unless a rule allows them.',
+  plan: 'Plans first and changes nothing until you approve.',
+  auto: 'A classifier approves routine work and asks you about anything else.',
+  bypassPermissions: 'Skips every prompt, including your Always ask list.'
 }
 
 export const modeName = (mode: ComposerMode) => (mode === 'plan' ? 'Plan' : MODE_INFO[mode].label)
@@ -46,12 +46,12 @@ export function shownMode(planning: boolean, run: ChatRunMode | undefined, fallb
  * Why the chat's own provider can't run `mode`, as the line under its row, or nothing when it can. `unavailable` words the answer for
  * every provider and ends each line with what the others use instead, so it is asked about this provider alone and the last sentence is cut.
  */
-export function offLine(mode: ComposerMode, provider: Provider, availability: ModeAvailabilities | null): string | undefined {
+export function offLine(mode: ComposerMode, provider: Provider, availability: ModeAvailabilities | null, full = false): string | undefined {
   if (mode === 'plan' || !availability) return undefined
   const only = Object.fromEntries(PROVIDERS.map((p) => [p.id, p.id === provider ? availability[p.id] : { auto: true, bypass: true }])) as ModeAvailabilities
   const line = unavailable(mode, only).lines[0]
   if (!line) return undefined
-  const end = line.lastIndexOf('. ')
+  const end = full ? -1 : line.lastIndexOf('. ')
   return end > 0 ? line.slice(0, end) : line
 }
 
@@ -97,7 +97,7 @@ export function modeRows(shown: Shown, provider: Provider, availability: ModeAva
     const off = offLine(mode, provider, availability)
     const checked = mode === shown.picked
     const why = checked ? whyLine(shown.why, shown.runs, off) : undefined
-    return { mode, name: modeName(mode), desc: why ?? off ?? MODE_DESC[mode], icon: MODE_ICON[mode], checked, off: !!off, why: !!why }
+    return { mode, name: modeName(mode), desc: why ?? (off && offLine(mode, provider, availability, true)) ?? MODE_DESC[mode], icon: MODE_ICON[mode], checked, off: !!off, why: !!why }
   })
 }
 

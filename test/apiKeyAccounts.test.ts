@@ -231,12 +231,12 @@ describe('Claude API key accounts (KERNEL-523)', () => {
     const { k, h, reader } = await kernel('pro')
     await h['account.get'](undefined)
     expect(k.settings.plan).toBe('pro')
-    expect(k.settings.models.roles.lead.model).toBe('claude-sonnet-5-5')
+    expect(k.settings.models.roles.lead.claude.model).toBe('claude-sonnet-5-5')
     const key = await h['accounts.addKey']({ provider: 'claude', label: 'Billing', key: CLAUDE_KEY })
     await h['accounts.switch']({ provider: 'claude', accountId: key.id })
     expect(await h['account.get'](undefined)).toEqual({ signedIn: true, name: 'Billing' })
     expect(k.settings.plan).toBe('pro')
-    expect(k.settings.models.roles.lead.model).toBe('claude-sonnet-5-5')
+    expect(k.settings.models.roles.lead.claude.model).toBe('claude-sonnet-5-5')
     reader.plan = 'max'
     await h['accounts.switch']({ provider: 'claude', accountId: 'cli' })
     expect(k.settings.plan).toBe('max')
@@ -400,6 +400,7 @@ describe('Codex chats keep the account that holds their cache (KERNEL-843)', () 
 describe('Kernel never switches to a key account on its own (KERNEL-523)', () => {
   it('pauses for a limit on the account in use, and moves back only to the CLI login when one is removed', async () => {
     const { k, h } = await kernel()
+    await k.config.setSettings({ providers: { fallback: false } })
     const key = await h['accounts.addKey']({ provider: 'claude', label: 'Billing', key: CLAUDE_KEY })
     const { project } = await chats(k)
     k.account.applyLimits([{ type: 'five_hour', status: 'rejected', resetsAt: Math.round(Date.now() / 1000) + 3600 }])

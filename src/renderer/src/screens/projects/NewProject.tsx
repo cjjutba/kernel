@@ -24,7 +24,6 @@ export function NewProject({ prefill }: { prefill?: NewProjectPrefill }) {
   const [name, setName] = useState(prefill?.source === 'scratch' ? prefill.name : '')
   const [parent, setParent] = useState('~/Projects')
   const [busy, run] = useBusy()
-  const [error, setError] = useState<string | null>(null)
   const repo = useRepoName(folderOf(name))
   const id = useId()
 
@@ -36,7 +35,6 @@ export function NewProject({ prefill }: { prefill?: NewProjectPrefill }) {
   }
   const create = () => run('create', async () => {
     if (!ready) return
-    setError(null)
     try {
       const project = await call('projects.create', {
         source: 'scratch', name: name.trim(), from: '', cloneTo: `${parent.replace(/\/+$/, '')}/${folder}`, team: defaultTeam(), autostart: false,
@@ -44,7 +42,7 @@ export function NewProject({ prefill }: { prefill?: NewProjectPrefill }) {
       })
       actions.projects.upsert(project)
       openNewChat(project.id)
-    } catch (e) { setError(cleanError(e)) }
+    } catch (e) { actions.ui.toast({ title: 'Could not create the project', sub: cleanError(e), glyph: 'error' }) }
   })
 
   return (
@@ -74,7 +72,6 @@ export function NewProject({ prefill }: { prefill?: NewProjectPrefill }) {
           <span className="nps-hint">{folder ? <>Creates <span className="mono">{parent.replace(/\/+$/, '')}/{folder}</span></> : 'Name it to see where it goes'}</span>
         </div>
         <RepoNameField repo={repo} label />
-        {error && <p className="del of-err" role="alert">{error}</p>}
         <button type="submit" hidden aria-hidden="true" tabIndex={-1} />
       </form>
     </Modal>

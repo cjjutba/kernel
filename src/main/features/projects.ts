@@ -169,8 +169,8 @@ export class Projects extends Feature {
   }
 
   /**
-   * Try again on a failed project setup (KERNEL-876): the first failed step and every step after it go back to waiting and run
-   * again, on the same `project.setup` events. The steps before it keep what they found. Returns once the run has started.
+   * Try again on a failed project setup (KERNEL-876): the first failed or skipped step and every step after it go back to waiting
+   * and run again, on the same `project.setup` events. The steps before it keep what they found. Returns once the run has started.
    */
   retrySetup(projectId: string) {
     const project = this.mustProject(projectId)
@@ -178,7 +178,7 @@ export class Projects extends Feature {
     // A project added from a folder, or one whose setup finished before this launch, has none.
     if (!setup) throw new Error(`${project.name} has no setup to try again.`)
     if (setup.running) throw new Error(`${project.name} is still being set up.`)
-    const failed = setup.steps.find((s) => s.state === 'fail')
+    const failed = setup.steps.find((s) => s.state === 'fail' || s.state === 'skip')
     if (!failed) throw new Error(`${project.name} is already set up.`)
     for (const s of setup.steps.slice(setup.steps.indexOf(failed))) Object.assign(s, { state: 'wait', meta: undefined, error: undefined, output: undefined, fix: undefined, production: undefined })
     setup.publish()
@@ -191,8 +191,10 @@ export class Projects extends Feature {
   }
 
   /**
-   * The steps of ProjectSetup.png. A failed step records its error and the next ones still run, except when there is no
-   * checkout. Check push access joins them once the checkout has a remote (KERNEL-460). Code host follows the checkout
+   * The steps of ProjectSetup.png. A step the rest needs (the checkout, the GitHub repo Code host and push access read, and the
+   * agents the first chat needs) fails and stops setup there. Any other that fails is skipped, with its error, and the steps after
+   * it still run. Either way a `project.setupFailed` says so (KERNEL-1086). Check push access joins them once the checkout has a
+   * remote (KERNEL-460). Code host follows the checkout
    * (ProjectSetupGitHub.png, ProjectSetupLocal.png, KERNEL-477). `from` is the first step to run: the steps before it already
    * finished, on the first run or an earlier try (KERNEL-876).
    */
@@ -201,13 +203,13 @@ export class Projects extends Feature {
     const worktrees = projectWorktreeRoot(this.settings.worktreeRoot, project)
     const due = (id: ProjectSetupStep['id']) => STEP_ORDER.indexOf(id) >= STEP_ORDER.indexOf(from)
     const update = (id: ProjectSetupStep['id'], patch: Partial<ProjectSetupStep>) => { Object.assign(steps.find((s) => s.id === id)!, patch); publish() }
-    const step = async (id: ProjectSetupStep['id'], fn: () => Promise<Partial<ProjectSetupStep> | void>) => {
+    const step = async (id: ProjectSetupStep['id'], fn: () => Promise<Partial<ProjectSetupStep> | void>, o: { needed?: boolean } = {}) => {
       if (!due(id)) return true
       const started = Date.now()
       update(id, { state: 'run', meta: 'running', error: undefined })
       // Setup stops running as its last result is published, so Try again on that result is never refused. The last is the
-      // agents step, or a checkout that failed.
-      const end = (ok: boolean) => { if (id === 'agents' || ((id === 'clone' || id === 'github') && !ok)) setup.running = undefined }
+      // agents step, or a needed step that failed.
+      const end = (ok: boolean) => { if (id === 'agents' || (o.needed && !ok)) setup.running = undefined }
       try {
         const done = (await fn()) ?? {}
         end(true)
@@ -215,7 +217,9 @@ export class Projects extends Feature {
         return true
       } catch (e) {
         end(false)
-        update(id, { state: 'fail', meta: undefined, error: (e as Error).message })
+        const error = (e as Error).message
+        update(id, { state: o.needed ? 'fail' : 'skip', meta: undefined, error })
+        bus.push({ type: 'project.setupFailed', projectId: project.id, step: id, title: steps.find((s) => s.id === id)!.title, error, skipped: !o.needed })
         return false
       }
     }
@@ -233,7 +237,7 @@ export class Projects extends Feature {
       bus.push({ type: 'project', project: next })
       // Kernel commits nothing in the user's folder, so the first commit is theirs, and new workspaces wait for it (KERNEL-231).
       if (inited) return { detail: `Git initialized in ${tildify(project.path, this.home)}. Make the first commit so new workspaces have something to branch from.` }
-    })
+    }, { needed: true })
     if (!checkedOut) return
     // The repo goes up before Code host reads the remote, so the project is a GitHub one from here on (KERNEL-944). A folder with no
     // commit yet gets the remote and nothing pushed: Kernel commits nothing in the user's folder (KERNEL-231).
@@ -244,7 +248,7 @@ export class Projects extends Feature {
       const next = this.store.saveProject({ ...this.mustProject(project.id), repo: `${owner}/${name}` })
       bus.push({ type: 'project', project: next })
       return { detail: committed ? 'Private repo, pushed' : 'Private repo. Make the first commit and push it so new workspaces have something to branch from.' }
-    })
+    }, { needed: true })
     if (!hosted) return
     // Read from the checkout's remote, so a folder with no GitHub remote merges on this Mac (KERNEL-477).
     await step('host', async () => {
@@ -315,7 +319,7 @@ export class Projects extends Feature {
       // Kernel always leads (KERNEL-692), so a Lead file shapes it and isn't listed.
       const detail = [own.length ? `${own.join(', ')} from .claude/agents` : '', list.some((a) => a.lead) ? 'Kernel leads' : ''].filter(Boolean).join(', ')
       return { detail: detail || 'No agents in .claude/agents', ...(brought ? { brought } : {}), roster }
-    })
+    }, { needed: true })
     if (seated) await this.makeFirstChat(project.id)
   }
 
@@ -516,6 +520,7 @@ export class Projects extends Feature {
     for (const ws of this.store.workspaces(projectId)) await this.k.archive.cleanedUp(ws.id)
     this.k.overlaps.forget(projectId)
     await this.k.workspaces.dropSpare(projectId, project.path)
+    await this.k.mainFolder.remove(projectId)
     const shared = this.store.sharedFiles({ projectId }).map((f) => f.id)
     this.store.deleteProject(projectId)
     this.k.envStore.dropProject(projectId)

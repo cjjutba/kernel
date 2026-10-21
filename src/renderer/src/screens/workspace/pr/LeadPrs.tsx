@@ -1,7 +1,7 @@
 import type { FocusEvent, PointerEvent } from 'react'
 import { go, useStore } from '../../../store'
-import { Icon, Spinner } from '../../../ui'
-import { PanelTools, RefreshButton } from '../PanelTools'
+import { EmptyList, Icon, Spinner } from '../../../ui'
+import { RefreshButton } from '../PanelTools'
 import { MergeButton } from './MergeButton'
 import { prDisplayTitle } from './model'
 import { rowGlyph, rowState, useLeadPrs, type LeadPr, type PrGroup } from './leadPrList'
@@ -15,22 +15,22 @@ const SECTIONS: { group: PrGroup; title: string }[] = [
 ]
 
 /**
- * The Lead's PRs tab (LeadPrs.png, LeadPrsEmpty.png, KERNEL-354): every open PR in the project, so what can merge is in one place.
- * Its rows sit in three lists, Ready to merge, Needs attention and In progress, each title first with one line under it, in the
- * words every place uses (KERNEL-417, KERNEL-757). One that only blockers hold back offers Merge anyway, and never counts as
- * ready (KERNEL-501). Each PR merges from its own row. The strip beside the tabs holds the tab's action (PanelToolbarPrs.png,
- * KERNEL-515): Refresh, which reads every listed PR again.
+ * The Lead's PRs tab (Pen 10.6, 10.11): every open PR, so what can merge is in one place. A strip under the tabs says how many are open and holds Refresh, which reads every listed PR
+ * again (KERNEL-515). Its rows sit in three lists, Ready to merge, Needs attention and In progress, each a card with its title first and one line under it, in the words every
+ * place uses (KERNEL-417, KERNEL-757). One that only blockers hold back offers Merge anyway, and never counts as ready (KERNEL-501). Each PR merges from its own row.
  */
 export function LeadPrs({ projectId }: { projectId: string }) {
   const rows = useLeadPrs(projectId)
   const sections = SECTIONS.map((s) => ({ ...s, rows: rows.filter((r) => r.group === s.group) })).filter((s) => s.rows.length)
   return (
     <>
-      <PanelTools>
+      <div className="lp-bar">
+        <span>{rows.length ? `${rows.length} open from this plan` : 'No open pull requests'}</span>
+        <span className="grow" />
         {rows.length > 0 && <RefreshButton ids={rows.map((r) => r.ws.id)} label="Refresh pull requests" failTitle="Could not refresh pull requests" />}
-      </PanelTools>
+      </div>
       {!rows.length
-        ? <div className="panel-empty"><span className="ink2 t-medium">Nothing to merge</span><span>PRs your agents open appear here.</span></div>
+        ? <EmptyList icon="pr" title="Nothing to merge">Pull requests from this plan show up here.</EmptyList>
         : (
           <div className="panel-scroll" aria-label="Pull requests">
             {sections.map((s) => <Section key={s.group} title={s.title} rows={s.rows} />)}
@@ -82,7 +82,7 @@ function Row({ row }: { row: LeadPr }) {
         </div>
         <div className="lp-l2">
           <span className="lp-state" data-tone={state.tone} data-tip={state.why}>
-            {state.icon && (state.icon === 'spin' ? <Spinner label={null} pattern="rotate" /> : <Icon name={state.icon} size={13} />)}
+            {state.icon && (state.icon === 'spin' ? <Spinner label={null} pattern="checker" /> : <Icon name={state.icon} size={13} />)}
             {state.text}
           </span>
           <span className="lp-dot" aria-hidden="true">·</span>

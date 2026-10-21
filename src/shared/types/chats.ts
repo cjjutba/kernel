@@ -307,9 +307,10 @@ export type ChatPart =
    * `dir` marks a folder from the @ menu: `path` ends in `/` and the agent gets the path, not the files in it.
    * An attached file has `src`, its absolute path on the Mac (`window.kernel.pathOf`). Sending copies it to the workspace's
    * `.kernel/attachments/` and sets `path`, `size`, `kind`, `readable` (false when the agent has no way to open it) and, for
-   * a PDF, `pages`. A text file up to `INLINE_TEXT_MAX` gets `text` instead (KERNEL-907).
+   * a PDF, `pages`. A text file up to `INLINE_TEXT_MAX` gets `text` instead (KERNEL-907). `pasted` marks text the user pasted
+   * into the composer, which a message of nothing else counts as their own words for a go-ahead, unlike a file (KERNEL-1079).
    */
-  | { type: 'file'; name: string; path?: string; lines?: number; text?: string; dir?: boolean; src?: string; size?: number; kind?: FileKind; readable?: boolean; pages?: number }
+  | { type: 'file'; name: string; path?: string; lines?: number; text?: string; dir?: boolean; src?: string; size?: number; kind?: FileKind; readable?: boolean; pages?: number; pasted?: true }
   | { type: 'image'; name: string; dataUrl?: string; width?: number; height?: number; path?: string }
   | { type: 'skill'; name: string }
   /** + > Link issue. `name` is the key, "KERNEL-83" or "#41". */
@@ -340,14 +341,15 @@ export interface QueuedMessage {
 }
 
 /**
- * What a chat's queue waits for: the running turn, the workspace's setup, a PR to merge before the brief goes out (KERNEL-259),
+ * What a chat's queue waits for: the running turn, the workspace being made (`worktree`: git making a new chat's worktree, or the
+ * local files copied before a brief goes, never the setup script, KERNEL-1086), a PR to merge before the brief goes out (KERNEL-259),
  * a paused project, every project held (`offline` covers a lost connection and a sign-out alike), the agent limit in Settings,
  * Models, or a usage window close to its limit while Settings, Account pauses new work there (`limit`, KERNEL-220),
  * a long chat that waits to move to another account (`move`, KERNEL-841),
  * or Kernel's own message that waits while other chats re-read their history on a new account, two at a time (`moving`, KERNEL-1032).
  * Computed, never saved (KERNEL-271, KERNEL-361).
  */
-export type QueueReason = 'running' | 'setup' | 'merge' | 'paused' | 'offline' | 'capacity' | 'limit' | 'move' | 'moving'
+export type QueueReason = 'running' | 'worktree' | 'merge' | 'paused' | 'offline' | 'capacity' | 'limit' | 'move' | 'moving'
 
 /** Where a chat's permission mode was picked: in the chat's composer, for its project, or in Settings, Permissions. */
 export type ModeScope = 'chat' | 'project' | 'app'
@@ -478,11 +480,15 @@ export interface ReviewVerdict {
   verdict: 'approved' | 'blockers'
   summary: string
   blockers?: { text: string; file?: string; line?: number }[]
+  /** The reviewer's judgment of each acceptance criterion of the plan step, by its position from 0. Evidence labels it as the reviewer's (KERNEL-1065). */
+  criteria?: { index: number; met: boolean; note?: string }[]
   sha?: string
   /** The PR it was about. A verdict for another number no longer counts. */
   prNumber?: number
   /** The kind of review it is (KERNEL-549). A verdict from before has none and counts as the code review's. */
   lens?: ReviewKind
+  /** The provider the reviewer ran on (KERNEL-1059). A verdict from before has none. */
+  provider?: Provider
   /** Its kind wasn't required for the PR: its approval doesn't count toward a merge, and its blockers still hold one. */
   optional?: true
   /**

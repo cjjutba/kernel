@@ -2,6 +2,7 @@ import { ATTACH_FILE_MAX, ATTACH_FILES_MAX, ATTACH_MESSAGE_MAX, type ChatPart } 
 import { actions } from '../../../store'
 import { isLongPaste, pasteLines } from './autocomplete'
 import { cleanError } from '../../../api'
+import { cantOpen } from './fileCheck'
 
 // Attachments for every composer: the workspace chat and the new workspace prompt.
 
@@ -94,7 +95,13 @@ const mb = (bytes: number) => `${Math.round(bytes / 1024 / 1024)} MB`
 
 const isFolder = (file: File) => file.slice(0, 1).arrayBuffer().then(() => false, () => true)
 
-/** The files the caps allow, in order. Each refusal gets its own toast naming the cap, and the rest still go. */
+/** A file Kernel won't attach says so in a toast and gets no token (KERNEL-1095). */
+const refuse = (title: string, sub: string) => actions.ui.toast({ title, sub, glyph: 'error' })
+
+/**
+ * The files the caps allow, in order. Each refusal gets its own toast naming the cap or the reason, and the rest still go. Over 50 MB, a folder, and a file the agent can't open
+ * (audio, video, binary data) are refused at once, with no token.
+ */
 async function allowed(files: File[], used = { count: 0, bytes: 0 }, textOnly = false): Promise<File[]> {
   const ok: File[] = []
   let count = used.count
@@ -105,21 +112,16 @@ async function allowed(files: File[], used = { count: 0, bytes: 0 }, textOnly = 
     const onDisk = !textOnly && !f.type?.startsWith('image/') && !!pathOf(f)
     if (!onDisk && !f.type?.startsWith('image/')) { ok.push(f); continue }
     if (count >= ATTACH_FILES_MAX) { full = true; continue }
-    if (f.size > ATTACH_FILE_MAX) {
-      actions.ui.toast({ title: 'File is too large', sub: `${f.name} is ${mb(f.size)}. Each file can be up to ${mb(ATTACH_FILE_MAX)}.` })
-      continue
-    }
+    if (f.size > ATTACH_FILE_MAX) { refuse(`${f.name} is over ${mb(ATTACH_FILE_MAX)}`, `Kernel attaches files up to ${mb(ATTACH_FILE_MAX)} each.`); continue }
     if (bytes + f.size > ATTACH_MESSAGE_MAX) { over = true; continue }
-    if (onDisk && await isFolder(f)) {
-      actions.ui.toast({ title: `${f.name} is a folder`, sub: 'Attach the files inside instead.' })
-      continue
-    }
+    if (onDisk && await isFolder(f)) { refuse(`${f.name} is a folder`, 'Attach the files inside instead.'); continue }
+    if (onDisk && await cantOpen(f)) { refuse(`Couldn't read ${f.name}`, 'Kernel attaches images, PDFs and text files.'); continue }
     count++
     bytes += f.size
     ok.push(f)
   }
-  if (full) actions.ui.toast({ title: 'Too many files', sub: `A message can hold up to ${ATTACH_FILES_MAX} files.` })
-  if (over) actions.ui.toast({ title: 'Message is too large', sub: `Files in one message can add up to ${mb(ATTACH_MESSAGE_MAX)}.` })
+  if (full) refuse('Too many files', `A message can hold up to ${ATTACH_FILES_MAX} files.`)
+  if (over) refuse('Message is too large', `Files in one message can add up to ${mb(ATTACH_MESSAGE_MAX)}.`)
   return ok
 }
 
@@ -146,7 +148,7 @@ export async function attachFiles(files: File[], host: AttachHost, read: (file: 
   for (const { file, id } of held) {
     try { host.settle(id, await read(file)) } catch (e) {
       host.drop(id)
-      actions.ui.toast({ title: 'Could not attach', sub: cleanError(e) })
+      refuse(`Couldn't read ${file.name}`, cleanError(e))
     }
   }
 }
@@ -158,5 +160,5 @@ export const clipboardImages = (data: DataTransfer) => [...data.files].filter((f
 export function pastedText(text: string, draft: ChatPart[]): ChatPart | null {
   if (!isLongPaste(text)) return null
   const last = Math.max(0, ...draft.map((p) => (p.type === 'file' ? Number(PASTE_NAME.exec(p.name)?.[1] ?? 0) : 0)))
-  return { type: 'file', name: `pasted_text_${last + 1}.txt`, lines: pasteLines(text), text }
+  return { type: 'file', name: `pasted_text_${last + 1}.txt`, lines: pasteLines(text), text, pasted: true }
 }

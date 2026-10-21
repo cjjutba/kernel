@@ -80,6 +80,7 @@ export class Prs extends Feature {
   private async create(id: string, draft: boolean) {
     const ws = this.mustWs(id)
     if (ws.prState !== 'none') throw new Error('This workspace already has a pull request.')
+    if (ws.shared) throw new Error('Switch this chat to Build here first.')
     if (this.isLocal(ws)) throw new Error('This project merges on this Mac, so there is no pull request to open. Its branch can merge once it has commits.')
     const chat = this.prChat(id)
     if (!chat) throw new Error('This workspace has no chat.')
@@ -225,7 +226,7 @@ export class Prs extends Feature {
    * The PR's checks, review comments and conflicts, for the Checks tab and the review card. It goes through `refreshPr`, so
    * the header moves with what the tab shows (KERNEL-388). Null when there is no PR or GitHub couldn't be read.
    */
-  private async getPr(id: string) {
+  async getPr(id: string) {
     const ws = this.mustWs(id)
     // A local merge has no number, and what it reads is the branch as it is now (KERNEL-467).
     const local = this.isLocal(ws)
@@ -253,7 +254,7 @@ export class Prs extends Feature {
   async refreshPr(id: string, o: { settle?: boolean } = {}): Promise<Workspace> {
     const asked = await this.syncBranch(id)
     // A Lead chat whose worktree isn't made yet has no branch on GitHub to read (KERNEL-542).
-    if (asked.status === 'archived' || asked.worktreePending) return asked
+    if (asked.status === 'archived' || asked.worktreePending || asked.shared) return asked
     const remote = await this.k.config.remoteOfWs(asked)
     let read: PrInfo | null
     try {
@@ -417,12 +418,12 @@ export class Prs extends Feature {
   /**
    * Merges with the project's method (`codeHost.methodFor`, KERNEL-468) once `mergeBlock` finds nothing in the way: green
    * checks and a reviewer's approval of the latest commit, as far as Settings > Pull requests asks for them (KERNEL-115),
-   * and no blockers on it. `override` is a person's Merge anyway past those blockers; the Lead never passes it
+   * and no blockers on it. `user` marks a merge the user started, which the attention count keeps (KERNEL-1067). `override` is a person's Merge anyway past those blockers; the Lead never passes it
    * (KERNEL-497). `head` is the commit auto-merge weighed: a PR GitHub reads at another one doesn't merge (KERNEL-556).
    */
-  mergePr(id: string, o: { override?: boolean; head?: string } = {}) { return this.running(id, 'merge', () => this.merge(id, o)) }
+  mergePr(id: string, o: { override?: boolean; head?: string; user?: true } = {}) { return this.running(id, 'merge', () => this.merge(id, o)) }
 
-  private async merge(id: string, o: { override?: boolean; head?: string }) {
+  private async merge(id: string, o: { override?: boolean; head?: string; user?: true }) {
     let ws = await this.syncBranch(id)
     const rules = this.settings.pr
     // GitHub is read fresh for every PR that last read as mergeable, since another merge may have sent GitHub back to
@@ -453,6 +454,8 @@ export class Prs extends Feature {
     const name = (agentId: string) => this.agentsSync(ws.projectId).find((a) => a.id === agentId)?.name ?? agentId
     const block = mergeBlock(ws, info, rules, name, { override: o.override })
     if (block) throw new Error(block)
+    // The merge is the user's from here: Kernel's own checks passed, so a GitHub error after this keeps the mark (KERNEL-1067).
+    if (o.user) this.k.attention.userMerging(id)
     const method = await this.k.codeHost.methodFor(this.mustProject(ws.projectId))
     this.merging.add(id)
     this.setPrState(ws, 'merging')
@@ -778,7 +781,7 @@ export class Prs extends Feature {
   async syncBranch(id: string): Promise<Workspace> {
     const ws = this.mustWs(id)
     // A Lead chat whose worktree isn't made yet is on the branch it picked (KERNEL-542).
-    if (ws.mode !== 'worktree' || ws.status === 'archived' || ws.worktreePending) return ws
+    if (ws.mode !== 'worktree' || ws.status === 'archived' || ws.worktreePending || ws.shared) return ws
     const now = await currentBranch(ws.path).catch(() => null)
     if (!now || now === 'HEAD' || now === ws.branch) return this.mustWs(id)
     const next = this.updateWs(id, { branch: now, prState: ws.prState === 'creating' ? 'creating' : 'none', prNumber: undefined, prUrl: undefined, prTitle: undefined })
@@ -1126,7 +1129,9 @@ export class Prs extends Feature {
     return {
       'pr.create': async ({ workspaceId, draft }) => this.createPr(workspaceId, draft),
       'pr.refresh': async ({ workspaceId }) => this.k.refreshPr(workspaceId),
-      'pr.merge': async ({ workspaceId, override }) => this.mergePr(workspaceId, { override }),
+      'pr.merge': async ({ workspaceId, override }) => {
+        return this.mergePr(workspaceId, { override, user: true })
+      },
       'pr.resolve': async ({ workspaceId }) => { await this.resolvePr(workspaceId); return { ok: true } },
       'pr.update': async ({ workspaceId }) => { await this.updateBranch(workspaceId); return { ok: true } },
       'pr.get': async ({ workspaceId }) => this.getPr(workspaceId),

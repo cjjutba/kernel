@@ -1,11 +1,12 @@
 import './system.css'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { kernelHookMatcher } from '@shared/hookEntry'
 import type { AppSettings, HookStatus } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions, useStore } from '../../../store'
-import { Button, CopyButton, useBusy } from '../../../ui'
-import { DataTable, Page, Row, Section, StatusLine } from '../kit'
+import { Button, Icon, useBusy } from '../../../ui'
+import { Page, Row, Section } from '../kit'
+import { NumberField } from './fields'
 
 const SETTINGS_FILE = '~/.claude/settings.json'
 
@@ -27,15 +28,17 @@ export function seenAgo(ts: number | undefined, now = Date.now()): string {
 }
 
 /**
- * Settings > Hooks (MorePage hooks, KERNEL-680): the server's status with a test, Maintenance, the events (folded) and the port
- * (folded). The approval timeout lives on Permissions and the agent-team gates on Models and effort.
+ * Settings > Hooks (MorePage hooks, KERNEL-680, Redesign 15): the server's status with a test, Maintenance, the events and the port. The approval
+ * timeout lives on Permissions and the agent-team gates on Models and effort.
  */
 export function Hooks({ s }: { s: AppSettings }) {
   const status = useStore((x) => x.system.hooks)
-  const [busy, track] = useBusy<'test' | 'remove' | 'install' | 'open' | 'port'>()
-  const [port, setPort] = useState('')
+  const [busy, track] = useBusy<'test' | 'remove' | 'install' | 'open'>()
+  const [copied, setCopied] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  useEffect(() => () => clearTimeout(timer.current), [])
   const timeout = s.permissions.approvalTimeoutSec
-  const run = (id: 'test' | 'remove' | 'install' | 'port', fn: () => Promise<HookStatus | unknown>, done: string) => track(id, async () => {
+  const run = (id: 'test' | 'remove' | 'install', fn: () => Promise<HookStatus | unknown>, done: string) => track(id, async () => {
     try {
       const r = await fn()
       if (r && typeof r === 'object' && 'events' in r && 'port' in r) actions.system.setHooks(r as HookStatus)
@@ -51,46 +54,57 @@ export function Hooks({ s }: { s: AppSettings }) {
   const openFile = () => track('open', async () => {
     try { await call('system.openInEditor', { path: SETTINGS_FILE }) } catch (e) { actions.ui.toast({ title: 'Could not open the file', sub: cleanError(e) }) }
   })
-  const newPort = Number(port)
+  const copySnippet = () => {
+    if (!status) return
+    void navigator.clipboard.writeText(hooksSnippet(status, timeout)).then(
+      () => { setCopied(true); clearTimeout(timer.current); timer.current = setTimeout(() => setCopied(false), 1500) },
+      () => actions.ui.toast({ title: 'Could not copy', sub: 'Try again.' })
+    )
+  }
+  // Moving the port restarts the server and rewrites the hooks. A refused port puts the saved one back and says why in a toast.
+  const movePort = (port: number) => call('hooks.restart', { port }).then((st): number | undefined => { actions.system.setHooks(st); return st.port }).catch((e: unknown): undefined => { actions.ui.toast({ title: 'Hooks did not change', sub: cleanError(e) }); return undefined })
+  const listening = !status || status.listening
   return (
-    <Page title="Hooks">
-      <Section label="Status" plain>
-        <StatusLine
-          icon={status && !status.listening ? 'xCircle' : 'checkCircle'} tone={status && !status.listening ? 'warn' : undefined}
-          title={status ? (status.listening ? `Live on localhost:${status.port}` : `Not listening on localhost:${status.port}`) : 'Checking'}
-          sub={status && `${seen ? `Last event ${seenAgo(seen).toLowerCase()}` : 'No event yet'} · ${count} hook${count === 1 ? '' : 's'} installed`}
-          action={<Button busy={busy === 'test'} busyPattern="arrow-right" busyLabel="Sending" disabled={!status || busy !== null} onClick={() => void run('test', () => call('hooks.test', undefined), 'The hook server answered')}>Send test event</Button>}
-        />
+    <Page title="Hooks" desc="How Kernel hears what Claude Code does. Hooks report each step to Kernel's hook server on this Mac.">
+      <Section title="Status">
+        <Row
+          id="hook-status" lead={<span className="sys-tile" data-state={status ? (listening && installed ? 'ok' : 'warn') : undefined}><Icon name={status && !listening ? 'xCircle' : installed || !status ? 'checkCircle' : 'warning'} size={16} /></span>}
+          label={<span className="sys-strong">{!status ? 'Checking' : !listening ? 'The hook server isn’t listening' : installed ? 'Hooks are installed' : 'Hooks are not installed'}</span>}
+          desc={status && (!listening ? `Nothing answers on port ${status.port}.` : seen ? `The hook server answered ${seenAgo(seen).toLowerCase()} on port ${status.port}.` : `The hook server is listening on port ${status.port}. No event yet.`)}
+        >
+          <Button busy={busy === 'test'} busyPattern="ripple" busyLabel="Sending" disabled={!status || busy !== null} onClick={() => void run('test', () => call('hooks.test', undefined), 'The hook server answered')}>Send test event</Button>
+        </Row>
       </Section>
       <Section title="Maintenance">
         {workspaceRun
           ? <Row label="Hooks are off in a workspace run" desc={`This copy of Kernel never changes ${SETTINGS_FILE}.`} />
           : (
             <Row id="kernel-hooks" label="Kernel’s hooks" desc={`Its entries in ${SETTINGS_FILE}, nothing else.`}>
-              {status && installed && <Button variant="ghost" busy={busy === 'remove'} busyPattern="scatter" busyLabel="Removing" disabled={busy !== null} onClick={() => void run('remove', () => call('hooks.uninstall', undefined), 'Removed the hooks')}>Remove</Button>}
               <Button busy={busy === 'install'} busyLabel={installed ? 'Reinstalling' : 'Installing'} disabled={!status || busy !== null} onClick={() => status && void run('install', async () => { await call('hooks.install', { port: status.port }); return call('hooks.status', undefined) }, installed ? 'Reinstalled the hooks' : 'Installed the hooks')}>{installed ? 'Reinstall' : 'Install'}</Button>
+              {status && installed && <Button busy={busy === 'remove'} busyPattern="ripple" busyLabel="Removing" disabled={busy !== null} onClick={() => void run('remove', () => call('hooks.uninstall', undefined), 'Removed the hooks')}>Remove</Button>}
             </Row>
           )}
-        <Row id="settings-file" label="Settings file">
+        <Row id="settings-file" label="Settings file" desc={SETTINGS_FILE}>
           <span className="set-actions">
-            <span className="set-value">{SETTINGS_FILE}</span>
-            {!workspaceRun && <CopyButton disabled={!status} text={() => (status ? hooksSnippet(status, timeout) : '')} label="Copy snippet" failSub="Try again." />}
-            <Button busy={busy === 'open'} busyLabel="Opening" disabled={busy !== null} onClick={() => void openFile()}>Open</Button>
+            {!workspaceRun && <Button icon={copied ? 'check' : 'copy'} disabled={!status} onClick={copySnippet}>{copied ? 'Copied' : 'Copy snippet'}</Button>}
+            <Button icon="ext" busy={busy === 'open'} busyLabel="Opening" disabled={busy !== null} onClick={() => void openFile()}>Open</Button>
           </span>
         </Row>
       </Section>
       {status && (
-        <Section title="Events" count={`${count} installed`} collapsible plain>
-          <DataTable label="Events" columns={['Event', 'Last fired']} grid="minmax(0, 1fr) 160px" rows={status.events.map((e) => ({ key: e.name, cells: [<span key="n" className="mono">{e.name}</span>, e.installed ? seenAgo(e.lastSeen) : 'Not installed'] }))} />
+        <Section title="Events" count={`${count} installed`}>
+          {status.events.map((e) => (
+            <div key={e.name} className="sys-event">
+              <span className="sys-event-name">{e.name}</span>
+              <span className="sys-event-state">{e.installed ? (e.lastSeen ? `Last fired ${seenAgo(e.lastSeen).toLowerCase()}` : 'Not fired yet') : 'Not installed'}</span>
+            </div>
+          ))}
         </Section>
       )}
       {status && (
-        <Section title="Advanced" collapsible holds={['hook-port']}>
+        <Section title="Advanced">
           <Row id="hook-port" label="Hook server port" desc="Moving it restarts the server and rewrites the hooks.">
-            <span className="set-actions">
-              <input className="set-token sys-port" aria-label="Hook server port" inputMode="numeric" placeholder={String(status.port)} value={port} onChange={(e) => setPort(e.target.value.replace(/\D/g, ''))} />
-              <Button busy={busy === 'port'} busyLabel="Moving" disabled={!newPort || newPort === status.port || busy !== null} onClick={() => void run('port', () => call('hooks.restart', { port: newPort }), `Hook server moved to ${newPort}`).then(() => setPort(''))}>Move</Button>
-            </span>
+            <NumberField label="Hook server port" value={status.port} unit="" min={1024} onSave={movePort} />
           </Row>
         </Section>
       )}

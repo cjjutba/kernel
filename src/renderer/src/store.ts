@@ -11,6 +11,9 @@ import { currentRoute } from '@shared/settingsRoutes'
 import { call, cleanError, onPush } from './api'
 import { writeSaved } from './remember'
 import { startupTheme } from './ui/theme'
+import { setupToasts } from './screens/onboarding/setupToasts'
+import { raiseSetupFailed, raiseWorktreeFailed } from './screens/workspace/setupFailed'
+import { raiseTurnFailed } from './screens/workspace/turnFailed'
 import { closeAllLayers } from './ui/hooks'
 import { installFailedToast } from './components/footer/updateModel'
 import { hasTab, isChatTab, landing, nearest, placeToSave, restorePlace, projectHome, samePlace, stillThere, tabOf, type Place } from './nav'
@@ -76,6 +79,8 @@ export interface State {
   queue: Record<string, QueuedMessage[]>
   /** By chat id. What the queue waits for, absent while it is empty (KERNEL-273). */
   queueWhy: Record<string, QueueReason>
+  /** By workspace id. The provider new work in it started on instead of its preferred one, and the one it left (`providerFellBack`, KERNEL-1056). Lives until the window closes. */
+  fellBack: Record<string, { from: Provider; to: Provider }>
   /** By chat id. The permission mode each chat runs in, the mode picked for it and why they differ (`chats.runMode`, KERNEL-572). */
   runModes: Record<string, ChatRunMode>
   /** By chat id. Raw pty output for terminal chats. */
@@ -137,7 +142,7 @@ function toolCalls(): ToolCalls {
 const workspaceView: WorkspaceView = { right: 'changes', leadRight: 'prs', bottom: 'run', toolCalls: toolCalls(), changesView: changesView() }
 
 /** The sidebar and right panel toggles outlast a restart. A key is stored only while its panel is hidden, and localStorage may be missing or blocked. */
-const HIDDEN = { sidebar: 'kernel.sidebarHidden', rightPanel: 'kernel.rightPanelHidden' } as const
+const HIDDEN = { sidebar: 'kernel.sidebarHidden', rightPanel: 'kernel.rightPanelHidden', rail: 'kernel.railHidden' } as const
 function showing(panel: keyof typeof HIDDEN) {
   try { return localStorage.getItem(HIDDEN[panel]) !== '1' } catch { return true }
 }
@@ -207,18 +212,18 @@ function dropLastTabs(gone: (threadId: string) => boolean) {
   keepLastTabs(next)
 }
 /** Panels a narrow window folded (`ui.fold`). A fold never touches the saved toggle, and toggling a panel by hand forgets its fold. */
-const folded = new Set<keyof typeof HIDDEN>()
+const folded = new Set<'sidebar' | 'rightPanel'>()
 
 let state: State = {
   projects: [], projectSetup: {}, overlaps: {},
   agents: {}, status: {}, globalAgents: null,
   workspaces: [], scripts: {}, scriptExit: {}, scriptUrl: {}, scriptData: {}, scriptReplays: {}, checkpoints: {},
-  chats: {}, threads: {}, lastThread: {}, lastTabs: lastTabs(), items: {}, itemsLoaded: {}, itemsFailed: {}, running: {}, assumed: {}, queue: {}, queueWhy: {}, runModes: {}, terminal: {}, terminalReplays: {}, retry: {},
+  chats: {}, threads: {}, lastThread: {}, lastTabs: lastTabs(), items: {}, itemsLoaded: {}, itemsFailed: {}, running: {}, assumed: {}, queue: {}, queueWhy: {}, fellBack: {}, runModes: {}, terminal: {}, terminalReplays: {}, retry: {},
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
   prs: {}, prPending: {},
   usage: [], account: null, accounts: [], accountAdd: null, mcpRuns: {}, settings: null, projectSettings: {}, shared: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null, github: {} },
-  ui: { route: { name: 'onboarding', step: 'loading' }, nav: { canBack: false, canForward: false }, modal: null, menu: null, toasts: [], banner: null, theme: startupTheme(), workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel'), panelHeld: [], bottomRatio: bottomRatio(), bottomCollapsed: { lead: bottomCollapsed('lead'), teammate: bottomCollapsed('teammate') }, usageView: usageView(), usageOpen: usageOpenAtFirst(usageView()), switching: null }
+  ui: { route: { name: 'onboarding', step: 'loading' }, nav: { canBack: false, canForward: false }, modal: null, menu: null, toasts: [], banner: null, theme: startupTheme(), workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel'), rail: showing('rail'), panelHeld: [], bottomRatio: bottomRatio(), bottomCollapsed: { lead: bottomCollapsed('lead'), teammate: bottomCollapsed('teammate') }, usageView: usageView(), usageOpen: usageOpenAtFirst(usageView()), switching: null }
 }
 const listeners = new Set<() => void>()
 
@@ -566,6 +571,8 @@ export const actions = {
     },
     restoreBottomCollapsed: (kind: BottomKind) => actions.ui.setBottomCollapsed(kind, bottomCollapsed(kind), false),
     setSidebar: (open: boolean) => { folded.delete('sidebar'); setUi({ sidebar: open }); keep('sidebar', open) },
+    /** The Session rail is wanted while the right panel is closed (KERNEL-1096). It never closes the panel itself: the title bar toggle and Focus mode do that with `setRightPanel`. */
+    setRail: (open: boolean) => { setUi({ rail: open }); keep('rail', open) },
     /** Opening or closing the panel by hand ends the hold a New chat put on the workspace in view (KERNEL-788). */
     setRightPanel: (open: boolean) => {
       folded.delete('rightPanel')
@@ -577,7 +584,7 @@ export const actions = {
     /** The workspace's panel stays closed until the toggle is pressed in it, whatever the global setting says. The panel never opens by itself (KERNEL-788). */
     holdPanel: (workspaceId: string) => { if (!state.ui.panelHeld.includes(workspaceId)) setUi({ panelHeld: [...state.ui.panelHeld, workspaceId] }) },
     /** The window got too narrow for a panel, or wide enough again. Widening brings back only a panel that folding hid (D-080). */
-    fold: (panel: keyof typeof HIDDEN, narrow: boolean) => {
+    fold: (panel: 'sidebar' | 'rightPanel', narrow: boolean) => {
       if (narrow && getState().ui[panel]) { folded.add(panel); setUi(panel === 'sidebar' ? { sidebar: false } : { rightPanel: false }) }
       else if (!narrow && folded.delete(panel)) setUi(panel === 'sidebar' ? { sidebar: true } : { rightPanel: true })
     }
@@ -803,29 +810,60 @@ export function mcpRoute(provider: Provider, accountId: string): Route {
 /** "3 MCP servers need you", the words the Providers row, the notice after adding an account and the MCP servers page share. */
 export const mcpNeedYou = (n: number) => `${n} MCP server${n === 1 ? '' : 's'} need${n === 1 ? 's' : ''} you`
 
-/** The notice after adding an account whose MCP servers need the user. Its action opens the Set up this account checklist. */
+/** "Linear and Figma", "Linear, Figma and Vercel", with a claude.ai connector's "claude.ai " left off. */
+const serverList = (servers: string[]) => {
+  const names = servers.map((x) => x.replace(/^claude\.ai\s+/i, ''))
+  return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}
+
+/** The name Claude Code lists a server by, without a connector's "claude.ai ". */
+const serverName = (server: string) => server.replace(/^claude\.ai\s+/i, '')
+
+/**
+ * A sign-in that ends with a server refused says so in a toast, with Try again opening Set up this account. The run's own rows keep the server as "Not signed in".
+ * The Set up dialog lists what failed itself, so it gets no toast, and a failure already told is not told again when the call's answer follows its push.
+ */
+function mcpRunToasts(run: McpSignInAll) {
+  const had = state.mcpRuns[mcpRunKey(run.provider ?? 'claude', run.accountId)]
+  if (!run.finished || state.ui.modal?.name === 'mcpSetUp') return
+  for (const f of run.failed) {
+    if (had?.finished && had.failed.some((h) => h.server === f.server && h.error === f.error)) continue
+    actions.ui.toast({ title: `Couldn't sign in to ${serverName(f.server)}`, sub: f.error, action: { label: 'Try again', modal: { name: 'mcpSetUp', provider: run.provider ?? 'claude', accountId: run.accountId } } })
+  }
+}
+
+/** The notice after adding an account whose MCP servers need the user: how many, which, and for which account. Its action opens that account on Settings, MCP servers. */
 async function mcpNeededToast(n: McpNeeded) {
   const count = await call('mcp.accounts', undefined).then((all) => all.find((a) => a.provider === n.provider && a.accountId === n.accountId)?.needsYou).catch(() => undefined)
-  actions.ui.toast({ title: mcpNeedYou(count || n.servers.length), action: { label: 'Set up', modal: { name: 'mcpSetUp', provider: n.provider, accountId: n.accountId } } })
+  const total = count || n.servers.length
+  const label = state.accounts.find((a) => a.provider === n.provider && a.id === n.accountId)?.label
+  actions.ui.toast({
+    glyph: 'plug',
+    title: `${total} MCP server${total === 1 ? '' : 's'} need${total === 1 ? 's' : ''} a sign-in`,
+    ...(n.servers.length ? { sub: `${serverList(n.servers)}${label ? `, for ${label}` : ''}.` } : {}),
+    action: { label: 'Open MCP servers', route: mcpRoute(n.provider, n.accountId) }
+  })
 }
 
 let switchToastId: string | undefined
 
 /**
- * One notice for each switch Kernel makes by itself, with Undo back to the account it left. The user's own switches say nothing:
- * the account menu already shows where they went (KERNEL-941). A newer switch replaces the last notice, so Undo always reverses
- * the latest one. `accounts` arrives before this event, so the names are current (KERNEL-699).
+ * One notice for each account switch, with Undo back to the account it left (Pen 14.6). Yours says what the provider runs on now. One Kernel makes at a limit says which account hit it, and
+ * where Kernel moved the provider. A newer switch replaces the last notice, so Undo always reverses the latest one. `accounts` arrives before this event, so the names are current (KERNEL-699).
  */
 function accountSwitchedToast(e: Extract<PushEvent, { type: 'accountSwitched' }>) {
-  if (e.reason !== 'limit') return
   const accounts = getState().accounts
-  const name = (id: string) => accounts.find((a) => a.provider === e.provider && a.id === id)?.label ?? 'another account'
+  const find = (id: string) => accounts.find((a) => a.provider === e.provider && a.id === id)
+  const name = (id: string) => find(id)?.label ?? 'another account'
   const provider = PROVIDERS.find((p) => p.id === e.provider)?.label ?? e.provider
+  const plan = find(e.to)?.plan
   // A switch ahead of a limit has no window that was hit (KERNEL-844).
   const why = e.limit === 'five_hour' ? 'hit its 5-hour limit' : e.limit ? 'hit its weekly limit' : 'is close to its limit'
-  const title = `Kernel switched ${provider} to ${name(e.to)}, ${name(e.from)} ${why}`
+  const toast = e.reason === 'limit'
+    ? { title: `${name(e.from)} ${why}`, sub: `Kernel moved ${provider} to ${name(e.to)}.`, glyph: 'error' as const }
+    : { title: `Switched to ${name(e.to)}`, sub: `${provider} now runs on ${name(e.to)}${plan ? `, ${plan}` : ''}.` }
   if (switchToastId) actions.ui.dismissToast(switchToastId)
-  switchToastId = actions.ui.toast({ title, action: { label: 'Undo', switchAccount: { provider: e.provider, accountId: e.from } } })
+  switchToastId = actions.ui.toast({ ...toast, action: { label: 'Undo', switchAccount: { provider: e.provider, accountId: e.from } } })
 }
 
 let burst: PushEvent[] | undefined
@@ -850,7 +888,7 @@ function openBurst(first: PushEvent, ms: number) {
 
 /**
  * A workspace update that takes a workspace out of setup (its status leaves 'setup', or its worktree is no longer pending) while one of its chats
- * holds a message for setup. Main sends it before it releases that message, so drawn alone it leaves one frame with SetupWait gone, no spinner and the
+ * holds a message until it is made. Main sends it before it releases that message, so drawn alone it leaves one frame with SetupWait gone, no spinner and the
  * queue strip showing. The strip's chat id is what the release's `chat.queue` names.
  */
 function leavesSetupHolding(e: PushEvent): string | undefined {
@@ -858,7 +896,7 @@ function leavesSetupHolding(e: PushEvent): string | undefined {
   const was = getState().workspaces.find((w) => w.id === e.workspace.id)
   if (!was || !(was.status === 'setup' && e.workspace.status !== 'setup') && !(was.worktreePending && !e.workspace.worktreePending)) return undefined
   const s = getState()
-  return (s.chats[e.workspace.id] ?? []).find((c) => s.queueWhy[c.id] === 'setup' && s.queue[c.id]?.length)?.id
+  return (s.chats[e.workspace.id] ?? []).find((c) => s.queueWhy[c.id] === 'worktree' && s.queue[c.id]?.length)?.id
 }
 
 /**
@@ -886,7 +924,7 @@ export function apply(e: PushEvent) {
   switch (e.type) {
     case 'activity': return actions.activity.add(e.event)
     case 'chat': return actions.chats.upsert(e.chat)
-    case 'chat.item': return actions.chats.upsertItem(e.chatId, e.item)
+    case 'chat.item': actions.chats.upsertItem(e.chatId, e.item); return raiseTurnFailed(e.chatId, e.item)
     case 'chat.cleared': return actions.chats.setItems(e.chatId, [])
     case 'chat.running': pushedLive?.running.add(e.chatId); return actions.chats.setRunning(e.chatId, e.running)
     case 'chat.queue': return actions.chats.setQueue(e.chatId, e.queue, e.why ?? null)
@@ -904,6 +942,8 @@ export function apply(e: PushEvent) {
     case 'script.output': return actions.workspaces.appendScript(e.workspaceId, e.kind, e.name, e.lines)
     case 'script.data': return actions.workspaces.appendScriptData(e.workspaceId, e.kind, e.name, e.data)
     case 'script.exit': return actions.workspaces.scriptExited(e.workspaceId, e.kind, e.name, e.code)
+    case 'setup.failed': return void raiseSetupFailed(e)
+    case 'worktree.failed': return raiseWorktreeFailed(e)
     case 'script.url': return actions.workspaces.setScriptUrl(e.workspaceId, e.name, e.url)
     case 'script.state': return actions.workspaces.setScripts(e.workspaceId, e.lines, e.exit, e.url, e.data)
     case 'checkpoint': return actions.workspaces.upsertCheckpoint(e.checkpoint)
@@ -921,9 +961,10 @@ export function apply(e: PushEvent) {
     case 'update': return actions.system.setUpdate(e.update)
     case 'account': return actions.account.set(e.account)
     case 'accounts': return actions.accounts.set(e.accounts)
+    case 'providerFellBack': return setState((s) => ({ fellBack: { ...s.fellBack, [e.workspaceId]: { from: e.from, to: e.to } } }))
     case 'accountSwitched': return accountSwitchedToast(e)
     case 'account.add': return actions.accounts.adding(e.add)
-    case 'account.mcpSignInAll': return actions.accounts.mcpRun(e.run)
+    case 'account.mcpSignInAll': mcpRunToasts(e.run); return actions.accounts.mcpRun(e.run)
     case 'account.mcpNeeded': return mcpNeededToast(e.needed)
     case 'online': return actions.system.setOnline(e.online)
     case 'settings.projectChanged': return actions.settings.setProject(e.projectId, e.settings)
@@ -988,8 +1029,7 @@ async function start() {
   // somewhere else hears about it in a toast.
   void call('preflight.run', undefined).then((checks) => {
     actions.system.setPreflight(checks)
-    const blocking = checks.find((c) => !c.ok && c.blocking)
-    if (blocking && projects.length && state.ui.route.name !== 'leadNew') actions.ui.toast({ title: blocking.title, sub: 'New chat shows how to fix it.' })
+    if (projects.length || getState().settings?.onboarding.done) setupToasts(checks)
   }).catch(() => undefined)
   // After an update installs, What's new opens once with that version's notes (KERNEL-30). It waits for the route above, which closes modals,
   // and carries its own copy, since the updater's first check pushes a new state that drops `installed` and the notes.

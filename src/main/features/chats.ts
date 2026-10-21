@@ -281,11 +281,15 @@ export class Chats extends Feature {
   private async newTabModel(ws: Workspace, provider?: Provider, model?: string): Promise<{ provider: Provider; model: string }> {
     const first = this.store.chats(ws.id)[0]
     const agent = this.agentsSync(ws.projectId).find((a) => a.id === ws.agentId)
-    const pick = agent ? this.k.team.pickFor(agent) : this.settings.models.roles.engineers
-    if (!provider) return first ? { provider: chatProvider(first), model: first.model } : { provider: pick.provider, model: pick.model }
+    const pick = agent ? this.k.team.pickFor(agent) : this.k.team.pickRole('engineers')
+    if (!provider) {
+      if (first) return { provider: chatProvider(first), model: first.model }
+      const { provider: p, model: m } = this.k.team.announce(ws, pick)
+      return { provider: p, model: m }
+    }
     if (model) return { provider, model }
     if (first && chatProvider(first) === provider) return { provider, model: first.model }
-    if (pick.provider === provider) return { provider, model: pick.model }
+    if (pick.provider === provider) return { provider, model: this.k.team.announce(ws, pick).model }
     const models = await this.k.providers.models(provider).catch(() => [])
     const fallback = models.find((m) => m.isDefault) ?? models[0]
     if (!fallback) throw new Error(`Kernel couldn't read ${provider === 'codex' ? "Codex's" : "Claude's"} models. Check Settings, Accounts.`)
@@ -299,7 +303,7 @@ export class Chats extends Feature {
   private openedEffort(workspaceId: string, model: string): Effort {
     const ws = this.mustWs(workspaceId)
     const agent = this.agentsSync(ws.projectId).find((a) => a.id === ws.agentId)
-    return effortFor(model, this.settings.models.effortByModel, agent ? this.k.team.pickFor(agent).effort : this.settings.models.roles.engineers.effort)
+    return effortFor(model, this.settings.models.effortByModel, (agent ? this.k.team.pickFor(agent) : this.k.team.pickRole('engineers')).effort)
   }
 
   /**
@@ -441,7 +445,7 @@ export class Chats extends Feature {
         if (now && copy) await this.sendNow(chatId, copy.id)
         return { ok: true }
       },
-      'chats.send': async ({ chatId, parts, clientId }) => { this.k.lead.userSpoke(chatId); return this.sessions.send(chatId, parts, { clientId }) },
+      'chats.send': async ({ chatId, parts, clientId }) => this.k.lead.send(chatId, parts, { clientId }),
       'chats.interrupt': async ({ chatId }) => { await this.sessions.interrupt(chatId); return { ok: true } },
       'chats.configure': async ({ chatId, ...patch }) => {
         const chat = this.mustChat(chatId)

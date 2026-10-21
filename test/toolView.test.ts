@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { maskSecrets, serviceOf, shortPath, stripCd, toolTitle, toolView, type ToolLike } from '../src/shared/toolView'
+import { inflect, maskSecrets, serviceOf, shortPath, stripCd, toolAsk, toolTitle, toolView, type ToolLike } from '../src/shared/toolView'
 
 const call = (name: string, input: Record<string, unknown> = {}, extra: Partial<ToolLike> = {}): ToolLike => ({ name, input, status: 'done', ...extra })
 
@@ -27,7 +27,7 @@ describe('toolView verbs and tenses', () => {
   })
 
   it('shows Bash by its description, or by its command without a leading cd', () => {
-    expect(toolView(call('Bash', { command: 'pnpm test', description: 'Run the unit tests.' })).verb).toBe('Run the unit tests')
+    expect(toolView(call('Bash', { command: 'pnpm test', description: 'Run the unit tests.' }))).toMatchObject({ verb: 'Ran the unit tests', object: 'pnpm test', mono: true })
     const bare = toolView(call('Bash', { command: 'cd /tmp/x && cd y && pnpm test --run\nmore' }))
     expect(bare).toMatchObject({ verb: 'Ran a command', object: 'pnpm test --run', mono: true })
     expect(toolView(call('Bash', { command: 'ls', description: 'List files' }, { status: 'failed', output: 'denied by user: you denied' })).verb).toBe('Denied: List files')
@@ -39,7 +39,7 @@ describe('toolView verbs and tenses', () => {
     expect(toolView(call('Bash', command, { status: 'failed', output: 'exit 1' }))).toMatchObject({ verb: "Couldn't run a command", object: 'pnpm test' })
     expect(toolView(call('Bash', command)).sentence).toBe('Ran a command: pnpm test')
     expect(toolView(call('Bash', { ...command, description: '' })).verb).toBe('Ran a command')
-    expect(toolView(call('Bash', { ...command, description: 'Run the invoice tests' }, { status: 'running' })).verb).toBe('Run the invoice tests')
+    expect(toolView(call('Bash', { ...command, description: 'Run the invoice tests' }, { status: 'running' })).verb).toBe('Running the invoice tests')
   })
 
   it('reads a denied call with a fixed label without quotes, and other denied wording as before', () => {
@@ -195,5 +195,38 @@ describe('built-in tools that are not file or shell calls (KERNEL-807)', () => {
   it('names the task or command a row is about', () => {
     expect(toolView(call('TaskCreate', { subject: 'Wire up the toggle' }))).toMatchObject({ verb: 'Added a task', object: 'Wire up the toggle' })
     expect(toolView(call('Monitor', { description: 'dev server logs' }))).toMatchObject({ verb: 'Watched a command', object: 'dev server logs' })
+  })
+})
+
+describe('a described command in the tense of its call (KERNEL-1094)', () => {
+  it('says the description as it is running, done and failed', () => {
+    const input = { command: 'pnpm shots --all', description: 'Capture every screen' }
+    expect(toolView(call('Bash', input, { status: 'running' })).verb).toBe('Capturing every screen')
+    expect(toolView(call('Bash', input)).verb).toBe('Captured every screen')
+    expect(toolView(call('Bash', input, { status: 'failed', output: 'exit 1' }))).toMatchObject({ verb: 'Captured every screen', state: 'failed', object: 'pnpm shots --all' })
+  })
+
+  it('inflects the verbs that run, read, build and stop', () => {
+    expect(inflect('Run steps 1 to 5', 'ed')).toBe('Ran steps 1 to 5')
+    expect(inflect('Run steps 1 to 5', 'ing')).toBe('Running steps 1 to 5')
+    expect(inflect('Read the checklist', 'ed')).toBe('Read the checklist')
+    expect(inflect('Build the app', 'ed')).toBe('Built the app')
+    expect(inflect('Stop the dev server', 'ing')).toBe('Stopping the dev server')
+    expect(inflect('Stop the dev server', 'ed')).toBe('Stopped the dev server')
+    expect(inflect('Copy the env file', 'ed')).toBe('Copied the env file')
+    expect(inflect('check types', 'ed')).toBe('checked types')
+  })
+
+  it('leaves a description that starts with anything else, or is already in the tense, as written', () => {
+    expect(inflect('Unit tests for the table', 'ed')).toBe('Unit tests for the table')
+    expect(inflect('Running the unit tests', 'ing')).toBe('Running the unit tests')
+    expect(inflect('Running the unit tests', 'ed')).toBe('Ran the unit tests')
+    expect(inflect('Ran the unit tests', 'ing')).toBe('Ran the unit tests')
+    expect(inflect('', 'ed')).toBe('')
+  })
+
+  it('asks for a described command by its description alone', () => {
+    expect(toolAsk('Bash', { command: 'pnpm test', description: 'Run the unit tests' })).toBe('Run the unit tests')
+    expect(toolAsk('Bash', { command: 'pnpm test' })).toBe('Run a command: pnpm test')
   })
 })

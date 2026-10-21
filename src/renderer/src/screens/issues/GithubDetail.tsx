@@ -1,22 +1,25 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { GithubIssue, GithubIssueDetail, Project } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { useDetailLoad } from './useDetailLoad'
 import { detailKey } from './cache'
-import { actions, go, useStore } from '../../store'
-import { Button, FailedState, Icon, Skeleton, useBusy } from '../../ui'
+import { actions, useStore } from '../../store'
+import { FailedState, Icon, LoadingRow, Skeleton, useBusy } from '../../ui'
+import { failToast, useRetryKey } from '../../retry'
 import { IssueState } from '../../icons'
 import { openLeadChat, openNewChat } from '../../lead'
 import { Markdown } from '../workspace/markdown'
 import { WorkCard } from './WorkCard'
 import { useKeptScroll } from '../../ui/keptScroll'
-import { DescriptionFailed } from './parts'
 import { githubPlanParts, issueAge, linkedWorkspaces, loginInitials } from './model'
 
 /** The selected GitHub issue: what GitHub says about it, the workspaces already working on it, and the buttons that start work (IssuesGitHub.png). */
 export function GithubDetail({ keep, project, id, summary, tick }: { keep: string; project: Project; id: string; summary?: GithubIssue; tick: number }) {
   const { loaded, failure, retry } = useDetailLoad<GithubIssueDetail>(id, detailKey('github', project.id, id), () => call('github.issue', { projectId: project.id, id }), [project.id, tick])
   const failed = failure?.id === id ? failure.message : null
+  // A detail that failed says so in a toast with Try again, and the pane shows a calm state in its place (DESIGN.md, State kinds).
+  useRetryKey('githubIssue', retry)
+  useEffect(() => { if (failed) failToast(`Couldn't load ${id}`, failed, 'githubIssue') }, [failed, id])
   const [busy, run] = useBusy<'plan'>()
   const workspaces = useStore((s) => s.workspaces)
   const lead = useStore((s) => s.agents[project.id]?.find((a) => a.lead)?.name) || 'Kernel'
@@ -37,13 +40,13 @@ export function GithubDetail({ keep, project, id, summary, tick }: { keep: strin
   })
   const newChat = () => issue && openNewChat(project.id, { source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url || undefined, tracker: 'github' } })
 
-  if (!issue) {
+  if (!issue || (failed && !detail)) {
     return (
       <article className="is-detail" aria-label={id} aria-busy={!failed || undefined}>
-        {failed ? <FailedState title={`Could not load ${id}`} onRetry={retry}>{failed}</FailedState> : (
-          <div className="is-scroll"><div className="is-inner">
-            <span className="mono muted is-key">{id}</span>
-            <Skeleton width="60%" height={26} />
+        {failed ? <FailedState icon="question" title={`${id} didn't load`} onRetry={retry}>The rest of Work still works.</FailedState> : (
+          <div className="is-scroll"><div className="is-skeleton is-sk-detail" role="status" aria-label={`Loading ${id}`}>
+            <div className="is-sk-body"><Skeleton width={90} height={8} /><Skeleton width={340} height={14} /><Skeleton width={420} height={9} /><Skeleton width={380} height={9} /><Skeleton width={260} height={9} /></div>
+            <LoadingRow what={id} inline />
           </div></div>
         )}
       </article>
@@ -56,26 +59,31 @@ export function GithubDetail({ keep, project, id, summary, tick }: { keep: strin
       <div className="is-scroll" ref={scroll}>
         <div className="is-inner">
           <div className="col is-gap-6">
-            <span className="mono muted is-key">{issue.id}</span>
+            <span className="is-keyline">
+              <span className="mono muted is-key">{issue.id}</span>
+              {issue.url && <a className="is-ext" href={issue.url} target="_blank" rel="noreferrer" aria-label={`Open ${issue.id} on GitHub`}><Icon name="ext" size={13} /></a>}
+            </span>
             <h2>{issue.title}</h2>
           </div>
 
           <div className="is-cols">
           <dl className="is-facts">
-            <dt>State</dt>
-            <dd><IssueState shape="todo" />Open</dd>
+            <dt>Status</dt>
+            <dd><IssueState shape="todo" size={14} />Open</dd>
             <dt>Milestone</dt>
             <dd>{issue.milestone ?? <span className="muted">No milestone</span>}</dd>
+            <dt>Comments</dt>
+            <dd>{detail ? detail.comments.length : <span className="muted">…</span>}</dd>
+            <dt>Opened by</dt>
+            <dd>{issue.author ?? <span className="muted">Unknown</span>}</dd>
             <dt>Assignee</dt>
             <dd>{first ? <><span className="is-av" aria-hidden="true">{loginInitials(first)}</span>{first}{others.length > 0 && <span className="muted">+{others.length}</span>}</> : <span className="muted">Unassigned</span>}</dd>
-            <dt>Author</dt>
-            <dd>{issue.author ?? <span className="muted">Unknown</span>}</dd>
             <dt>Labels</dt>
             <dd className="is-wide">{issue.labels.length ? issue.labels.map((l) => <span key={l} className="is-label">{l}</span>) : <span className="muted">None</span>}</dd>
           </dl>
 
           <div className="is-main">
-          <WorkCard linked={linked} />
+          <WorkCard linked={linked} handOff={{ id, lead, planBusy: busy === 'plan', disabled: busy !== null, onPlan: () => void plan(), onHand: newChat }} />
 
           {detail ? (
             <>
@@ -94,27 +102,14 @@ export function GithubDetail({ keep, project, id, summary, tick }: { keep: strin
                 ))}
               </section>
             </>
-          ) : failed ? (
-            <DescriptionFailed onRetry={retry}>{failed}</DescriptionFailed>
           ) : (
-            <div className="col is-gap-8" aria-busy="true"><Skeleton width="85%" /><Skeleton width="70%" /><Skeleton width="40%" /></div>
+            <div className="col is-gap-8" aria-busy="true"><Skeleton width="85%" /><Skeleton width="70%" /><Skeleton width="40%" /><LoadingRow what={id} inline /></div>
           )}
           </div>
           </div>
         </div>
       </div>
 
-      <div className="is-foot">
-        <div className="is-inner">
-          <div className="is-actions">
-            <span className="grow" />
-            {issue.url && <a className="btn lg" href={issue.url} target="_blank" rel="noreferrer">Open on GitHub<Icon name="ext" size={12} /></a>}
-            <Button size="lg" onClick={newChat}>New chat</Button>
-            <Button size="lg" variant={linked[0] ? 'secondary' : 'primary'} busy={busy === 'plan'} busyPattern="arrow-right" busyLabel="Sending" disabled={busy !== null} onClick={() => void plan()}>Plan with {lead}</Button>
-            {linked[0] && <Button size="lg" variant="primary" onClick={() => go({ name: 'workspace', workspaceId: linked[0].id })}>Open workspace</Button>}
-          </div>
-        </div>
-      </div>
     </article>
   )
 }

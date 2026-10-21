@@ -207,7 +207,7 @@ describe('updates that arrive together draw together', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     actions.chats.setItems('c1', [])
-    actions.chats.setQueue('c1', [{ id: 'm1', chatId: 'c1', parts: text('hi'), ts: 1 }], 'setup')
+    actions.chats.setQueue('c1', [{ id: 'm1', chatId: 'c1', parts: text('hi'), ts: 1 }], 'worktree')
     actions.chats.setRunning('c1', false)
   })
 
@@ -247,7 +247,7 @@ describe('a workspace update that ends setup waits for the message it releases',
     actions.workspaces.set([ws({})])
     actions.chats.set('w1', [chat])
     actions.chats.setItems('c1', [])
-    actions.chats.setQueue('c1', [{ id: 'm1', chatId: 'c1', parts: text('hi'), ts: 1 }], 'setup')
+    actions.chats.setQueue('c1', [{ id: 'm1', chatId: 'c1', parts: text('hi'), ts: 1 }], 'worktree')
     actions.chats.setRunning('c1', false)
   })
 

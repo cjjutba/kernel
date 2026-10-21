@@ -88,13 +88,16 @@ export function listen(k: Kernel): () => void {
     // A chat that stopped running, or whose queue emptied, may take a Team update now, and a turn's end frees a slot for the
     // others. The update goes then, not at the next PR poll (KERNEL-637).
     if ((e.type === 'chat.running' && !e.running) || (e.type === 'chat.queue' && !e.queue.length)) k.leadUpdates.chatFreed()
+    // The evidence against each criterion follows the PR's checks, reviews and head (KERNEL-1065).
+    if (e.type === 'pr.info') k.evidence.onPrInfo(e.info)
+    if (e.type === 'workspace') k.evidence.onWorkspace(e.workspace)
     if (e.type === 'agent.status') k.team.onStatus(e)
     // An archived project's settings files aren't watched (KERNEL-723).
     if (e.type === 'project' && e.project.archived) k.config.unwatchProject(e.project.id)
     // Someone signed in or out: Claude says so with `account`, Codex and account switches with `accounts`, so the next
     // team read checks pinned models again (KERNEL-634).
     if (e.type === 'account' || e.type === 'accounts') k.team.forgetOffers()
-    // A held brief waits for setup or for a merge by its workspace's state, so its queue's reason follows the workspace (KERNEL-361).
+    // A held brief waits for its workspace or for a merge by its workspace's state, so its queue's reason follows the workspace (KERNEL-361).
     if (e.type === 'workspace') k.sessions.pushReasons()
     // A PR every review approved may merge by itself, once the user turned auto-merge on (KERNEL-556). A workspace push carries
     // each verdict, each kept approval and each change of GitHub's block, so it is the one place that sees them all.

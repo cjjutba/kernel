@@ -1,12 +1,14 @@
 import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { PORT_BLOCK, type AgentDef, type Chat, type ChatPart, type CompareTarget, type Effort, type Provider, type Project, type ResolvedPath, type Workspace, type WorkspaceMode, type WorkspaceSource } from '@shared/types'
+import { PORT_BLOCK, type AgentDef, type Chat, type ChatPart, type CompareTarget, type Effort, type LeadMode, type Provider, type Project, type ResolvedPath, type Workspace, type WorkspaceMode, type WorkspaceSource } from '@shared/types'
 import { chatProvider, providerOf } from '@shared/providers'
+import { buildsHere } from '@shared/leadMode'
+import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { newId } from '../db'
 import { bus } from '../bus'
 import { DEFAULT_BASE_REF, loadRepoSettings, referencesInProject, type RepoSettings } from '../services/settings'
 import { clock, worktreeTree, writeTree } from '../services/checkpoints'
-import { branchCommits, branchName, branchType, capBranch, changedFiles, compareRange, createWorktree, currentBranch, defaultBranch, diffText, fetchOrigin, folderGone, freeBranch, freeWorktreePath, hasCommit, isWorktreeOf, leadBase, listBranches, mergeBase, onRemote, rangeDiff, rangeFiles, removeWorktree, resolveBaseRef, reviewBranch, projectWorktreeRoot, shortSlug, slugify, snapshotBaseline, stripRemote, taskBranch, validBranchName } from '../services/worktrees'
+import { branchCommits, branchName, branchType, capBranch, changedFiles, compareRange, createWorktree, currentBranch, defaultBranch, diffText, fetchOrigin, folderGone, freeBranch, freeWorktreePath, hasCommit, isWorktreeOf, leadBase, leadBranch, listBranches, mergeBase, onRemote, rangeDiff, rangeFiles, removeWorktree, resolveBaseRef, reviewBranch, projectWorktreeRoot, shortSlug, slugify, snapshotBaseline, stripRemote, taskBranch, validBranchName } from '../services/worktrees'
 import { claimSpare as turnSpareIntoWorktree, fastForward, isAncestor, makeSpare, revParse, sweepSpares } from '../services/worktrees'
 import { linkNodeModules, NoFreePortBlock, portBlock } from '../services/scripts'
 import { exec } from '../services/exec'
@@ -29,6 +31,8 @@ export interface CutWorkspace {
   prompt: string; parts?: ChatPart[]; source?: WorkspaceSource; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string
   provider?: Provider; model?: string; effort?: Effort; plan?: boolean; taskFor?: (ws: Workspace) => string | undefined; leadChatId?: string; reviewOf?: string; linkReviewOf?: string
   labels?: string[]; waitFor?: string[]; lead?: { threadId: string }
+  /** A Lead chat that starts in Build here follows Workspace type, one in Hand off gets a worktree (KERNEL-1051). */
+  leadMode?: LeadMode
   /**
    * The agent itself, for one that isn't on the project's team: Kernel's own reviewer, which runs the reviews Kernel starts with
    * its own prompts (KERNEL-549). Without it, an `agentId` the team doesn't have falls back to the Lead.
@@ -108,7 +112,7 @@ export class Workspaces extends Feature {
     if (o.reviewOf && (!reviewed || reviewed.projectId !== projectId || reviewed.status === 'archived')) throw new Error('The workspace to review is not open in this project.')
     const remote = await this.k.config.remoteFor(project.path, repo)
     const main = o.lead ? await leadBase(project.path, remote) : undefined
-    const mode = reviewed ? 'worktree' : o.lead ? (main ? 'worktree' : 'current') : o.mode ?? repo.workspace.mode ?? s.workspace.mode
+    const mode = reviewed ? 'worktree' : o.lead ? (main ? (o.leadMode === 'build' ? o.mode ?? repo.workspace.mode ?? s.workspace.mode : 'worktree') : 'current') : o.mode ?? repo.workspace.mode ?? s.workspace.mode
     // A project Kernel ran git init in waits for the user's first commit (KERNEL-231). Without one, a worktree has nothing to start from.
     // The Lead's base was found above, so its project has one.
     if (mode === 'worktree' && !o.lead && !(await hasCommit(project.path))) throw new Error(`${project.name} has no commit yet, so a new workspace has nothing to branch from. Make the first commit in ${project.path}, then try again.`)
@@ -145,7 +149,7 @@ export class Workspaces extends Feature {
       const reviewOf = reviewed?.id ?? (mode === 'worktree' ? o.linkReviewOf : undefined)
       const threadId = o.lead?.threadId ?? (o.leadChatId ? this.store.chat(o.leadChatId)?.threadId : undefined)
       const save = (path: string, branch: string, baselineRef?: string) => {
-        const w: Workspace = { id: newId(), projectId, name: slugify(title || 'chat'), branch, baseRef, ...(stale ? { fetchFailed: stale.text } : {}), path, mode, agentId: agent.id, ...(o.lead ? { lead: true as const } : {}), port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(threadId ? { threadId } : {}), ...(reviewOf ? { reviewOf } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), ...(later ? { worktreePending: {} } : {}), ...(mode === 'worktree' ? { firstInProject: !this.store.workspaces(projectId).some((x) => x.mode === 'worktree' && !(x.lead && !x.threadId)) } : {}), prState: 'none', createdAt: Date.now() }
+        const w: Workspace = { id: newId(), projectId, name: slugify(title || 'chat'), branch, baseRef, ...(stale ? { fetchFailed: stale.text } : {}), path, mode, agentId: agent.id, ...(o.lead ? { lead: true as const } : {}), port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(threadId ? { threadId } : {}), ...(reviewOf ? { reviewOf } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), ...(later ? { worktreePending: {} } : {}), firstInProject: this.isFirstInProject(projectId, { threadId: o.lead?.threadId }), prState: 'none', createdAt: Date.now() }
         this.store.saveWorkspace(w)
         return w
       }
@@ -178,10 +182,10 @@ export class Workspaces extends Feature {
         return save(made.path, made.branch)
       }
       // A project with no commit to start from keeps the Lead on the checkout, with no baseline, as before KERNEL-355.
-      if (o.lead) return save(project.path, await currentBranch(project.path).catch(() => project.defaultBranch))
-      if (s.workspace.oneCurrentBranchPerProject && this.store.workspaces(projectId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== agent.id))
+      if (o.lead && !main) return save(project.path, await currentBranch(project.path).catch(() => project.defaultBranch))
+      if (s.workspace.oneCurrentBranchPerProject && this.onCheckout(projectId, { agentId: agent.id, lead: !!o.lead }))
         throw new Error('Another workspace is already working on the current branch in this project.')
-      return save(project.path, await currentBranch(project.path), s.workspace.baselineCurrentBranch ? (await snapshotBaseline(project.path)).ref : undefined)
+      return save(project.path, await currentBranch(project.path).catch(() => project.defaultBranch), s.workspace.baselineCurrentBranch ? (await snapshotBaseline(project.path)).ref : undefined)
     })
     // Until its brief has gone out, the Lead's messages to it wait here (KERNEL-118). Nobody messages the Lead's own workspace.
     if (!o.lead) this.k.setup.setSetup(ws.id, { later: [] })
@@ -194,7 +198,10 @@ export class Workspaces extends Feature {
     const taskId = o.taskFor?.(ws)
     if (taskId) { ws.taskId = taskId; this.saveWs(ws) }
 
-    const role = this.k.team.pickFor(agent)
+    // A teammate the Lead hands off to from a chat on Codex starts on its role's Codex side (KERNEL-1055). A review has its own role.
+    const handoff = o.leadChatId && !o.lead && !o.reviewOf && !o.linkReviewOf ? this.store.chat(o.leadChatId) : undefined
+    const resolved = this.k.team.pickFor(agent, handoff && chatProvider(handoff) === 'codex' ? { chatProvider: 'codex' } : {})
+    const role = o.model ? resolved : this.k.team.announce(ws, resolved)
     // A model picked in New workspace runs on its own provider. Otherwise the agent's pin or its role decides (KERNEL-406).
     const pick = { provider: o.model ? o.provider ?? providerOf(o.model) : role.provider, model: o.model ?? role.model, effort: o.effort ?? role.effort, plan: o.plan ?? (agent.lead && s.models.leadPlanMode) }
     // A Lead chat's first tab is auto-named, and the chat takes its name (KERNEL-337).
@@ -343,7 +350,7 @@ export class Workspaces extends Feature {
   private async makeNow(id: string): Promise<Workspace> {
     const ws = this.mustWs(id)
     if (!ws.worktreePending || ws.status === 'archived') return ws
-    if (ws.worktreePending.error) this.updateWs(id, { status: 'setup', worktreePending: {} })
+    if (ws.worktreePending.error) this.updateWs(id, { status: 'setup', worktreePending: { ...ws.worktreePending, error: undefined } })
     const project = this.mustProject(ws.projectId)
     try {
       const repo = await loadRepoSettings(project.path)
@@ -396,18 +403,44 @@ export class Workspaces extends Feature {
       if (this.stopped) return ws
       const error = gitSaid(e)
       bus.push({ type: 'script.output', workspaceId: id, kind: 'setup', lines: [{ line: `Kernel couldn't make the worktree: ${error}`, stream: 'stderr' }] })
-      return this.updateWs(id, { status: 'failed', worktreePending: { error } })
+      const failed = this.updateWs(id, { status: 'failed', worktreePending: { ...ws.worktreePending, error } })
+      this.sayWorktreeFailed(id, error)
+      return failed
     }
   }
 
   /**
-   * A new workspace's setup: files.copy and setup, then ready, the start checkpoint and the run script.
+   * Tells the window git couldn't make a chat's worktree, or its working copy, for its toast with Try again (KERNEL-1086). The
+   * messages wait in the chat, not sent, until `retryWorktree` makes it.
+   */
+  sayWorktreeFailed(id: string, error: string) {
+    const ws = this.store.workspace(id)
+    if (this.stopped || !ws || ws.status === 'archived') return
+    const chatId = this.chatTabs(id).find((c) => c.kind !== 'terminal')?.id
+    bus.push({ type: 'worktree.failed', workspaceId: id, ...(chatId ? { chatId } : {}), error })
+  }
+
+  /**
+   * Try again on a chat whose worktree git couldn't make (KERNEL-1086): makes it again, then sends the messages that waited, as
+   * the first try would have. A chat that started on the shared main folder makes its working copy again (KERNEL-1053).
+   * Returns once the try has started.
+   */
+  retryWorktree(id: string): Workspace {
+    const ws = this.mustWs(id)
+    if (ws.worktreePending?.fromShared) return this.k.lead.retryCopy(id)
+    if (ws.status !== 'failed' || !ws.worktreePending) throw new Error("This chat's worktree didn't fail, so there is nothing to try again.")
+    void this.k.setup.retrySetup(id).catch(() => undefined)
+    return this.mustWs(id)
+  }
+
+  /**
+   * A new workspace's setup: files.copy, then ready, the start checkpoint and the brief, with the setup script running alongside
+   * the agent (KERNEL-1012). Nothing waits for the script, and one that fails is a `setup.failed` while the agent keeps working
+   * (KERNEL-1086). With no setup script, the run script starts with the brief.
    *
-   * With a `brief` (a hand-off or New workspace), the brief waits in the chat's queue until setup passes, then goes out with the
-   * Lead's messages that came while it ran (KERNEL-118). A hand-off awaits it all, so create_workspace reports a failed setup
-   * (KERNEL-122). With none (a fork, a Lead chat, a restore), the caller already holds the chat, and what waits in its tabs
-   * goes out when setup passes, or after Run again. `checkpoint: false` takes no start checkpoint, for a
-   * restore (KERNEL-77).
+   * With a `brief` (a hand-off or New workspace), the brief goes out once the files are copied, with the Lead's messages that came
+   * meanwhile after it (KERNEL-118). With none (a fork, a Lead chat, a restore), the caller already holds the chat, and what waits
+   * in its tabs goes out then. `checkpoint: false` takes no start checkpoint, for a restore (KERNEL-77).
    */
   async setUpWorkspace(ws: Workspace, project: Project, repo: RepoSettings, chat: Chat, o: { brief?: ChatPart[]; prompt?: string; from?: 'lead'; leadChatId?: string; checkpoint?: boolean } = {}): Promise<Workspace> {
     if (!o.brief) {
@@ -424,24 +457,12 @@ export class Workspaces extends Feature {
       for (let held = this.k.setup.setups.get(ws.id); held?.later.length; held = this.k.setup.setups.get(ws.id)) { const m = held.later.shift()!; this.k.setup.saveSetups(); await send(m) }
       this.k.setup.setSetup(ws.id, undefined)
     }
-    // Setup runs alongside unless the user asked agents to wait for it (KERNEL-1012).
-    const alongside = this.k.setup.runsOnCreate(repo) && !this.k.setup.holdsForSetup(repo)
-    let ready: boolean
-    try { ready = await this.k.setup.prepare(ws, project, repo, { background: alongside }) } catch (e) { this.k.setup.setSetup(ws.id, undefined); throw e }
-    // Archived while setup ran: archive stopped the script, and the workspace stays archived.
+    // Setup runs alongside, and nothing waits for it (KERNEL-1012, KERNEL-1086).
+    const alongside = this.k.setup.runsOnCreate(repo)
+    try { await this.k.setup.prepare(ws, project, repo) } catch (e) { this.k.setup.setSetup(ws.id, undefined); throw e }
+    // Archived while the files were copied: the workspace stays archived.
     if (this.mustWs(ws.id).status === 'archived') { this.k.setup.setSetup(ws.id, undefined); return this.mustWs(ws.id) }
-    // The first prompt waits in the chat's queue until setup passes (WorkspaceSetupFailed.png, "Run again").
-    if (!ready) {
-      this.sessions.hold(chat.id, parts, { from })
-      await after((m) => this.sessions.hold(chat.id, m, { from: 'lead' }))
-      const failed = this.updateWs(ws.id, { status: 'failed' })
-      // The Lead's create_workspace says so in its result while the Lead's turn still waits for it, so this event doesn't
-      // wake the Lead a second time (KERNEL-126). A setup that was stopped, by archive or quit, isn't a failure to report.
-      const code = this.k.setup.setupFailures.get(ws.id)
-      if (code !== null && failed.status !== 'archived') this.leadUpdates.setup(failed, false, { told: !!o.leadChatId && this.sessions.isRunning(o.leadChatId), code })
-      return failed
-    }
-    // Read again: wait_for_merge may have set or cleared the wait while setup ran (KERNEL-259).
+    // Read again: wait_for_merge may have set or cleared the wait while the files were copied (KERNEL-259).
     const wait = this.mustWs(ws.id).waitsFor
     if (wait?.held && wait.on.length) {
       // The brief and the Lead's messages wait in the chat, and only then does the workspace count as ready, so a quit
@@ -456,7 +477,7 @@ export class Workspaces extends Feature {
       const label = this.k.waits.waitLabelOf(held)
       // The Lead reads it in create_workspace's result while its turn still waits for it (KERNEL-126's pattern).
       this.leadUpdates.waits(held, 'wait.started', { on: held.waitsFor!.on, label, held: true, ...(o.leadChatId && this.sessions.isRunning(o.leadChatId) ? { told: true } : {}) })
-      // Something it waits for may have merged while setup ran.
+      // Something it waits for may have merged meanwhile.
       void this.k.waits.settleWait(ws.id).catch(() => undefined)
       if (alongside) void this.k.setup.runInBackground(held, project, repo)
       return held
@@ -478,18 +499,11 @@ export class Workspaces extends Feature {
 
   /** `setUpWorkspace` for a workspace whose chats are already held: a fork, a Lead chat, or a restore. */
   private async setUpHeld(ws: Workspace, project: Project, repo: RepoSettings, chat: Chat, checkpoint?: boolean): Promise<Workspace> {
-    const alongside = this.k.setup.runsOnCreate(repo) && !this.k.setup.holdsForSetup(repo)
-    const ready = await this.k.setup.prepare(ws, project, repo, { background: alongside })
+    const alongside = this.k.setup.runsOnCreate(repo)
+    await this.k.setup.prepare(ws, project, repo)
     for (const m of this.k.setup.setups.get(ws.id)?.later ?? []) this.sessions.hold(chat.id, m, { from: 'lead' })
     if (this.k.setup.setups.has(ws.id)) this.k.setup.setSetup(ws.id, undefined)
     if (this.mustWs(ws.id).status === 'archived') return this.mustWs(ws.id)
-    if (!ready) {
-      const failed = this.updateWs(ws.id, { status: 'failed' })
-      const code = this.k.setup.setupFailures.get(ws.id)
-      // The Lead's own setup failing is for the user, in the chat. Nobody else handed it off.
-      if (code !== null && failed.status !== 'archived' && !failed.lead) this.k.leadUpdates.setup(failed, false, { code })
-      return failed
-    }
     const done = await this.k.setup.setupDone(ws, project, chat, chat.title, async () => this.k.setup.releaseTabs(ws.id, chat.id), { checkpoint, run: !alongside })
     if (alongside && done.status === 'ready') void this.k.setup.runInBackground(done, project, repo)
     return done
@@ -519,7 +533,7 @@ export class Workspaces extends Feature {
     let ws!: Workspace
     const fork = await this.k.chats.forkChat(chatId, itemId, async () => (ws = await this.forkTree(src, project, repo, from, files)).id)
     this.k.setup.setSetup(ws.id, { chatId: fork.id, later: this.k.setup.setups.get(ws.id)?.later ?? [] })
-    // Nothing goes out before setup passes.
+    // Nothing goes out before the fork's files are copied. The setup script doesn't hold it (KERNEL-1086).
     this.sessions.hold(fork.id)
     this.note(ws.id, `Forked from ${src.name}, with its files as they were at ${clock(Date.now())}.`)
     void this.setUpWorkspace(ws, project, repo, fork).catch((e) => {
@@ -580,8 +594,56 @@ export class Workspaces extends Feature {
     })
   }
 
+  /**
+   * Another open workspace on the project's checkout, which "One current-branch workspace per project" refuses a second to
+   * share: a teammate's, or a chat with Kernel that builds there (KERNEL-1051). `self` is the one asking, so it never counts, nor
+   * does a chat of the same agent unless both build.
+   */
+  onCheckout(projectId: string, self: { id?: string; agentId: string; lead?: boolean }): Workspace | undefined {
+    return this.store.workspaces(projectId).find((w) => w.mode === 'current' && w.status !== 'archived' && w.id !== self.id
+      && (w.agentId !== self.agentId || (!!self.lead && isLeadChatWorkspace(w) && buildsHere(w))))
+  }
+
+  /**
+   * Gives a chat on the shared main folder its own worktree (KERNEL-1051): a branch named by the Lead branch pattern from the
+   * chat's title, cut from `<remote>/<default>` through `makeWorktree` (the spare, the fetch, the KERNEL-653 check), and ports.
+   * The record is `setup` with `worktreePending` meanwhile. Throws git's reason when the worktree can't be made, with the
+   * record left as `makeWorktree` leaves it, for the caller to put back.
+   */
+  async cutOwnWorktree(id: string, title: string, leadName: string | undefined, pending?: () => void): Promise<Workspace> {
+    const ws = this.mustWs(id)
+    const project = this.mustProject(ws.projectId)
+    const repo = await loadRepoSettings(project.path)
+    const remote = await this.k.config.remoteFor(project.path, repo)
+    const base = await leadBase(project.path, remote)
+    if (!base) throw new Error(`${project.name} has no commit yet, so there is nothing for a worktree to start from.`)
+    const wanted = leadBranch(repo.workspace.leadBranchPattern || this.settings.workspace.leadBranchPattern, title, leadName)
+    if (!(await validBranchName(project.path, wanted))) throw new Error(`${wanted} is not a valid branch name. Change the branch names for chats with Kernel in Settings, Git.`)
+    await this.withPort((port) => this.withBranchLock(project.id, async () => {
+      const taken = this.pendingNames(project.id, id)
+      const branch = await freeBranch(project.path, wanted, remote, taken.branches)
+      const root = projectWorktreeRoot(this.settings.worktreeRoot, project)
+      await mkdir(root, { recursive: true })
+      const path = await freeWorktreePath(project.path, root, branch, taken.paths)
+      // The stamp it got when it started stays: the first chat of a new project is still the first once it has a copy.
+      this.updateWs(id, { shared: undefined, mode: 'worktree', branch, path, baseRef: base, port, status: 'setup', worktreePending: { fromShared: true }, naming: 'branch', firstInProject: ws.firstInProject === true, fetchFailed: undefined })
+    }))
+    pending?.()
+    const made = await this.makeWorktree(id)
+    if (made.worktreePending) throw new Error(made.worktreePending.error ?? "Kernel couldn't make the worktree.")
+    return made
+  }
+
+  /**
+   * Whether a chat or workspace started now is the first of a newly added project: the project has no other workspace or chat,
+   * open or archived (KERNEL-1053). `id` and `threadId` are the record and chat that are being made, which don't count.
+   */
+  isFirstInProject(projectId: string, self: { id?: string; threadId?: string } = {}): boolean {
+    return !this.store.workspaces(projectId).some((w) => w.id !== self.id) && !this.store.threads(projectId).some((t) => t.id !== self.threadId)
+  }
+
   /** The first port of every open workspace's block. */
-  openPorts() { return this.store.workspaces().filter((w) => w.status !== 'archived').map((w) => w.port) }
+  openPorts() { return this.store.workspaces().filter((w) => w.status !== 'archived' && !w.shared).map((w) => w.port) }
 
   /**
    * The one way a workspace gets ports: a free block (`portBlock`), held in memory while `use` runs, through its awaits,
@@ -605,7 +667,7 @@ export class Workspaces extends Feature {
    */
   async checkFolder(id: string): Promise<boolean> {
     const ws = this.mustWs(id)
-    if (ws.mode !== 'worktree' || ws.status === 'archived' || ws.worktreePending) return false
+    if (ws.mode !== 'worktree' || ws.status === 'archived' || ws.worktreePending || ws.shared) return false
     const gone = await folderGone(ws.path).catch(() => false)
     if (gone !== !!this.mustWs(id).folderGone) this.updateWs(id, { folderGone: gone ? true : undefined })
     return gone
@@ -659,11 +721,14 @@ export class Workspaces extends Feature {
     return Object.fromEntries(paths.map((p) => [p, cache.paths.get(p) ?? null]))
   }
 
-  /** A Lead chat whose worktree isn't made yet: nothing reads its folder, and the right panel gets empty lists (KERNEL-542). */
-  private unmade(id: string) { return !!this.mustWs(id).worktreePending }
+  /**
+   * A Lead chat whose worktree isn't made yet, or one on the shared main folder, which has no worktree of its own: nothing reads
+   * its folder for changes, and the right panel gets empty lists (KERNEL-542, KERNEL-1050).
+   */
+  private unmade(id: string) { const ws = this.mustWs(id); return !!ws.worktreePending || !!ws.shared }
 
   /** Refuses what needs the folder of a Lead chat whose worktree isn't made yet (KERNEL-542). */
-  private mustBeMade(id: string) { if (this.unmade(id)) throw new Error("This chat's worktree isn't made yet.") }
+  private mustBeMade(id: string) { if (this.mustWs(id).worktreePending) throw new Error("This chat's worktree isn't made yet.") }
 
   /** What the diff compares against: the baseline for current-branch workspaces, the merge base with the base branch otherwise. */
   private async since(ws: Workspace) {
@@ -729,12 +794,13 @@ export class Workspaces extends Feature {
       // Workspaces you start yourself follow "Start new workspaces in plan mode". The Lead's hand-offs call createWorkspace directly (KERNEL-74).
       'workspaces.create': async ({ projectId, ...o }) => this.createWorkspace(projectId, { ...o, plan: o.plan ?? this.settings.models.workspacePlanMode }),
       'workspaces.fork': async ({ chatId, itemId }) => this.forkWorkspace(chatId, itemId),
+      'workspaces.retryWorktree': async ({ workspaceId }) => this.retryWorktree(workspaceId),
       // A Lead chat whose worktree isn't made yet reads as empty, and refuses what would change its files (KERNEL-542).
       'workspaces.changes': async ({ workspaceId, target }) => this.unmade(workspaceId) ? [] : target && target.kind !== 'base' ? this.compareFiles(workspaceId, target) : this.changes(workspaceId),
       'workspaces.diff': async ({ workspaceId, file, target }) => this.unmade(workspaceId) ? '' : target && target.kind !== 'base' ? this.compareDiff(workspaceId, target, file) : this.diff(workspaceId, file),
       'workspaces.commits': async ({ workspaceId }) => this.unmade(workspaceId) ? [] : this.commits(workspaceId),
       'workspaces.compareBranches': async ({ workspaceId }) => this.compareBranches(workspaceId),
-      'workspaces.tree': async ({ workspaceId }) => this.unmade(workspaceId) ? [] : listTree(this.mustWs(workspaceId).path, await this.changes(workspaceId).catch(() => [])),
+      'workspaces.tree': async ({ workspaceId }) => this.mustWs(workspaceId).worktreePending ? [] : listTree(this.mustWs(workspaceId).path, await this.changes(workspaceId).catch(() => [])),
       // A file in the agent's own scratchpad opens too, by its absolute path (clickable file mentions).
       'workspaces.readFile': async ({ workspaceId, path }) => {
         this.mustBeMade(workspaceId)
@@ -750,7 +816,7 @@ export class Workspaces extends Feature {
         return readImage(ws.path, path, at === 'base' ? range.from : range.to)
       },
       'workspaces.files': async ({ workspaceId, query, limit }) => {
-        if (this.unmade(workspaceId)) return []
+        if (this.mustWs(workspaceId).worktreePending) return []
         const ws = this.mustWs(workspaceId)
         // The project's reference folders too, those that are there now (KERNEL-748).
         const project = this.k.store.project(ws.projectId)
@@ -759,6 +825,7 @@ export class Workspaces extends Feature {
       'workspaces.hunks': async ({ workspaceId, path }) => this.unmade(workspaceId) ? [] : this.hunks(workspaceId, path),
       'workspaces.commit': async ({ workspaceId, hunkIds, message }) => {
         this.mustBeMade(workspaceId)
+        if (this.mustWs(workspaceId).shared) throw new Error('This chat has no worktree of its own. Switch it to Build here first.')
         const picked = (await this.hunks(workspaceId)).filter((h) => hunkIds.includes(h.id))
         if (picked.length !== hunkIds.length) throw new Error('Those changes moved on. Open the card again and pick again.')
         await commitHunks(this.mustWs(workspaceId).path, picked, message?.trim() || `Update ${[...new Set(picked.map((h) => h.path))].join(', ')}`)

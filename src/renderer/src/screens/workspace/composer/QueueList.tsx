@@ -22,18 +22,18 @@ const WAITING: Partial<Record<QueueReason, string>> = {
   offline: 'Queued. Sends when you are back online.',
   capacity: 'Queued. Sends when an agent slot frees up. Change the limit in Settings, Models and effort.',
   moving: 'Queued. Sends once the chats moving to the new account have re-read their history, two at a time.',
-  setup: 'Queued. Sends when setup finishes.',
+  worktree: 'Queued. Sends when the worktree is ready.',
   paused: 'Queued. Sends when you resume the project.',
   merge: 'Queued. Sends when the work it waits for merges.',
   move: 'Queued. Sends when you choose how this chat moves to another account.',
   limit: 'Close to your usage limit. Sends when it resets or usage drops.'
 }
 
-/** Send now can't help while the Mac is offline or setup hasn't passed. It does start a brief held for a merge (KERNEL-259). */
-export const canSendNow = (why?: QueueReason) => why !== 'offline' && why !== 'setup'
+/** Send now can't help while the Mac is offline or the worktree isn't made yet. It does start a brief held for a merge (KERNEL-259). */
+export const canSendNow = (why?: QueueReason) => why !== 'offline' && why !== 'worktree'
 
 /**
- * Messages typed while the agent works, or held for another reason (`why`), docked to the top of the composer. They go out in
+ * Messages typed while the agent works, or held for another reason (`why`), in a tray above the composer. Only the oldest has Send now, since they go out in order. They go out in
  * order once nothing holds them. Edit one to pull it back into the box.
  */
 export function QueueList({ queue, why, held, running, sending, onEdit, onNow, onRemove, setupShown }: {
@@ -49,11 +49,11 @@ export function QueueList({ queue, why, held, running, sending, onEdit, onNow, o
   onEdit: (q: QueuedMessage) => void
   onNow: (q: QueuedMessage) => void
   onRemove: (q: QueuedMessage) => void
-  /** SetupWait is on screen and already shows the messages waiting for setup. */
+  /** WorktreeWait is on screen and already shows the messages waiting for the worktree. */
   setupShown?: boolean
 }) {
-  // SetupWait shows the messages waiting for setup, with their own Edit and Cancel (KERNEL-430). Without it they show here (KERNEL-1018).
-  if (!queue.length || (why === 'setup' && setupShown)) return null
+  // WorktreeWait shows the messages waiting for the worktree, with their own Edit and Cancel (KERNEL-430). Without it they show here (KERNEL-1018).
+  if (!queue.length || (why === 'worktree' && setupShown)) return null
   const waiting = why ? WAITING[why] : undefined
   const named = why === 'merge' ? held : undefined
   const stops = !!running && !why
@@ -67,7 +67,7 @@ export function QueueList({ queue, why, held, running, sending, onEdit, onNow, o
         </div>
       )}
       <ul className="queue" aria-label="Queued messages">
-        {queue.map((q) => {
+        {queue.map((q, i) => {
           const text = lineOf(q.parts)
           const more = extras(q.parts)
           return (
@@ -78,7 +78,7 @@ export function QueueList({ queue, why, held, running, sending, onEdit, onNow, o
                   <span className="ellipsis">{text || (more ? 'Attachment' : '')}</span>
                 </button>
                 {more && <span className="queue-extra">{more}</span>}
-                {canSendNow(why) && (
+                {i === 0 && canSendNow(why) && (
                   <Button variant="ghost" className="queue-now" busy={sending === q.id} busyLabel="Sending" disabled={!!sending} data-tip={stops ? 'Stop this turn and send now' : 'Send now'} data-tip-kbd="⌘⇧↵" onClick={() => onNow(q)}>Send now</Button>
                 )}
                 <button type="button" className="queue-x" aria-label="Remove queued message" onClick={() => onRemove(q)}><Icon name="close" size={12} /></button>
