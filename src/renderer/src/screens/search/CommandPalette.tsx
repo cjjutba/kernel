@@ -140,7 +140,9 @@ export function CommandPalette() {
             {g.list.map((it) => (
               <div key={it.id} id={`cp-${it.id}`} role="option" aria-selected={flat[cur] === it} className="cp-row" onMouseMove={() => setAt(flat.indexOf(it))} onClick={() => run(it)}>
                 <span className="cp-icon" aria-hidden="true"><RowIcon item={it} /></span>
-                <span className="cp-label grow ellipsis"><Hit text={it.label} query={q} /></span>
+                <span className={it.note ? 'cp-label ellipsis' : 'cp-label grow ellipsis'}><Hit text={it.label} query={q} /></span>
+                {it.note && <><span className="cp-note ellipsis">{it.note}</span><span className="grow" /></>}
+                {it.hint && flat[cur] === it && <span className="cp-act" aria-hidden="true">{it.hint}</span>}
                 {it.meta && <span className="cp-meta ellipsis">{it.meta}</span>}
                 {it.keys && <span className="cp-keys" role="img" aria-label={`Shortcut ${it.keys.join(' ')}`}>{it.keys.map((k, n) => <kbd key={n} aria-hidden="true">{k}</kbd>)}</span>}
               </div>

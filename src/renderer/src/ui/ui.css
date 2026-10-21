@@ -5,6 +5,7 @@
 .input:focus { border-color: var(--line-3); }
 
 /* button xs and sm and icon button boxes (Button size, IconButton box). The 28px default is .btn and .icon-btn in tokens.css. */
+.btn.danger:disabled:not([aria-busy='true']) { opacity: 1; background: var(--surface-3); border-color: var(--surface-3); color: var(--muted); }
 .btn.xs { height: 24px; padding: 0 8px; border-radius: var(--r-sm); font-size: var(--fs-meta); }
 .btn.sm { height: 26px; padding: 0 10px; border-radius: var(--r-sm); font-size: var(--fs-meta); }
 .icon-btn.md { width: 26px; height: 26px; }

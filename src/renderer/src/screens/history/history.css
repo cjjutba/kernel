@@ -1,5 +1,12 @@
 /* History (KERNEL-21). Tokens only. */
-.hs-search { width: 240px; height: 28px; font-size: var(--fs-ui); }
+.hs-search { display: inline-flex; align-items: center; gap: 7px; width: 240px; height: 30px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: var(--r-sm); color: var(--muted); }
+.hs-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: var(--fs-code); }
+.hs-search:focus-within { border-color: var(--line-3); color: var(--muted); }
+/* History for one project: its chip with a way to clear it, and All projects at the end (Pen 12.7, HistoryProject). */
+.hs-scope { display: inline-flex; align-items: center; gap: 6px; height: 20px; max-width: 220px; padding: 0 4px 0 8px; border-radius: var(--r-xs); background: var(--surface-3); color: var(--ink-2); font-size: var(--fs-meta); }
+.hs-scope .project-icon { flex-shrink: 0; }
+.hs-scope-x { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; padding: 0; border: 0; border-radius: var(--r-2xs); background: transparent; color: var(--faint); }
+.hs-scope-x:hover { color: var(--ink); }
 .hs-tabs { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-bottom: 1px solid var(--line); }
 .hs-tabs .pill { gap: 6px; font-size: var(--fs-ui); }
 .hs-bulk { margin-left: auto; font-size: var(--fs-ui); }
@@ -21,8 +28,14 @@
 .hs-when { color: var(--muted); }
 .hs-actions { display: flex; align-items: center; gap: 4px; justify-content: flex-end; }
 
-/* ConfirmDeleteHistory: the unpushed branches box and an error. */
-.confirm-body .hs-error { color: var(--del); }
+/* ConfirmDeleteHistory: the branches that were never pushed, and Check again when the count fails (Pen 12.6, 12.7). */
+.hs-lost { margin: 0; list-style: none; }
+.hs-lost-row { display: flex; align-items: center; gap: 9px; height: 26px; min-width: 0; font-size: var(--fs-meta); }
+.hs-lost-row > svg { flex-shrink: 0; color: var(--muted); }
+.hs-lost-row > .mono { flex-shrink: 0; max-width: 60%; color: var(--ink-2); }
+.hs-lost-for { margin-left: auto; min-width: 0; color: var(--muted); }
+.hs-retry { display: flex; align-items: center; gap: 12px; }
+.hs-retry-why { min-width: 0; color: var(--muted); font-size: var(--fs-meta); }
 
 /* Narrow screens drop the branch, then the project and the date (D-080). */
 @container panel (max-width: 1060px) {

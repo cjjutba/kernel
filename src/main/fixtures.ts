@@ -150,7 +150,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'workspaces.retryWorktree': async () => { throw new Error('Fixture mode does not make worktrees.') },
     'workspaces.archive': async () => ok,
     'workspaces.restore': async ({ workspaceId }) => ({ ...workspace(workspaceId), status: 'ready' }),
-    'workspaces.deletePreview': async ({ workspaceIds }) => f.deletePreview ?? { workspaces: workspaceIds.length, skipped: [], unpushedBranches: 0, transcriptBytes: 640 * 1024 * 1024 },
+    'workspaces.deletePreview': async ({ workspaceIds }) => f.deletePreview ?? { workspaces: workspaceIds.length, skipped: [], unpushedBranches: 0, unpushed: [], transcriptBytes: 640 * 1024 * 1024 },
     'workspaces.delete': async ({ workspaceIds }) => ({ deleted: workspaceIds, skipped: [], keptBranches: 0, freedBytes: 0 }),
     'workspaces.gitStatus': async ({ workspaceId }) => {
       if (f.gitStatus?.[workspaceId]) return f.gitStatus[workspaceId]

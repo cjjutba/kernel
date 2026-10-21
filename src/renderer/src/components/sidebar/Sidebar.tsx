@@ -3,6 +3,7 @@ import { actions } from '../../store'
 import { ResizeHandle } from '../ResizeHandle'
 import { SidebarFooter } from '../footer/SidebarFooter'
 import { AppSidebar } from './AppSidebar'
+import { ArchivedRow } from './ArchivedRow'
 import { SIDEBAR_HIDE_BELOW, SIDEBAR_KEY, SIDEBAR_MIN, sidebarDefault, sidebarLimit, useSidebarWidth } from './useSidebarWidth'
 import './sidebar.css'
 
@@ -17,7 +18,7 @@ export function Sidebar({ settingsList }: { settingsList?: ReactNode }) {
   const inSettings = settingsList !== undefined
   return (
     <nav ref={nav} aria-label={inSettings ? 'Settings' : 'Sidebar'} className="sidebar" style={{ width }}>
-      {inSettings ? settingsList : <AppSidebar />}
+      {inSettings ? settingsList : <><AppSidebar /><ArchivedRow /></>}
       <SidebarFooter />
       <ResizeHandle
         targetRef={nav} edge="right" label="Resize sidebar" size={width} min={SIDEBAR_MIN} limit={sidebarLimit} defaultSize={sidebarDefault}

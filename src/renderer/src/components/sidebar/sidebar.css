@@ -141,3 +141,12 @@ button.hc-pr:hover { color: var(--ink); }
 .sb-search { display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; padding: 0 10px 0 9px; border-radius: var(--r-sm); border: 1px solid var(--panel-line); background: var(--panel); color: var(--muted); text-align: left; margin-top: 8px; flex-shrink: 0; transition: border-color var(--dur-fast); }
 .sb-search svg { color: var(--faint); flex-shrink: 0; }
 .sb-search:hover { border-color: var(--line-3); }
+
+/* The Archived row above the footer opens History (Pen 12.4). It takes the free space above itself, so the footer under it keeps the bottom edge. */
+.sb-archived { flex-shrink: 0; display: flex; align-items: center; gap: 10px; height: 34px; margin: auto -8px 0 -10px; padding: 0 20px 0 20px; border: 0; background: transparent; color: var(--ink); font-size: var(--fs-meta); text-align: left; }
+.sb-archived + .sbf { margin-top: 0; }
+.sb-archived-label { flex-shrink: 0; }
+.sb-archived-rule { flex: 1; height: 1px; background: var(--line-2); }
+.sb-archived svg { flex-shrink: 0; color: var(--muted); transform: rotate(180deg); }
+.sb-archived:is(:hover, [aria-current='page']) svg { color: var(--ink); }
+.sb-archived:focus-visible { outline-offset: -2px; }

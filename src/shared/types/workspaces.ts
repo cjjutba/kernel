@@ -209,6 +209,8 @@ export interface DeletePreview {
   skipped: DeleteSkip[]
   /** Branches that hold commits pushed nowhere. They stay unless the box is ticked. */
   unpushedBranches: number
+  /** The same branches by name, each with the workspace it belongs to, so the confirm can say what would be lost. */
+  unpushed: { id: string; branch: string }[]
   /** Claude Code transcripts that would be deleted, in bytes. */
   transcriptBytes: number
 }
