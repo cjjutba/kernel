@@ -597,6 +597,14 @@ const windowAt = (w: number) => async (page: Page, app: ElectronApplication) => 
   await page.waitForTimeout(400)
 }
 
+// A long Settings page at full length (Redesign 15): the window is as tall as the page, so nothing on it is cut. The shot is as long as the page.
+const fullLengthE2 = (then?: (page: Page, app: ElectronApplication) => Promise<void>) => async (page: Page, app: ElectronApplication) => {
+  await then?.(page, app)
+  const h = await page.locator('.set-page').evaluate((el) => (el as HTMLElement).scrollHeight)
+  await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.w, size.h), { w: WIDTH, h: Math.max(HEIGHT, h + 80) })
+  await page.waitForTimeout(500)
+}
+
 // SettingsPRsSaving, Saved and Clamped are Size limit typed and left (KERNEL-721). The note is local to the field. Saving holds main's answer back.
 async function leaveSizeLimit(page: Page, text: string) {
   const field = page.getByRole('textbox', { name: 'Size limit' })
@@ -843,9 +851,19 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   SettingsPRsSaved: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsSavedLight: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsClamped: (page) => leaveSizeLimit(page, '999999'),
-  SettingsProjectScriptsRuns: (page) => scrollToSection(page, 'Archive script'),
-  SettingsProjectAgents: (page) => scrollToSection(page, 'Permissions'),
-  SettingsRunScriptAdd: async (page) => { await page.getByRole('button', { name: 'Add', exact: true }).click(); await page.getByRole('dialog', { name: 'Add run script' }).waitFor(); await page.getByRole('textbox', { name: 'Name' }).fill('run'); await page.waitForTimeout(300) },
+  SettingsProjectScripts: fullLengthE2(),
+  SettingsProjectScriptsRuns: (page) => scrollToSection(page, 'Run scripts'),
+  SettingsPreviewUrlForm: async (page) => { await page.getByRole('button', { name: 'Add preview URL', exact: true }).click(); await page.getByRole('dialog', { name: 'Add preview URL' }).waitFor(); await page.getByRole('textbox', { name: 'Name' }).fill('Storybook'); await page.getByRole('textbox', { name: 'Address' }).fill('http://localhost:$((KERNEL_PORT + 1))'); await page.waitForTimeout(300) },
+  SettingsProjectEnvironment: fullLengthE2(),
+  SettingsProjectSetupFiles: (page) => scrollToSection(page, 'Files to copy'),
+  SettingsProjectSetupProduction: (page) => scrollToSection(page, 'Files to copy'),
+  SettingsEnvironmentAdd: async (page) => { await page.getByRole('button', { name: 'Add env file', exact: true }).click(); await page.getByRole('textbox', { name: 'File' }).fill('.env.local'); await page.waitForTimeout(300) },
+  SettingsProjectAgents: fullLengthE2(),
+  SettingsProjectAgentsRetired: fullLengthE2(async (page) => { await page.getByRole('button', { name: /^Retired/ }).click() }),
+  SettingsSkillsFailed: (page) => scrollToSection(page, 'Skills'),
+  SettingsSkillsLoading: (page) => scrollToSection(page, 'Skills'),
+  SettingsProjectPermissionsMode: async (page) => { await scrollToSection(page, 'Permissions'); await page.keyboard.press('Escape'); await page.getByRole('button', { name: /Use app default/ }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
+  SettingsRunScriptAdd: async (page) => { await page.getByRole('button', { name: 'Add run script', exact: true }).click(); await page.getByRole('dialog', { name: 'Add a run script' }).waitFor(); await page.getByRole('textbox', { name: 'Name' }).fill('storybook'); await page.getByRole('textbox', { name: 'Command' }).fill('pnpm storybook dev --port $KERNEL_PORT'); await page.waitForTimeout(300) },
   SettingsProjectPrsSaved: async (page) => { await page.getByRole('switch', { name: 'UX review' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
   SettingsAccountsMoves: (page) => scrollToSection(page, 'Chats and accounts'),
   SettingsTeamOrigins: (page) => scrollToSection(page, 'In this repo'),

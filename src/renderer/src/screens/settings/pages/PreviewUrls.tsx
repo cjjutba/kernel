@@ -2,8 +2,9 @@ import { useState, type FormEvent } from 'react'
 import { resolvePreviewUrl } from '@shared/previewUrl'
 import { PORT_BLOCK, type ProjectSettings } from '@shared/types'
 import { Button, Modal, useBusy } from '../../../ui'
-import { DataTable, Section } from '../kit'
+import { Row, Section } from '../kit'
 import { patchProjectSettings } from '../useSettings'
+import './envScripts.css'
 
 type Urls = ProjectSettings['preview']['urls']
 
@@ -18,7 +19,7 @@ export function addressProblem(address: string): string | undefined {
   return undefined
 }
 
-/** Preview URLs, a table on Settings > a project > Scripts (KERNEL-914). The list is saved whole in the personal file, so Remove works on rows settings.toml set too. */
+/** Preview URLs on Settings > a project > Scripts (KERNEL-914): a row each with Edit and Remove. The list is saved whole in the personal file, so Remove works on rows settings.toml set too. */
 export function PreviewUrls({ projectId, rs }: { projectId: string; rs: ProjectSettings | null }) {
   // `index` is the row being edited, or the list's length for a new one.
   const [editing, setEditing] = useState<number | null>(null)
@@ -27,25 +28,25 @@ export function PreviewUrls({ projectId, rs }: { projectId: string; rs: ProjectS
   const save = (next: Urls) => patchProjectSettings(projectId, { preview: { urls: savedUrls(next) } })
   return (
     <>
-      <Section id="preview-urls" title="Preview URLs" plain action={<Button onClick={() => setEditing(urls.length)}>Add preview URL</Button>}>
-        <DataTable
-          label="Preview URLs" columns={['Name', 'Address']} grid="140px minmax(0, 1fr)" empty="No preview URLs. Add one and Open in a workspace goes to it."
-          rows={urls.map((u, i) => {
-            const label = u.name || 'Unnamed'
-            return {
-              key: `${i}`,
-              cells: [label, <span key="a" className="mono">{u.url}</span>],
-              // The list is one value, so Reset sits on the first row.
-              actions: (
-                <>
-                  {i === 0 && rs?.sources?.[path] === 'override' && <Button variant="ghost" aria-label="Reset preview URLs" onClick={() => void patchProjectSettings(projectId, { preview: { urls: null } })}>Reset</Button>}
-                  <Button variant="ghost" aria-label={`Edit ${label}`} onClick={() => setEditing(i)}>Edit</Button>
-                  <Button variant="ghost" aria-label={`Remove ${label}`} onClick={() => void save(urls.filter((_, j) => j !== i))}>Remove</Button>
-                </>
-              )
-            }
-          })}
-        />
+      <Section
+        id="preview-urls" title="Preview URLs"
+        action={<span className="rm-aside-act">
+          {rs?.sources?.[path] === 'override' && <Button variant="ghost" aria-label="Reset preview URLs" onClick={() => void patchProjectSettings(projectId, { preview: { urls: null } })}>Reset</Button>}
+          <Button icon="plus" onClick={() => setEditing(urls.length)}>Add preview URL</Button>
+        </span>}
+      >
+        {urls.length === 0 && <p className="set-empty">No preview URLs. Add one and Open in a workspace goes to it.</p>}
+        {urls.map((u, i) => {
+          const label = u.name || 'Unnamed'
+          return (
+            <Row key={i} className="rm-urlrow" label={label} desc={u.url}>
+              <span className="set-actions">
+                <Button variant="ghost" aria-label={`Edit ${label}`} onClick={() => setEditing(i)}>Edit</Button>
+                <Button variant="ghost" aria-label={`Remove ${label}`} onClick={() => void save(urls.filter((_, j) => j !== i))}>Remove</Button>
+              </span>
+            </Row>
+          )
+        })}
       </Section>
       {editing !== null && <PreviewUrlForm urls={urls} index={editing} onSave={save} onClose={() => setEditing(null)} />}
     </>
@@ -78,22 +79,22 @@ function PreviewUrlForm({ urls, index, onSave, onClose }: { urls: Urls; index: n
       top={200}
       footer={<>
         <span className="grow" />
-        <Button variant="ghost" data-dismiss>Cancel</Button>
-        <Button variant="primary" type="submit" form="preview-url-form" busy={busy === 'save'} busyLabel="Saving">Save</Button>
+        <Button variant="ghost" size="lg" data-dismiss>Cancel</Button>
+        <Button variant="primary" size="lg" type="submit" form="preview-url-form" busy={busy === 'save'} busyLabel="Saving">Save</Button>
       </>}
     >
       <form id="preview-url-form" className="modal-body set-form" onSubmit={submit} noValidate>
-        <p className="set-help">Saved in settings.local.toml, so it stays on your Mac. Open on the Checks tab goes to the first one.</p>
+        <p className="set-help">Open in a workspace goes to the first one. Saved in settings.local.toml, so it stays on your Mac.</p>
         <div className="set-field">
           <label htmlFor="preview-url-name">Name</label>
-          <input id="preview-url-name" className="input" autoComplete="off" placeholder="Web app" value={name} onChange={(e) => setName(e.target.value)} />
+          <input id="preview-url-name" className="input set-text-input" autoComplete="off" placeholder="Web app" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="set-field">
           <label htmlFor="preview-url-address">Address</label>
           <input id="preview-url-address" className="input" autoComplete="off" spellCheck={false} placeholder="http://localhost:$KERNEL_PORT" value={url} aria-invalid={shown && !!problem} aria-describedby="preview-url-address-note" onChange={(e) => setUrl(e.target.value)} />
           {shown && problem
             ? <span id="preview-url-address-note" role="alert" className="set-error">{problem}</span>
-            : <span id="preview-url-address-note" className="set-help">$KERNEL_PORT is the workspace's first port. Use $((KERNEL_PORT + 1)) for the next.</span>}
+            : <span id="preview-url-address-note" className="set-help">$KERNEL_PORT is the first of the workspace’s {PORT_BLOCK} ports. Use $((KERNEL_PORT + 1)) for the next.</span>}
         </div>
       </form>
     </Modal>
