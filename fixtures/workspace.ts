@@ -1361,6 +1361,34 @@ const railScene = (panel = false): Fixture => {
   return { ...f, items: { ...f.items, [ids.tableChat]: railChat() } }
 }
 
+/** A teammate workspace one Lead chat handed off (t-lead), with a chat of its own. */
+const leadHanded = (id: string, agentId: string, title: string, n: number, over: Partial<Workspace> = {}): Workspace =>
+  tuWork(id, agentId, id.replace('ws-rail-', 'rail-'), n, { title, threadId: 't-lead', leadChatId: ids.leadChat, prHead: `h${n}`, ...over })
+
+/**
+ * LeadRail: Kernel's chat with the Session rail beside it. `own` is what the chat changed in its own folder, `handed` the teammates it handed work to, `asks` the ones
+ * waiting on a question and `running` the ones with a turn going.
+ */
+function leadRail(f: Fixture, o: { own?: Partial<Workspace>; handed?: Workspace[]; asks?: string[]; running?: string[] }): Partial<Fixture> {
+  const items: ChatItem[] = [
+    { kind: 'user', id: 'lr-u1', ts: at(9, 8), parts: [{ type: 'text', text: 'Add PDF export for invoices' }] },
+    { kind: 'text', id: 'lr-x1', ts: at(9, 9), text: o.handed?.length ? 'I changed what fits in one PR and handed the rest to teammates.' : 'Invoices export from the row actions. Tell me what to change.' },
+    { kind: 'result', id: 'lr-r1', ts: at(9, 9), durationMs: 42_000, ok: true }
+  ]
+  const s = noApprovals(scene2(f, { id: ids.lead, agentId: 'kernel-lead', ...o.own }, 'Add PDF export for invoices', items, {}, { model: 'claude-opus-5-5', effort: 'xhigh', plan: false }))
+  const handed = o.handed ?? []
+  return {
+    ...s,
+    workspaces: [...(s.workspaces ?? f.workspaces), ...handed],
+    chats: [...(s.chats ?? f.chats), ...handed.map((w): Chat => ({ id: `chat-${w.id}`, workspaceId: w.id, title: w.title ?? w.name, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'high', plan: false, threadId: undefined, createdAt: w.createdAt }))],
+    approvals: (o.asks ?? []).map((id) => pending('question', handed.find((w) => w.id === id)!.agentId, { workspaceId: id, chatId: `chat-${id}`, title: 'Which PDF library should the renderer use?', options: ['pdf-lib', 'pdfkit'] })),
+    prs: o.own?.prNumber ? { [ids.lead]: tuInfo(ids.lead, o.own.prNumber, 'h171') } : {},
+    push: [...f.push, ...(o.running ?? []).map((id) => ({ type: 'chat.running' as const, chatId: `chat-${id}`, running: true }))],
+    projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Kernel' } : r)),
+    ui: { ...s.ui!, rightPanel: false, rail: true, tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: [], diffs: [] } } }
+  }
+}
+
 /**
  * ChatRailLead: Kernel's chat with 11 things to list, 6 of them Team updates. The updates are the ones the PNG's rail names, and each row of each is the engine's own wording.
  * Sean's PR #161 and Christian's #162 can merge, so the newest card offers Merge for both, and #150 is in History.
@@ -2129,6 +2157,24 @@ const P10_EVIDENCE: PrEvidence = {
 export const workspaceFixtures: Record<string, Fixture> = {
   /** 7.1: the workspace at rest. Teng finished a turn and its fold is closed, with the Session rail beside the chat while the panel is shut (KERNEL-1094). */
   Workspace: scene((f) => works(f, jRest())),
+  // The Session rail of a chat with Kernel: its own stages and the work it handed off. Built a change and handed off two tasks, one waiting on you and one in review; only handed off; nothing yet.
+  LeadRailBuilt: scene((f) => leadRail(f, {
+    own: { stat: { files: 3, added: 88, removed: 12 }, prNumber: 171, prUrl: 'https://github.com/cjjutba/client-a/pull/171', prState: 'open', prHead: 'h171', setupRun: { startedAt: at(9, 6), endedAt: at(9, 7), end: 0 } },
+    handed: [
+      leadHanded('ws-rail-renderer', 'sean', 'Invoice PDF renderer', 11, { status: 'ready', prState: 'none', prNumber: undefined, prUrl: undefined, createdAt: at(10, 12) }),
+      leadHanded('ws-rail-button', 'christian', 'Download PDF button in each row', 12, { createdAt: at(10, 4) })
+    ],
+    asks: ['ws-rail-renderer']
+  })),
+  LeadRailHandedOff: scene((f) => leadRail(f, {
+    handed: [
+      leadHanded('ws-rail-fonts', 'teng', 'Bundle the PDF fonts', 13, { status: 'archived', prState: 'merged', mergedAt: at(10, 40), createdAt: at(10, 2) }),
+      leadHanded('ws-rail-schema', 'sean', 'Invoice totals in the schema', 14, { prState: 'none', prNumber: undefined, prUrl: undefined, createdAt: at(10, 14) }),
+      leadHanded('ws-rail-table', 'christian', 'Sortable invoice table', 15, { createdAt: at(10, 8) })
+    ],
+    running: ['ws-rail-schema']
+  })),
+  LeadRailEmpty: scene((f) => leadRail(f, {})),
   // Chat header mocks: today's two rows on a new Lead chat, then the one-row header with one tab and with three.
   // The one-row header (Lead chats and New chat): New chat with its one tab, three tabs, and a tab's hover card naming what the chat follows.
   NewChatOneRow: scene((f) => ({ ...noPlan(leadNoChats(f)), projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Kernel' } : r)) })),
