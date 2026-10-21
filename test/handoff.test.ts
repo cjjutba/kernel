@@ -72,6 +72,24 @@ async function realLead() {
   return { k, project, chat, tool, plans, planSaved }
 }
 
+describe('work comes back with evidence in plain words (pr-evidence)', () => {
+  it('tells a teammate the PR body headings, to write not checked, and to end on one plain line', () => {
+    for (const part of ['"What changed"', '"How it was checked"', '"What could go wrong"', 'a screenshot for anything visible', '"not checked"', 'one plain line: what you did and how you verified it']) expect(TEAMMATE_RULE).toContain(part)
+  })
+
+  it('tells the Lead the same for its own PR and for its report to the user', () => {
+    for (const part of ['What changed', 'How it was checked', '"not checked"', 'What could go wrong', 'End a report with one line: what was done and how it was verified']) expect(LEAD_RULE).toContain(part)
+  })
+
+  it('keeps the added instructions under 80 words and free of dashes', () => {
+    const words = (t: string) => t.split(/\s+/).filter(Boolean).length
+    const line = TEAMMATE_RULE.split('\n').find((l) => l.startsWith('PR body headings'))!
+    expect(TEAMMATE_RULE).not.toMatch(/share_file/)
+    expect(words(line) + 27).toBeLessThan(80)
+    expect(`${TEAMMATE_RULE}${LEAD_RULE}`).not.toMatch(/[\u2013\u2014]/)
+  })
+})
+
 describe('what teammates are told about setup (KERNEL-1012)', () => {
   it('never tells an agent to wait for a note that may not come', () => {
     expect(SETUP_LINE).not.toMatch(/Wait for Kernel's note/)
