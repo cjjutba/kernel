@@ -180,8 +180,9 @@ export class ClaudeRunner implements Runner {
 
   push(parts: ChatPart[]) { this.input.push(toUserMessage(parts)) }
   /**
-   * A message pushed with priority 'next' is read by the running turn at its next step, with no interrupt (SDKUserMessage.priority in
-   * the pinned SDK). The input queue is Kernel's, so a closed session is the only case it can't take it.
+   * A message pushed with priority 'next' is folded into the running turn at its next step: one result, no interrupt. Checked live
+   * on the pinned SDK, where 'now' interrupts and 'later' starts a second turn (docs/decisions/steer-running-turn.md). The input
+   * queue is Kernel's, so a closed session is the only case it can't take it.
    */
   readonly canSteer = true
   async steer(parts: ChatPart[]) {

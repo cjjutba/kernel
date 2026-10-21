@@ -427,6 +427,58 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live session gone', () => {
   })
 })
 
+// Steering a running Claude turn: the message goes to the live session with priority 'next'. The evidence behind that choice:
+// one `result` for the whole turn, and the final answer carries the steer. Run it with
+//   KERNEL_LIVE=1 KERNEL_LIVE_REPO=/tmp/kernel-live-steer pnpm exec vitest run test/live.test.ts -t "live steer"
+describe.skipIf(!process.env.KERNEL_LIVE)('live steer', () => {
+  it('folds a message steered mid-turn into the running turn: one result, the chat running throughout, the answer follows it', { timeout: 240_000 }, async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'kernel-live-steer-'))
+    const store = new Store(join(dir, 'kernel.db'))
+    const ws = { id: 'ws', projectId: 'project', name: 'steer', branch: 'main', baseRef: 'main', path: repo || dir, mode: 'current', agentId: 'sean', port: 4312, status: 'ready', prState: 'none', createdAt: 1 } as Workspace
+    const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Steer', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 }
+    store.saveWorkspace(ws)
+    store.saveChat(chat)
+    const settings = { permissions: { mode: 'bypassPermissions', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
+    const ends: boolean[] = []
+    let done!: () => void
+    const turn = new Promise<void>((resolve) => { done = resolve })
+    const sessions = new Sessions({
+      store, approvals: new Approvals(store), settings: () => settings, agentFor: () => undefined, mcpFor: () => undefined,
+      projectAllow: () => [], allowInProject: () => {}, onTurnDone: (_ws, _chat, t) => { ends.push(t.ok); done() }
+    })
+    const states: string[] = []
+    const t0 = Date.now()
+    const watch = setInterval(() => {
+      const s = sessions.isRunning('chat') ? 'running' : 'idle'
+      if (states.at(-1)?.split('@')[0] !== s) states.push(`${s}@${((Date.now() - t0) / 1000).toFixed(1)}s`)
+    }, 100)
+    try {
+      await sessions.send('chat', [{ type: 'text', text: 'Do these in order, one tool call each: run `sleep 8` with the Bash tool, then run `ls`, then run `cat README.md`, then summarize what you found in one sentence.' }])
+      // The first Bash call has started once its tool row is there.
+      const started = Date.now()
+      while (!store.items('chat').some((i) => i.kind === 'tool') && Date.now() - started < 60_000) await new Promise((r) => setTimeout(r, 200))
+      const r = await sessions.steer('chat', { parts: [{ type: 'text', text: 'Also say the word PINEAPPLE at the end of your final answer.' }], clientId: 'steer-1' })
+      expect(r.steered).toBe(true)
+      await turn
+      // A second turn would end a moment later, so give one time to show.
+      await new Promise((resolve) => setTimeout(resolve, 8_000))
+      const items = store.items('chat')
+      const results = items.filter((i) => i.kind === 'result').length
+      const answer = items.filter((i) => i.kind === 'text').map((i) => (i as { text: string }).text).join('\n')
+      console.log(`[live] steer: results=${results} turnDone=${ends.length} states=${states.join(' > ')} answer=${JSON.stringify(answer.slice(-200))}`)
+      expect(results).toBe(1)
+      expect(ends).toEqual([true])
+      expect(states.filter((s) => s.startsWith('idle')).length).toBe(1)
+      expect(answer).toMatch(/pineapple/i)
+    } finally {
+      clearInterval(watch)
+      sessions.stopAll()
+      store.db.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 // KERNEL-406: the same journey on Codex, on the bundled Codex and the ChatGPT plan it is signed in to. It spends a few short
 // turns on a small Codex model, so it runs only when asked:
 //   KERNEL_LIVE=1 KERNEL_LIVE_CODEX=1 KERNEL_LIVE_REPO=<path to a side project> pnpm test test/live.test.ts -t codex

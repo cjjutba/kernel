@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -1161,6 +1161,29 @@ describe('steering a running turn, on Codex', () => {
     expect((await t.sent('turn/start'))[1].params.input[0].text).toBe('and one more')
     expect(users(t).filter((u) => u.id === 'c-late')).toHaveLength(1)
     expect(users(t).some((u) => u.steered)).toBe(false)
+  })
+
+  it('keeps the row as steered and does not send again when turn/steer gets no answer', async () => {
+    const t = track(await setup())
+    t.fake.env.FAKE_CODEX_STEER_HANG = '1'
+    await t.sessions.send('chat', [{ type: 'text', text: script({ wait: 'interrupt' }) }])
+    await until(async () => (await t.sent('turn/start')).length === 1)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      const runner = (t.sessions as unknown as { live: Map<string, { runner: { steerTimeoutMs: number } }> }).live.get('chat')!.runner
+      runner.steerTimeoutMs = 200
+      const r = await until(async () => {
+        const x = await t.sessions.steer('chat', { parts: text('also add an index'), clientId: 'c-hang' })
+        return x.steered || (await t.sent('turn/steer')).length ? x : undefined
+      })
+      expect(r).toMatchObject({ steered: true, queued: false, item: { id: 'c-hang', steered: true } })
+      expect(await t.sent('turn/steer')).toHaveLength(1)
+      expect(await t.sent('turn/start')).toHaveLength(1)
+      expect(users(t).filter((u) => u.id === 'c-hang')).toMatchObject([{ steered: true }])
+      expect(warn.mock.calls.some((c) => String(c[0]).includes('did not answer turn/steer'))).toBe(true)
+    } finally { warn.mockRestore() }
+    await t.sessions.interrupt('chat')
+    await t.idle()
   })
 
   it('keeps a queued message queued, first in line, when Codex refuses the steer, and sends it once after the turn', async () => {

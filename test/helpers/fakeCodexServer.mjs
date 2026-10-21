@@ -122,7 +122,9 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   }
   // turn/steer adds input to the running turn when expectedTurnId names it, as Codex does, and answers with its id. Any other id, or
   // FAKE_CODEX_NO_STEER (a turn that can't be steered), is refused.
+  // FAKE_CODEX_STEER_HANG takes the message and never answers, as a Codex that accepted it too late to reply.
   if (method === 'turn/steer') {
+    if (process.env.FAKE_CODEX_STEER_HANG) return
     if (process.env.FAKE_CODEX_NO_STEER || !running || running.stopped || running.turnId !== params.expectedTurnId) return send({ id, error: { code: -32600, message: 'expected active turn id does not match the active turn' } })
     return send({ id, result: { turnId: running.turnId } })
   }

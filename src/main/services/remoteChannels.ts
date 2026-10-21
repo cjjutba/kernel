@@ -15,7 +15,7 @@ export const ALLOWED_CHANNELS = [
   'agents.list', 'agents.status',
   'approvals.decide', 'approvals.list', 'approvals.planFile',
   'attention.plan',
-  'chats.close', 'chats.compact', 'chats.configure', 'chats.create', 'chats.fork', 'chats.interrupt', 'chats.items', 'chats.list', 'chats.live', 'chats.markRead', 'chats.moveNotice', 'chats.queue', 'chats.queueReason', 'chats.rename', 'chats.retry', 'chats.runMode', 'chats.send', 'chats.sendNow', 'chats.unqueue',
+  'chats.close', 'chats.compact', 'chats.configure', 'chats.create', 'chats.fork', 'chats.interrupt', 'chats.items', 'chats.list', 'chats.live', 'chats.markRead', 'chats.moveNotice', 'chats.queue', 'chats.queueReason', 'chats.rename', 'chats.retry', 'chats.runMode', 'chats.send', 'chats.sendNow', 'chats.steer', 'chats.unqueue',
   'checkpoints.list', 'checkpoints.preview',
   'commands.list',
   'evidence.pr',
@@ -101,7 +101,7 @@ export function refusal(channel: string, req: unknown): string | undefined {
   if (!allowed.has(channel)) return `${channel} is not available from another device`
   const r = isObject(req) ? req : {}
   switch (channel) {
-    case 'chats.send': return partsRefusal(r.parts)
+    case 'chats.send': case 'chats.steer': return partsRefusal(r.parts)
     case 'projects.brief': return partsRefusal(r.parts)
     case 'workspaces.create':
       if (r.mode === 'current') return 'A workspace in the project folder itself can only be started in the app'

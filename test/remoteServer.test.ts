@@ -270,7 +270,7 @@ describe('remote access server (remote-access-server)', () => {
       expect(refusal('approvals.decide', { id: 'a', decision: { behavior: 'allow' } })).toBeUndefined()
       expect(refusal('pr.merge', { workspaceId: 'w', override: true })).toMatch(/failed review/)
       expect(refusal('workspaces.create', { projectId: 'p', prompt: 'x', mode: 'current' })).toMatch(/project folder/)
-      for (const channel of ['chats.send', 'projects.brief', 'workspaces.create', 'lead.start']) {
+      for (const channel of ['chats.send', 'chats.steer', 'projects.brief', 'workspaces.create', 'lead.start']) {
         expect(refusal(channel, { parts: [{ type: 'file', name: 'id_rsa', src: '/Users/me/.ssh/id_rsa' }] }), channel).toMatch(/attach a file/)
         expect(refusal(channel, { parts: [{ type: 'text', text: 'hi' }] }), channel).toBeUndefined()
       }
