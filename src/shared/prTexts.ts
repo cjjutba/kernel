@@ -21,6 +21,12 @@ export interface PrContext {
   draft?: boolean
 }
 
+/**
+ * The shape of every PR body Kernel or its agents write, so a reader who doesn't read code can see what changed, how it was
+ * checked and what might go wrong. Skipped checks are named, never implied (pr-evidence).
+ */
+export const PR_BODY_SHAPE = 'Give the body three headings: "What changed" (2 to 5 plain sentences about behavior), "How it was checked" (the exact commands and their results, and a screenshot or the preview for anything visible), "What could go wrong" (risks and anything not checked). Write "not checked" for anything you skipped, and never say a check passed that you did not run.'
+
 const OPENING = "Your project instructions and the repo's own docs on pull requests come first. Where they differ from these steps, follow them."
 const LAST = "If a step fails and you can't fix it, stop and say what failed."
 
