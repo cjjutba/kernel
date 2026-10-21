@@ -1,13 +1,14 @@
 import './agents.css'
+import './permissions.css'
 import { useRef, type KeyboardEvent } from 'react'
 import { PERMISSION_MODES, PROVIDERS, type AppSettings, type PermissionMode } from '@shared/types'
 import { pickMode, unavailable, useModeAvailability, type ModeAvailabilities } from '../../../permissionModes'
-import { Select, Toggle } from '../../../ui'
+import { Icon, Select, Toggle } from '../../../ui'
 import { useStore } from '../../../store'
 import { Page, Row, Section, SettingsLink, TagList } from '../kit'
 import { patchSettings } from '../useSettings'
 
-const TIMEOUTS = [{ value: '120', label: '2 min' }, { value: '300', label: '5 min' }, { value: '600', label: '10 min' }, { value: '1800', label: '30 min' }]
+const TIMEOUTS = [{ value: '120', label: '2 minutes' }, { value: '300', label: '5 minutes' }, { value: '600', label: '10 minutes' }, { value: '1800', label: '30 minutes' }]
 
 /**
  * The four modes as cards in a radio group (KERNEL-680). A mode no provider can run keeps its card, dimmed with the reason, and can't be
@@ -72,22 +73,27 @@ export function Permissions({ s }: { s: AppSettings }) {
   const availability = useModeAvailability()
   const firstProject = useStore((st) => st.projects.find((r) => !r.hidden && !r.archived))
   const save = (permissions: Partial<AppSettings['permissions']>) => patchSettings({ permissions })
-  const timeouts = TIMEOUTS.some((t) => t.value === String(p.approvalTimeoutSec)) ? TIMEOUTS : [...TIMEOUTS, { value: String(p.approvalTimeoutSec), label: `${p.approvalTimeoutSec} sec` }]
+  const timeouts = TIMEOUTS.some((t) => t.value === String(p.approvalTimeoutSec)) ? TIMEOUTS : [...TIMEOUTS, { value: String(p.approvalTimeoutSec), label: `${p.approvalTimeoutSec} seconds` }]
   const rule = (label: string, value: string[], key: 'alwaysAsk' | 'neverAllow' | 'protectedBranches', addLabel: string) => (
     <TagList label={label} value={value} addLabel={addLabel} onChange={(next) => save({ [key]: next })} />
   )
   return (
-    <Page title="Permissions">
+    <Page title="Permissions" desc="How much agents do without asking you.">
       <Section id="mode" title="Mode" plain>
         <ModeCards value={p.mode} availability={availability} />
-        {p.mode === 'bypassPermissions' && <div className="set-card ag-wt"><Row id="only-in-worktrees" label="Only in worktrees" desc="Never skip prompts on your current branch."><Toggle label="Only in worktrees" checked={p.bypassOnlyInWorktrees} onChange={(v) => save({ bypassOnlyInWorktrees: v })} /></Row></div>}
+      </Section>
+      <Section title="Bypass">
+        <Row id="only-in-worktrees" label="Only in worktrees" desc="Never skip prompts on your current branch."><Toggle label="Only in worktrees" checked={p.bypassOnlyInWorktrees} onChange={(v) => save({ bypassOnlyInWorktrees: v })} /></Row>
       </Section>
       <Section title="Rules">
         <Row id="always-ask" className="ag-rule" label="Always ask before" desc="Every mode except Bypass." full={rule('Always ask before', p.alwaysAsk, 'alwaysAsk', 'Add command')} />
         <Row id="never-allow" className="ag-rule" label="Never allow" desc="Blocked in every mode, Bypass included." full={rule('Never allow', p.neverAllow, 'neverAllow', 'Add command')} />
         <Row id="protected-branches" className="ag-rule" label="Protected branches" desc="Pushes are blocked in Bypass. Other modes ask first." full={rule('Protected branches', p.protectedBranches, 'protectedBranches', 'Add branch')} />
       </Section>
-      <Section title="Safety" footnote={<>Commands and tools you allow from an approval are saved per project, on {firstProject ? <>each project’s <SettingsLink to={{ page: 'project', projectId: firstProject.id, section: 'agents', row: 'mode' }}>Agents page</SettingsLink></> : 'each project’s Agents page'}.</>}>
+      <Section
+        title="Safety"
+        action={<span className="perm-where">Per-project rules are on each project’s {firstProject ? <SettingsLink variant="quiet" to={{ page: 'project', projectId: firstProject.id, section: 'agents', row: 'mode' }}>Agents page</SettingsLink> : 'Agents page'}<Icon name="ext" size={12} /></span>}
+      >
         <Row id="network" label="Allow network access" desc="Off blocks the network in every mode."><Toggle label="Allow network access" checked={p.network} onChange={(v) => save({ network: v })} /></Row>
         <Row id="approval-timeout" label="Approval timeout" desc="Then the request falls back to Claude Code’s own prompt.">
           <Select label="Approval timeout" value={String(p.approvalTimeoutSec)} options={timeouts} onChange={(v) => save({ approvalTimeoutSec: Number(v) })} />

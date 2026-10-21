@@ -5,6 +5,7 @@ import { APP_SETTING_TIMING, PROJECT_SETTING_TIMING, type SettingTiming } from '
 import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { Button, LinkButton, EmptyState, Icon, Kbd, Menu, Spinner, SplitButton, useBusy, type IconName, type LinkVariant } from '../../ui'
+import { ProjectIcon } from '../../components/ProjectIcon'
 import { openNewProject } from '../projects/draft'
 import { useProjectSettings } from './useSettings'
 import { useKeptScroll } from '../../ui/keptScroll'
@@ -14,22 +15,24 @@ export const KeepContext = createContext<{ key: string; target: boolean } | null
 
 /**
  * One settings page: the title and its sections, with nothing under the title (KERNEL-1023). `action` sits at the right of the title, and `note` just before it,
- * for a save that has no field of its own. `back` is the link above it to the page it opened from. `crumb` puts a link before the title, the project on a project's page.
+ * for a save that has no field of its own. `back` is the link above it to the page it opened from. `crumb` puts a link before the title, the project on a project's page. `lead` is a picture beside the title and the line under it, an agent's avatar.
  */
-export function Page({ title, crumb, action, back, note, children }: { title: string; crumb?: ReactNode; action?: ReactNode; back?: ReactNode; note?: ReactNode; children: ReactNode }) {
+export function Page({ title, desc, lead, crumb, action, back, note, children }: { title: string; desc?: ReactNode; lead?: ReactNode; crumb?: ReactNode; action?: ReactNode; back?: ReactNode; note?: ReactNode; children: ReactNode }) {
   const keep = useContext(KeepContext)
   const scroll = useRef<HTMLDivElement>(null)
   useKeptScroll(scroll, { key: keep?.key ?? '', ready: !!keep, target: keep?.target })
   return (
     <div className="set-scroll" ref={scroll}>
       <div className="set-page">
-        <div>
+        <div className="set-top" data-lead={lead ? '' : undefined}>
           {back}
+          {lead && <span className="set-lead-mark">{lead}</span>}
           <div className="set-head">
-            <h1>{crumb && <>{crumb}<span className="set-crumb-sep" aria-hidden="true"><Icon name="right" size={16} /></span></>}<span>{title}</span></h1>
+            <h1>{crumb && <>{crumb}<span className="set-crumb-sep" aria-hidden="true">/</span></>}<span>{title}</span></h1>
             {note}
             {action}
           </div>
+          {desc && <p className="set-lede">{desc}</p>}
         </div>
         {children}
       </div>
@@ -440,7 +443,7 @@ function OpenSettingsFiles({ project, rs, shared }: { project: Project; rs: Proj
  * A project page: the project and the page's name as a breadcrumb, the settings files button, and the sections. The project's name goes back to
  * its General page. `shared` is a page the team shares, so its file button opens settings.toml first.
  */
-export function ProjectPage({ project, rs, title, shared, note, children }: { project: Project; rs: ProjectSettings | null; title: string; shared?: boolean; note?: ReactNode; children: ReactNode }) {
-  const crumb = <button type="button" className="set-crumb" aria-label={`${project.name} settings`} onClick={() => go({ name: 'settings', page: 'project', projectId: project.id })}>{project.name}</button>
-  return <ProjectScope.Provider value={project.id}><Page title={title} crumb={crumb} note={note} action={<OpenSettingsFiles project={project} rs={rs} shared={shared} />}>{children}</Page></ProjectScope.Provider>
+export function ProjectPage({ project, rs, title, desc, shared, note, children }: { project: Project; rs: ProjectSettings | null; title: string; desc?: ReactNode; shared?: boolean; note?: ReactNode; children: ReactNode }) {
+  const crumb = <button type="button" className="set-crumb" aria-label={`${project.name} settings`} onClick={() => go({ name: 'settings', page: 'project', projectId: project.id })}><ProjectIcon project={project} className="set-letter set-crumb-tile" /><span className="set-crumb-name">{project.name}</span></button>
+  return <ProjectScope.Provider value={project.id}><Page title={title} desc={desc} crumb={crumb} note={note} action={<OpenSettingsFiles project={project} rs={rs} shared={shared} />}>{children}</Page></ProjectScope.Provider>
 }

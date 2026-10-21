@@ -21,15 +21,17 @@
 .set-letter[data-image] { border: 0; }
 
 .set-scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
-.set-page { max-width: 820px; margin: 0 auto; padding: 56px 24px 64px; display: flex; flex-direction: column; gap: 36px; }
-.set-page h1 { margin: 0; font-size: var(--fs-page); font-weight: var(--fw-semibold); color: var(--ink); letter-spacing: -0.6px; }
+.set-page { max-width: 808px; margin: 0 auto; padding: 32px 24px 64px; display: flex; flex-direction: column; gap: 26px; }
+.set-page h1 { margin: 0; font-size: var(--fs-title); font-weight: var(--fw-semibold); color: var(--ink); letter-spacing: -0.3px; }
+/* The line under a page's title says what the page is for (Redesign 15). */
+.set-lede { margin: 6px 0 0; font-size: var(--fs-row); line-height: var(--lh-ui); color: var(--muted); }
 .set-section { display: flex; flex-direction: column; gap: 10px; }
-.set-section h2, .ag-group h2 { margin: 0; padding-left: 2px; font-size: var(--fs-sub); font-weight: var(--fw-medium); color: var(--ink); }
-.set-card { border-radius: var(--r-md); border: 1px solid var(--card-line); background: var(--card-bg); }
-.set-row { position: relative; display: flex; flex-wrap: wrap; align-items: center; column-gap: 16px; row-gap: 10px; min-height: 52px; padding: 12px 16px; border-top: 1px solid var(--card-line); }
+.set-section h2, .ag-group h2 { margin: 0; font-size: var(--fs-code); font-weight: var(--fw-medium); color: var(--muted); }
+.set-card { border-radius: var(--r-md); border: 1px solid var(--line-2); background: var(--card-bg); }
+.set-row { position: relative; display: flex; flex-wrap: wrap; align-items: center; column-gap: 16px; row-gap: 10px; min-height: 48px; padding: 14px 16px; border-top: 1px solid var(--line-2); }
 .set-row:first-child { border-top: 0; }
-.set-text { flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.set-label { font-size: var(--fs-row); font-weight: var(--fw-medium); }
+.set-text { flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.set-label { font-size: var(--fs-row); font-weight: var(--fw-regular); color: var(--ink); }
 .set-desc { font-size: var(--fs-code); color: var(--muted); }
 .set-clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .set-value { font-family: var(--mono); font-size: var(--fs-code); color: var(--ink-2); }
@@ -186,9 +188,11 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
    a guide line, rows whose actions show on hover, status lines, tables and tag lists. */
 .set-head h1 { display: flex; align-items: center; gap: 10px; line-height: var(--lh-compact); }
 .set-head h1 > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.set-crumb { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; border: 0; background: transparent; color: var(--ink-3); font: inherit; letter-spacing: inherit; }
+.set-crumb { flex-shrink: 1; min-width: 0; display: inline-flex; align-items: center; gap: 10px; overflow: hidden; white-space: nowrap; padding: 0; border: 0; background: transparent; color: var(--ink-3); font: inherit; letter-spacing: inherit; }
+.set-crumb-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.set-letter.set-crumb-tile { width: 22px; height: 22px; font-size: var(--fs-chip); }
 .set-crumb:hover { color: var(--ink-2); }
-.set-crumb-sep { display: inline-flex; flex-shrink: 0; color: var(--line-3); }
+.set-crumb-sep { display: inline-flex; flex-shrink: 0; color: var(--faint); font-weight: var(--fw-regular); }
 .set-section h2, .ag-group h2 { display: inline-flex; align-items: baseline; gap: 8px; }
 .set-count { font-size: var(--fs-code); font-weight: var(--fw-regular); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .set-fold { display: inline-flex; align-items: center; gap: 8px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
@@ -196,7 +200,8 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-fold[aria-expanded='true'] > svg { transform: rotate(90deg); }
 .set-fold:focus-visible { outline-offset: 3px; border-radius: var(--r-xs); }
 .set-badge { display: inline-flex; align-items: center; gap: 5px; height: 20px; box-sizing: border-box; padding: 0 7px; border-radius: var(--r-xs); border: 1px solid var(--line-3); color: var(--muted); font-size: var(--fs-chip); font-weight: var(--fw-medium); white-space: nowrap; }
-.set-section-note { font-size: var(--fs-code); color: var(--muted); }
+.set-section-note { margin-left: auto; font-size: var(--fs-code); color: var(--muted); }
+.set-section-note + .set-section-act { margin-left: 12px; }
 .set-section-act { margin-left: auto; display: inline-flex; gap: 6px; }
 .set-child { padding-left: 44px; border-top-color: transparent; }
 .set-guide { position: absolute; left: 24px; top: 0; height: 100%; width: 1px; background: var(--line-3); }

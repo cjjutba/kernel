@@ -13,7 +13,7 @@ export function General({ s }: { s: AppSettings }) {
   // Onboarding runs again from its first step. Nothing already set up is undone: the checks, accounts and team choices start from what is there.
   const again = () => run('again', async () => { if (await patchSettings({ onboarding: { done: false } })) go({ name: 'onboarding', step: 'checks' }) })
   return (
-    <Page title="General">
+    <Page title="General" desc="How Kernel starts and how the composer sends.">
       <Section title="Startup">
         <Row id="open-at-login" label="Open at login"><Toggle label="Open at login" checked={g.openAtLogin} onChange={(v) => void patchSettings({ general: { openAtLogin: v } })} /></Row>
         <Row id="open-to" setting="general.openTo" label="Open to">

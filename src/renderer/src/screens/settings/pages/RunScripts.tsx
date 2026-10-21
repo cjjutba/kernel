@@ -1,8 +1,10 @@
 import { useState, type KeyboardEvent } from 'react'
 import { isRunName, PORT_BLOCK, RUN_SCRIPT_NAME, type ProjectSettings } from '@shared/types'
-import { Button, CodeLines, Icon, Modal, SegmentedControl, useBusy } from '../../../ui'
+import { Button, Modal, SegmentedControl, useBusy } from '../../../ui'
 import { Row, projectValue, Section } from '../kit'
 import { patchProjectSettings } from '../useSettings'
+import { RowMenu } from './RowMenu'
+import './envScripts.css'
 
 type Script = ProjectSettings['runScripts'][number]
 
@@ -15,16 +17,28 @@ export function nameProblem(name: string, others: string[]): string | undefined 
   return undefined
 }
 
-/** Run scripts on Settings > a project > Scripts (KERNEL-914): a row each with its first line. Saved in the personal file, so a script stays on this Mac. */
-export function RunScripts({ projectId, rs }: { projectId: string; rs: ProjectSettings | null }) {
+/**
+ * Run scripts on Settings > a project > Scripts (KERNEL-914): a row each with its first line and a menu. Saved in the personal file, so a script stays on this Mac.
+ * `empty` is the row a project with no scripts at all shows in the card with its setup script: what run scripts are, and Add.
+ */
+export function RunScripts({ projectId, rs, empty }: { projectId: string; rs: ProjectSettings | null; empty?: boolean }) {
   const [editing, setEditing] = useState<Script | 'new' | null>(null)
   const scripts = rs?.runScripts ?? []
   const path = (name: string) => `runScripts.${name}`
   const drop = (name: string) => void patchProjectSettings(projectId, { runScripts: { [name]: null } })
+  const form = editing && <RunScriptForm projectId={projectId} rs={rs} script={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />
+  if (empty) {
+    return (
+      <>
+        <Row id="run-scripts" label="Run scripts" desc="Start your app from a chat’s bottom panel."><Button onClick={() => setEditing('new')}>Add</Button></Row>
+        {form}
+      </>
+    )
+  }
   return (
     <>
-      <Section id="run-scripts" title="Run scripts" count={scripts.length || undefined} plain action={<Button icon="plus" onClick={() => setEditing('new')}>Add</Button>}>
-        <p className="rm-script-desc set-desc">Shortcuts for quick actions, like running your dev server or test suite.</p>
+      <Section id="run-scripts" title="Run scripts" plain action={<Button icon="plus" onClick={() => setEditing('new')}>Add run script</Button>}>
+        <p className="rm-lead">Shortcuts for quick actions, like running your dev server or test suite.</p>
         {scripts.length === 0 && <p className="set-empty rm-run-empty">No run scripts yet. Add one to start your app from a workspace.</p>}
         {scripts.length > 0 && (
           <div className="set-card">
@@ -33,17 +47,19 @@ export function RunScripts({ projectId, rs }: { projectId: string; rs: ProjectSe
               const source = rs?.sources?.[path(s.name)]
               const first = s.command.split('\n').find((l) => l.trim()) ?? ''
               return (
-                <Row key={s.name} lead={<Icon name="play" size={14} />} label={s.name} desc={<span className="mono rm-run-line">{first}</span>}>
-                  {source === 'override' && <Button variant="ghost" aria-label={`Reset ${s.name}`} onClick={() => drop(s.name)}>Reset</Button>}
-                  <Button aria-label={`Edit ${s.name}`} onClick={() => setEditing(s)}>Edit</Button>
-                  {source === 'local' && <Button variant="ghost" aria-label={`Remove ${s.name}`} onClick={() => drop(s.name)}>Remove</Button>}
+                <Row key={s.name} className="rm-run" label={<span className="rm-run-name">{s.name}</span>} desc={<span className="rm-run-first">{first}</span>}>
+                  <RowMenu box="sm" label={`More for ${s.name}`} items={[
+                    { id: 'edit', label: 'Edit', icon: 'pen', onSelect: () => setEditing(s) },
+                    ...(source === 'override' ? [{ id: 'reset', label: 'Reset', icon: 'refresh' as const, onSelect: () => drop(s.name) }] : []),
+                    ...(source === 'local' ? [{ id: 'remove', label: 'Remove', icon: 'trash' as const, danger: true, onSelect: () => drop(s.name) }] : [])
+                  ]} />
                 </Row>
               )
             })}
           </div>
         )}
       </Section>
-      {editing && <RunScriptForm projectId={projectId} rs={rs} script={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />}
+      {form}
     </>
   )
 }
@@ -51,7 +67,7 @@ export function RunScripts({ projectId, rs }: { projectId: string; rs: ProjectSe
 /** Run mode and Ports, the card under the run scripts table. The ports are explained here once; the forms only say how to use them. */
 export function RunMode({ projectId, rs }: { projectId: string; rs: ProjectSettings | null }) {
   return (
-    <Section label="Running">
+    <Section title="Running">
       <Row id="run-mode" label="Run mode" {...projectValue(rs, 'scripts.runMode', () => void patchProjectSettings(projectId, { scripts: { runMode: null } }))}>
         <SegmentedControl label="Run mode" value={rs?.scripts.runMode ?? 'concurrent'} onChange={(v) => void patchProjectSettings(projectId, { scripts: { runMode: v as NonNullable<ProjectSettings['scripts']['runMode']> } })} options={[{ value: 'concurrent', label: 'Concurrent' }, { value: 'single', label: 'One at a time' }]} />
       </Row>
@@ -89,31 +105,34 @@ function RunScriptForm({ projectId, rs, script, onClose }: { projectId: string; 
   }
   return (
     <Modal
-      title={script ? `Edit ${script.name}` : 'Add run script'}
+      title={script ? `Edit ${script.name}` : 'Add a run script'}
       onClose={onClose}
-      width={560}
+      width={480}
       top={160}
       footer={<>
         <span className="grow" />
-        <Button variant="ghost" data-dismiss>Cancel</Button>
-        <Button variant="primary" type="submit" form="run-script-form" busy={busy === 'save'} busyLabel="Saving" aria-keyshortcuts="Meta+Enter">Save<span className="rm-keys" aria-hidden="true">⌘↵</span></Button>
+        <Button variant="ghost" size="lg" data-dismiss>Cancel</Button>
+        <Button variant="primary" size="lg" type="submit" form="run-script-form" busy={busy === 'save'} busyLabel="Saving" aria-keyshortcuts="Meta+Enter">{script ? 'Save' : 'Add script'}</Button>
       </>}
     >
       <form id="run-script-form" className="modal-body set-form" onSubmit={(e) => { e.preventDefault(); save() }} onKeyDown={onKeyDown} noValidate>
+        <p className="set-help">Run scripts start from the Run button in a chat’s bottom panel.</p>
         <div className="set-field">
-          <div className="rm-name">
-            <Icon name="play" size={16} />
-            <input id="run-script-name" className="input" aria-label="Name" autoComplete="off" spellCheck={false} placeholder="frontend" value={fixed ? script!.name : name} disabled={fixed} aria-invalid={shown && !!problem} aria-describedby="run-script-name-note" onChange={(e) => setName(e.target.value)} />
-          </div>
+          <label htmlFor="run-script-name">Name</label>
+          <input id="run-script-name" className="input set-text-input" autoComplete="off" spellCheck={false} placeholder="frontend" value={fixed ? script!.name : name} disabled={fixed} aria-invalid={shown && !!problem} aria-describedby="run-script-name-note" onChange={(e) => setName(e.target.value)} />
           {shown && problem
             ? <span id="run-script-name-note" role="alert" className="set-error">{problem}</span>
-            : <span id="run-script-name-note" className="set-help">{isRun ? 'run is the default script, so it keeps its name.' : shared ? 'This script is in settings.toml, so it keeps its name.' : 'Shown in the Run tab. Letters, digits, - and _. Saved in settings.local.toml, so it stays on your Mac.'}</span>}
+            : (isRun || shared) && <span id="run-script-name-note" className="set-help">{isRun ? 'run is the default script, so it keeps its name.' : 'This script is in settings.toml, so it keeps its name.'}</span>}
         </div>
         <div className="set-field">
-          <CodeLines id="run-script-command" label="Command" placeholder="pnpm dev --port $KERNEL_PORT" value={command} onChange={setCommand} minLines={2} maxLines={12} invalid={shown && noCommand} describedBy="run-script-command-note" />
+          <label htmlFor="run-script-command">Command</label>
+          <textarea
+            id="run-script-command" className="input rm-command" rows={Math.min(Math.max(command.split('\n').length, 1), 8)} wrap="off" autoComplete="off" spellCheck={false}
+            placeholder="pnpm dev --port $KERNEL_PORT" value={command} aria-invalid={shown && noCommand} aria-describedby="run-script-command-note" onChange={(e) => setCommand(e.target.value)}
+          />
           {shown && noCommand
             ? <span id="run-script-command-note" role="alert" className="set-error">Enter the command to run.</span>
-            : <span id="run-script-command-note" className="set-help">$KERNEL_PORT is the first of the workspace's {PORT_BLOCK} ports. Use $((KERNEL_PORT + 1)) for the next.</span>}
+            : <span id="run-script-command-note" className="set-help">Runs in the chat’s worktree. $KERNEL_PORT is the first of the workspace’s {PORT_BLOCK} ports. Use $((KERNEL_PORT + 1)) for the next.</span>}
         </div>
       </form>
     </Modal>

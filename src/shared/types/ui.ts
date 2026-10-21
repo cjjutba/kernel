@@ -137,8 +137,8 @@ export interface Toast {
   sub?: string
   /** A third, quieter line under the sub: what the toast is about, such as the chat's title (KERNEL-1093). */
   detail?: string
-  /** The icon in front of the title (KERNEL-1109): `error` for a call that failed, `merged` for a PR that landed, `done` for the rest. Left out, it is `error` when the title starts "Could not" or "Couldn't", `done` otherwise. */
-  glyph?: 'done' | 'error' | 'merged'
+  /** The icon in front of the title (KERNEL-1109): `error` for a call that failed, `merged` for a PR that landed, `plug` for MCP servers that need a sign-in, `done` for the rest. Left out, it is `error` when the title starts "Could not" or "Couldn't", `done` otherwise. */
+  glyph?: 'done' | 'error' | 'merged' | 'plug'
   action?: ToastAction
   /** A second, quieter button that sits before `action` (Open Scripts beside Try again). */
   other?: ToastAction

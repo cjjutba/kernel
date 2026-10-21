@@ -1,0 +1,3 @@
+/* Settings, Permissions: the note at the right of Safety's heading that points at each project's Agents page. */
+.perm-where { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-code); font-weight: var(--fw-regular); color: var(--muted); }
+.perm-where svg { flex-shrink: 0; }
