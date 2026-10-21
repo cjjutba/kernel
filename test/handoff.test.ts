@@ -8,7 +8,7 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { tempRepo, freePort } from './helpers'
-import { BLOCKER_RULE, GO_AHEAD_LINE, HANDOFF_NOW, HANDOFF_REMINDER, forProvider, Handoffs, LEAD_RULE, LEAD_SHARING_RULE, reviewRule, SETUP_LINE, TEAMMATE_RULE } from '../src/main/services/handoff'
+import { BLOCKER_RULE, CARRY_OUT, forProvider, LEAD_RULE, LEAD_SHARING_RULE, reviewRule, SETUP_LINE, TEAMMATE_RULE } from '../src/main/services/handoff'
 import { reviewTools } from '../src/main/services/reviewMcp'
 import { reviewPolicyOf } from '../src/main/services/settings'
 import { kindsFor } from '../src/main/services/lenses'
@@ -28,14 +28,13 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await origin
 /** The Lead's tools with a user who answers every card with `answer`, in a chat whose plan mode `plan` holds. */
 function leadTools(answer: Decision | null, plan = { on: true }) {
   const planApproved = vi.fn()
-  const handedOff = vi.fn()
   const askUser = vi.fn(async () => answer)
   const ws = { id: 'ws-1', branch: 'kernel/symlink-node-modules', agentId: 'sean' } as Workspace
   const deps: KernelToolDeps = {
     projectId: 'project', lead: undefined, agents: async () => [{ id: 'sean', name: 'Sean', role: 'Engine', lead: false } as AgentDef], workspaces: () => [],
     createWorkspace: async () => ws, messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser, hireAgent: async () => '',
     archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false,
-    planMode: () => plan.on, planApproved, handedOff
+    planMode: () => plan.on, planApproved
   }
   const byName = Object.fromEntries(kernelTools(deps).map((t) => [t.name, t]))
   const run = async (name: string, args: object) => {
@@ -43,7 +42,7 @@ function leadTools(answer: Decision | null, plan = { on: true }) {
     return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError }
   }
   const call = async (name: string, args: object) => (await run(name, args)).text
-  return { call, run, askUser, planApproved, handedOff }
+  return { call, run, askUser, planApproved }
 }
 
 const PLAN = '# Symlink node_modules\n\nWorktrees reinstall every package. Link them to the main checkout instead.\n\n## Checks\n\n- pnpm test'
@@ -84,17 +83,16 @@ describe('what teammates are told about setup (KERNEL-1012)', () => {
 describe('the Lead leaves acceptance criteria out of the brief (KERNEL-1080)', () => {
   it('asks for goal and files, and says the plan step\'s criteria are added', () => {
     for (const rule of [LEAD_RULE, forProvider(LEAD_RULE, 'codex')]) {
-      expect(rule).toContain('with a complete brief: goal and files.')
-      expect(rule).toContain("Its plan step's criteria are added for you.")
+      expect(rule).toContain("a complete brief (goal and files; the plan step's criteria are added for you)")
       expect(rule).not.toMatch(/goal, files, acceptance criteria/)
     }
   })
 })
 
 describe('request_plan_approval and create_workspace (KERNEL-67)', () => {
-  it('answers an approval with "hand it off now" and marks the plan approved', async () => {
+  it('answers an approval with "carry it out" and marks the plan approved', async () => {
     const t = leadTools({ behavior: 'allow' })
-    expect(await t.call('request_plan_approval', { title: 'KERNEL-53', plan: PLAN, steps: ['Symlink node_modules · Sean'] })).toBe(`approved. ${HANDOFF_NOW}`)
+    expect(await t.call('request_plan_approval', { title: 'KERNEL-53', plan: PLAN, steps: ['Symlink node_modules · Sean'] })).toBe(`approved. ${CARRY_OUT}`)
     expect(t.planApproved).toHaveBeenCalledOnce()
   })
 
@@ -104,10 +102,9 @@ describe('request_plan_approval and create_workspace (KERNEL-67)', () => {
     expect(t.planApproved).not.toHaveBeenCalled()
   })
 
-  it('counts a created workspace as the hand-off', async () => {
+  it('creates a workspace for a teammate from a chat that may also edit files itself (one-lead-chat)', async () => {
     const t = leadTools(null)
     expect(await t.call('create_workspace', { agent: 'sean', title: 'Symlink node_modules', brief: 'Goal, files, acceptance criteria' })).toBe('Created ws-1 on kernel/symlink-node-modules for sean.')
-    expect(t.handedOff).toHaveBeenCalledOnce()
   })
 })
 
@@ -225,7 +222,7 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
 
   it('asks with plan mode on', async () => {
     const t = leadTools({ behavior: 'allow' }, { on: true })
-    expect(await t.run('request_plan_approval', plan)).toEqual({ isError: false, text: `approved. ${HANDOFF_NOW}` })
+    expect(await t.run('request_plan_approval', plan)).toEqual({ isError: false, text: `approved. ${CARRY_OUT}` })
     expect(t.askUser).toHaveBeenCalledWith(expect.objectContaining({ kind: 'plan', title: 'KERNEL-53', steps: [{ task: 'Symlink node_modules · Sean' }] }), undefined)
   })
 
@@ -234,7 +231,7 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     const t = leadTools({ behavior: 'allow' }, mode)
     expect((await t.run('request_plan_approval', plan)).isError).toBe(true)
     mode.on = true
-    expect(await t.run('request_plan_approval', plan)).toEqual({ isError: false, text: `approved. ${HANDOFF_NOW}` })
+    expect(await t.run('request_plan_approval', plan)).toEqual({ isError: false, text: `approved. ${CARRY_OUT}` })
     expect(t.askUser).toHaveBeenCalledOnce()
   })
 
@@ -260,7 +257,7 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     expect(await planSaved()).toBe('.kernel/plans/plan.md')
     k.approvals.decide(plans()[0].id, { behavior: 'allow' })
     // The Lead still has the plan in context, so the note names no file. The settled card says it, so the chat adds no note.
-    expect(((await asked).content[0] as { text: string }).text).toBe(`Plan approved.\n\n${HANDOFF_NOW}`)
+    expect(((await asked).content[0] as { text: string }).text).toBe(`Plan approved.\n\n${CARRY_OUT}`)
     expect(k.store.items(chat.id).filter((i) => i.kind === 'note')).toEqual([])
   })
 
@@ -293,7 +290,6 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
 
     expect(k.store.chat(chat.id)?.plan).toBe(false)
     expect(pushed.at(-1)).toMatchObject({ id: chat.id, plan: false })
-    expect(k.sessions.handoffs.due(chat.id)).toBe(true)
     expect(await planSaved()).toBe('.kernel/plans/plan.md')
   })
 
@@ -362,9 +358,9 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
 
   it('tells the Lead to ask for approval only in plan mode, and otherwise to ask in the chat before handing off', () => {
     expect(LEAD_RULE).not.toContain('in plan mode or through request_plan_approval')
-    // "Don't ask" holds only after an approved plan, so it can't be read against asking first with plan mode off.
-    const dontAsk = LEAD_RULE.split('\n').filter((l) => /don't ask/i.test(l))
-    expect(dontAsk).toEqual([expect.stringMatching(/^After an approved plan, don't end the turn with only the plan, and don't ask again whether to hand it off\./)])
+    // After an approved plan the Lead carries it out in the same turn, which can't be read against asking first with plan mode off.
+    expect(LEAD_RULE).toContain('After approval, carry the plan out in the same turn.')
+    expect(LEAD_RULE).toContain('Before creating several workspaces, say who gets what, ask one yes-or-no question')
     const tool = kernelTools({} as KernelToolDeps).find((x) => x.name === 'request_plan_approval')!
     expect(tool.description).toContain('Only while the chat is in plan mode. With plan mode off it refuses, and you ask in the chat before handing off.')
   })
@@ -443,20 +439,16 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
 
   // KERNEL-1079: the user approved in a long paste, then on the Lead's own question card, and nothing passed.
   it('tells the Lead to answer a yes that comes with questions first, and to ask once', () => {
-    const line = LEAD_RULE.split('\n').find((l) => l.startsWith('With plan mode off'))!
-    expect(line).toContain('ending with one yes-or-no question for one set of tasks')
-    expect(line).toContain('Call mcp__kernel__create_workspace once the user agrees.')
-    expect(line).toContain(GO_AHEAD_LINE)
-    expect(line).toContain("File and edit tracker issues with the tracker's own tools or mcp__kernel__file_issue.")
-    expect(line).not.toContain('right away')
+    expect(LEAD_RULE).toContain('A message that offers options, asks what to do or only agrees is not: answer, recommend one approach and ask once.')
+    expect(LEAD_RULE).toContain('say who gets what, ask one yes-or-no question, and create them once the user agrees.')
+    expect(LEAD_RULE).toContain("File and edit tracker issues with the tracker's own tools or mcp__kernel__file_issue.")
+    expect(LEAD_RULE).not.toContain('right away')
   })
 
   // feat-lead-stops-ending-answers-with: only a request for work ends on a question. "Is this a bug?" gets an answer.
   it('tells the Lead to answer a question and stop, and to ask only when the user asked for work', async () => {
     const starter = await readFile(join(__dirname, '..', 'docs', 'starter-agents', 'kernel.md'), 'utf8')
-    const line = LEAD_RULE.split('\n').find((l) => l.startsWith('With plan mode off'))!
-    expect(line).not.toContain('Propose new findings')
-    for (const part of ['A message that also asks for work is a request for work.', '"Okay" after an answer starts nothing.', 'a serious one first']) {
+    for (const part of ['A message that also asks for work is a request for work.', '"Okay" after an answer starts nothing.']) {
       expect(LEAD_RULE, part).toContain(part)
       expect(starter, part).toContain(part)
     }
@@ -465,7 +457,7 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, PLAN_MODE_OFF, starter]) expect(said).not.toMatch(/Linear|GitHub Issues/)
   })
 
-  it('says the same in the rule, the instructions, the refusal and the starter Kernel, and the rule does not grow', async () => {
+  it('says the same in the rule, the instructions, the refusal and the starter Kernel, and the rule stays short', async () => {
     const starter = await readFile(join(__dirname, '..', 'docs', 'starter-agents', 'kernel.md'), 'utf8')
     for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, PLAN_MODE_OFF, starter]) {
       for (const part of ['one yes-or-no question', 'ask once']) expect(said).toContain(part)
@@ -473,16 +465,9 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
       if (said !== LEAD_RULE) expect(said).toContain('changes scope or only agrees with the idea')
       expect(said).not.toMatch(/[\u2013\u2014]/)
     }
-    expect(LEAD_RULE).toContain(GO_AHEAD_LINE)
     for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, starter]) expect(said).toMatch(/tracker issues with the tracker's own tools/)
-    // LEAD_RULE's length on main before KERNEL-678. The rule was rewritten, not added to. KERNEL-745 added its one sentence
-    // about mentions, 80 characters past that, KERNEL-747 its sentence about proposed hand-offs, 61 more, and KERNEL-777 its
-    // sentence about limit replies, 176 more, and feat-review-messages-reach-named its sentence about reporting a message's
-    // answer and the review kind to name, 118 more. KERNEL-880 renamed room to project, 9 more. feat-lead-stops-ending-answers-with
-    // added its line on answering without an offer, 332 more. feat-lead-files-tracker-issues-only-with named file_issue, 29 more.
-    // KERNEL-1080 swapped "acceptance criteria" in the brief for a line saying the plan step's criteria are added for it, 25 more.
-    // KERNEL-1113 dropped the go-ahead quoting, which made it shorter.
-    expect(LEAD_RULE.length).toBeLessThanOrEqual(6225)
+    // One rule for every chat replaced two (one-lead-chat). The Hand off rule it replaced ran about 1,050 words.
+    expect(LEAD_RULE.split(/\s+/).filter(Boolean).length).toBeLessThan(700)
   })
 
   // KERNEL-692: Kernel is the Lead, so its rule speaks to Kernel and never about Kernel in the third person.
@@ -710,29 +695,6 @@ describe('get_issue and the issue in the brief (KERNEL-473)', () => {
       expect(text).not.toMatch(/linear/i)
     }
     expect(TEAMMATE_RULE).toContain('call mcp__kernel__get_issue')
-  })
-})
-
-describe('Handoffs', () => {
-  it('reminds once per approval, and not at all once handed off', () => {
-    const h = new Handoffs()
-    expect(h.reminder('chat')).toBeUndefined()
-    h.approved('chat')
-    expect(h.due('chat')).toBe(true)
-    expect(h.reminder('chat')).toBe(HANDOFF_REMINDER)
-    expect(h.due('chat')).toBe(false)
-    expect(h.reminder('chat')).toBeUndefined()
-    h.approved('chat')
-    h.done('chat')
-    expect(h.reminder('chat')).toBeUndefined()
-  })
-
-  it('keeps chats apart', () => {
-    const h = new Handoffs()
-    h.approved('lead-a')
-    expect(h.due('lead-b')).toBe(false)
-    expect(h.reminder('lead-b')).toBeUndefined()
-    expect(h.reminder('lead-a')).toBe(HANDOFF_REMINDER)
   })
 })
 

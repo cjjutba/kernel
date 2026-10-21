@@ -398,7 +398,7 @@ function PlanDecision({ a, lead }: { a: Approval; lead: boolean }) {
   return (
     <div className={`tc-foot${phase ? ' decide-fold' : ''}`}>
       <Button onClick={() => setAsking(true)}>{lead ? 'Request changes' : 'Keep planning'}</Button>
-      <Button variant="primary" onClick={() => decideAtOnce(a, { behavior: 'allow' })}>{lead ? 'Approve and hand off' : 'Approve and build'}</Button>
+      <Button variant="primary" onClick={() => decideAtOnce(a, { behavior: 'allow' })}>{lead ? 'Approve and start' : 'Approve and build'}</Button>
     </div>
   )
 }

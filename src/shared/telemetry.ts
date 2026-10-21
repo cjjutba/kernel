@@ -37,14 +37,10 @@ export const EVENTS = {
   'room.created': { source: { enum: ['repo', 'folder', 'scratch'] } },
   'workspace.created': { by: { enum: ['lead', 'user'] }, review: { bool: true } },
   'pr.merged': {},
-  /** The Lead tried to end its turn after an approved plan without handing anything off. */
-  'handoff.reminder': {},
   /** A teammate's workspace was archived with no pull request and no commit of its own. */
   'handoff.no_commit': {},
   /** create_workspace refused the agent the Lead named, or a hand-off with no go-ahead from the user (KERNEL-678). */
   'handoff.refused': { reason: { enum: ['unknown', 'ambiguous', 'self', 'no-teammates', 'helper', 'go-ahead', 'go-ahead-repeat'] } },
-  /** start_build refused in Build here: the quote isn't in the user's latest message, or the chat is in Hand off (KERNEL-992). */
-  'build.refused': { reason: { enum: ['go-ahead', 'go-ahead-repeat', 'handoff'] } },
   /** An agent called a tool its file doesn't list. */
   'tool.blocked_by_agent_file': { tool: { enum: TOOL_KINDS } },
   /** A PR passed checks and nobody was there to review it. */

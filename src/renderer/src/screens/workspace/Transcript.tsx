@@ -1,10 +1,9 @@
 import { memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import type { Approval, ChangedFile, Chat, ChatItem, ChatPart, LeadMode, MoveNotice } from '@shared/types'
-import { leadModeName, leadModeOf, leadModeSwitched } from '@shared/leadMode'
+import type { Approval, ChangedFile, Chat, ChatItem, ChatPart, MoveNotice } from '@shared/types'
 import { call } from '../../api'
 import { FileIcon } from '../../components/FileIcon'
 import { AgentAvatar, Button, FailedState, Icon, IconButton, LoadingRow, useBusy, type IconName } from '../../ui'
-import { actions, getState, go, loadWorkspace, setLeadMode, useStore } from '../../store'
+import { actions, getState, go, loadWorkspace, useStore } from '../../store'
 import { failToast, useRetryKey } from '../../retry'
 import { openProject } from '../../lead'
 import { floorProjectId, noteLinkTarget } from './noteLink'
@@ -25,7 +24,6 @@ import { TeamUpdateCard, UpdateRowCard } from './cards/TeamUpdateCard'
 import { isHiddenUpdate } from './cards/teamUpdate'
 import { LocalMergeRow } from './pr/LocalMerge'
 import { ReviewCard } from './pr/ReviewCard'
-import { LEAD_MODE_ICON } from './composer/modes'
 import { retryMessage, sendMessage, sentAt } from './composer/sendMessage'
 import { ChatWelcome, LEAD_SUGGESTIONS, SUGGESTIONS } from './ChatWelcome'
 import { ChatMoveNotice } from './banners/ChatMoveNotice'
@@ -298,30 +296,21 @@ function NoteFold({ block }: { block: Extract<ThreadBlock, { kind: 'notes' }> })
   )
 }
 
-/** One line across the thread where the chat switched between Hand off and Build here, so the transcript shows which turns could edit (KERNEL-780). */
-function LeadModeDivider({ mode }: { mode: LeadMode }) {
-  return <div className="mode-divider" role="separator" aria-label={leadModeSwitched(mode)}><Icon name={LEAD_MODE_ICON[mode]} size={14} /><span>{leadModeSwitched(mode)}</span></div>
+/**
+ * Old chats only: the line where the chat was switched between Hand off and Build here (KERNEL-780). Nothing writes it since
+ * one-lead-chat, and it has no button. It stays so the old transcript reads as it happened.
+ */
+const OLD_SWITCHED = {
+  build: "Switched to Build here. Kernel could edit files in this chat's worktree.",
+  handoff: "Switched to Hand off. Kernel planned and handed tasks to teammates, and didn't edit files."
+}
+function LeadModeDivider({ mode }: { mode: 'handoff' | 'build' }) {
+  return <div className="mode-divider" role="separator" aria-label={OLD_SWITCHED[mode]}><Icon name={mode === 'build' ? 'hammer' : 'team'} size={14} /><span>{OLD_SWITCHED[mode]}</span></div>
 }
 
-/** Under Kernel's reply when the work is bigger than one PR: one button, only for the newest suggestion with no mode switch after it, and only while the chat is still in Build here. Kernel never switches on its own. */
-function ModeSuggestion({ workspaceId, chatId, itemId, mode, why }: { workspaceId: string; chatId: string; itemId: string; mode: LeadMode; why: string }) {
-  const current = useStore((s) => leadModeOf(s.workspaces.find((w) => w.id === workspaceId)))
-  const live = useStore((s) => {
-    const list = s.items[chatId] ?? EMPTY
-    for (let i = list.length - 1; i >= 0; i--) {
-      if (list[i].kind === 'leadMode') return false
-      if (list[i].kind === 'modeSuggestion') return list[i].id === itemId
-    }
-    return false
-  })
-  const [busy, run] = useBusy()
-  if (current === mode || !live) return null
-  return (
-    <div className="mode-suggest">
-      <p className="mode-suggest-why">{why}</p>
-      <Button icon={LEAD_MODE_ICON[mode]} busy={!!busy} busyLabel="Switching" onClick={() => void run('Switching', () => attempt('Could not switch', () => setLeadMode(workspaceId, mode)))}>Switch to {leadModeName(mode)}</Button>
-    </div>
-  )
+/** Old chats only: Kernel's reason for suggesting Hand off (KERNEL-770), as a plain note. The Switch button went with the modes. */
+function ModeSuggestion({ why }: { why: string }) {
+  return <div className="mode-suggest"><p className="mode-suggest-why">{why}</p></div>
 }
 
 function ApprovalRow({ id }: { id: string }) {
@@ -381,7 +370,7 @@ const Block = memo(function Block({ block, chatId, workspaceId, changes, agentNa
     case 'approval': return <ApprovalRow id={item.approvalId} />
     case 'shared': return <SharedCard sharedId={item.sharedId} version={item.version} />
     case 'leadMode': return <LeadModeDivider mode={item.mode} />
-    case 'modeSuggestion': return <ModeSuggestion workspaceId={workspaceId} chatId={chatId} itemId={item.id} mode={item.mode} why={item.why} />
+    case 'modeSuggestion': return <ModeSuggestion why={item.why} />
     // Result is folded into a meta row or an error card by buildThread.
     case 'result': return null
   }

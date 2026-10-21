@@ -15,7 +15,7 @@ export const SHORTCUTS: { title: string; rows: [string, string[]][] }[] = [
     ['Open in default app', ['⌘', 'O']]
   ] },
   { title: 'Agents', rows: [
-    ['Approve request', ['⌘', '↵']], ['Deny request', ['⌘', '⌫']], ['Toggle plan mode', ['⇧', 'Tab']], ['Switch Hand off and Build here', ['⌘', '⇧', 'H']], ['Focus composer', ['⌘', 'L']], ['Open Kernel chat', ['⌘', '⇧', 'L']],
+    ['Approve request', ['⌘', '↵']], ['Deny request', ['⌘', '⌫']], ['Toggle plan mode', ['⇧', 'Tab']], ['Focus composer', ['⌘', 'L']], ['Open Kernel chat', ['⌘', '⇧', 'L']],
     ['Open the nth Kernel chat', ['⌘', '1 to 9']], ['Open the nth workspace of this chat', ['⌃', '1 to 9']], ['Link issue', ['⌘', 'I']], ['Add attachment', ['⌘', 'U']],
     ['Pick model 1 to 4', ['⌃', '⌘', '1 to 4']], ['Cycle effort', ['⌘', '⇧', '/']]
   ] },

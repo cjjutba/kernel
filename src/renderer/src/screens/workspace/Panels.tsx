@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import type { ChangedFile, PanelTab, Workspace } from '@shared/types'
-import { isLeadChatWorkspace } from '@shared/leadWorkspace'
-import { leadModeOf } from '@shared/leadMode'
+import { ownsFolder } from '@shared/leadWorkspace'
 import { isLeadWorkspace, leadOf } from '../../lead'
 import { actions, useStore } from '../../store'
 import { IconButton } from '../../ui'
@@ -26,7 +25,7 @@ function TeamPrsCount({ projectId }: { projectId: string }) {
 
 /**
  * The right panel (Pen 9.3): its tabs on the left and Expand and Close on the right, then the tab. A teammate's workspace has Files, Changes, Review and Pull request. The Lead's
- * has PRs, Files and Changes, and a chat with Kernel in Build here has its own pull request as well (KERNEL-780). `filePath` and `diffPath` are the file and diff tabs showing in the
+ * has PRs, Files and Changes, and a chat with Kernel that has its own folder has its own pull request as well (KERNEL-780, one-lead-chat). `filePath` and `diffPath` are the file and diff tabs showing in the
  * center, drawn selected while the panel has no room for a pane of its own. `expanded` is the panel taking the whole screen.
  */
 export function RightPanel({ ws, changes, onOpenFile, onOpenDiff, filePath, diffPath, expanded, onExpand }: {
@@ -34,8 +33,8 @@ export function RightPanel({ ws, changes, onOpenFile, onOpenDiff, filePath, diff
 }) {
   const isLead = useStore((s) => isLeadWorkspace(ws, ws.projectId, leadOf(s.agents, ws.projectId)?.id))
   const shown = useStore((s) => (isLead ? s.ui.workspace.leadRight ?? 'prs' : s.ui.workspace.right))
-  // A chat with Kernel in Build here works like a teammate's workspace: its own PR, Changes and review, with the Lead's PR list as the Team PRs tab (KERNEL-780).
-  const build = isLead && isLeadChatWorkspace(ws) && leadModeOf(ws) === 'build'
+  // A chat with Kernel that has its own folder works like a teammate's workspace: its own PR, Changes and review, with the Lead's PR list as the Team PRs tab (KERNEL-780).
+  const build = isLead && ownsFolder(ws)
   // Once its PR has merged the chat has nothing of its own open, so the panel goes back to the team's PRs.
   const idle = build && shown === 'changes' && ws.prState === 'merged' && changes.length === 0
   const own = !isLead || build

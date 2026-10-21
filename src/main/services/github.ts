@@ -552,7 +552,7 @@ export function prNote(ws: Workspace, info: PrInfo | null, method?: 'squash' | '
   return undefined
 }
 
-/** The row a Build here chat's own PR gets when it passed checks and the screen doesn't say so, which never wakes the Lead (KERNEL-990). `tail` is why it is posted. */
+/** The row a chat with Kernel's own PR gets when it passed checks and the screen doesn't say so, which never wakes the Lead (KERNEL-990). `tail` is why it is posted. */
 export function ownPrNote(ws: Workspace, tail?: string): string {
   const n = ws.prNumber ? `PR #${ws.prNumber}` : 'The PR'
   return `${n} is ready to merge${tail ? `. ${tail}` : ''}`

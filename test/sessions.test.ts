@@ -1618,15 +1618,16 @@ describe('a change made during a turn reaches the chat\'s next message (KERNEL-9
   const kernel: AgentDef = { id: 'kernel', file: '.claude/agents/kernel.md', name: 'Kernel', role: 'Lead', description: 'Lead', lead: true, prompt: 'You are Kernel.' } as AgentDef
   const flush = () => new Promise((r) => setTimeout(r, 10))
 
-  /** A Lead chat in Hand off. `mode` switches it as `Lead.setMode` does, and `bypass` is the permission mode the chat runs in. */
+  /** A Lead chat whose agent rule is `RULE one`. `edit` changes the rule as an edit of its agent file does, and the chat restarts its idle process. */
   async function setup() {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-stale-')), 'kernel.db'))
-    store.saveWorkspace({ id: 'ws', projectId: 'project', name: 'Chat', branch: 'main', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'kernel', port: 4300, status: 'ready', prState: 'none', createdAt: 1, leadMode: 'handoff' } as Workspace)
+    store.saveWorkspace({ id: 'ws', projectId: 'project', name: 'Chat', branch: 'main', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'kernel', port: 4300, status: 'ready', prState: 'none', createdAt: 1 } as Workspace)
     store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Chat', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
     const approvals = new Approvals(store)
     const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
     let active = 'work'
-    const sessions = new Sessions({ store, approvals, settings: () => settings, agentFor: () => kernel, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {}, accountFor: () => active, claudeEnv: () => ({ CLAUDE_CONFIG_DIR: `/homes/${active}` }), rulesFor: (ws) => (ws.leadMode === 'build' ? 'RULE build' : 'RULE handoff') })
+    let rule = 'one'
+    const sessions = new Sessions({ store, approvals, settings: () => settings, agentFor: () => kernel, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {}, accountFor: () => active, claudeEnv: () => ({ CLAUDE_CONFIG_DIR: `/homes/${active}` }), rulesFor: () => `RULE ${rule}` })
     const send = async (text: string) => sessions.send('chat', [{ type: 'text', text }])
     const start = async (text = 'Plan the column') => {
       await send(text)
@@ -1637,44 +1638,41 @@ describe('a change made during a turn reaches the chat\'s next message (KERNEL-9
     }
     const finish = async (call: Call) => { call.feed({ type: 'result', subtype: 'success', uuid: `r${sdk.calls.length}`, duration_ms: 5 }); await flush() }
     const interrupted = async (call: Call) => { call.feed({ type: 'result', subtype: 'error_during_execution', is_error: true, uuid: `r${sdk.calls.length}`, duration_ms: 5, errors: [] }); await flush() }
-    const mode = (to: 'build' | 'handoff', reason: 'mode' | 'agent' = 'mode') => { store.saveWorkspace({ ...store.workspace('ws')!, leadMode: to }); sessions.restartIdle(['ws'], reason) }
+    const edit = (to: string) => { rule = to; sessions.restartIdle(['ws']) }
     const stopped = (call: Call) => !!call.options.abortController?.signal.aborted
-    const rule = (call: Call) => JSON.stringify(call.options.systemPrompt)
+    const ruleOf = (call: Call) => JSON.stringify(call.options.systemPrompt)
     const notes = () => store.items('chat').flatMap((i) => (i.kind === 'note' ? [i.text] : []))
     const tasks = (call: Call, ids: string[]) => call.feed({ type: 'system', subtype: 'background_tasks_changed', tasks: ids.map((task_id) => ({ task_id, task_type: 'local_bash', description: 'dev server' })) })
-    return { store, sessions, send, start, finish, interrupted, mode, stopped, rule, notes, tasks, switchAccount: (to: string) => { active = to; sessions.restartProvider('claude') } }
+    return { store, sessions, send, start, finish, interrupted, edit, stopped, rule: ruleOf, notes, tasks, switchAccount: (to: string) => { active = to; sessions.restartProvider('claude') } }
   }
 
-  it('runs a message queued during the turn in a new process with the new mode, both ways', async () => {
-    for (const [from, to] of [['handoff', 'build'], ['build', 'handoff']] as const) {
-      const t = await setup()
-      if (from === 'build') t.mode('build')
-      const call = await t.start()
-      expect(t.rule(call)).toContain(`RULE ${from}`)
-      await t.send('And an index')
-      expect(t.sessions.queued('chat')).toHaveLength(1)
-      t.mode(to)
-      await t.finish(call)
-      const next = sdk.calls.at(-1)!
-      expect(next).not.toBe(call)
-      expect(t.stopped(call)).toBe(true)
-      expect(t.rule(next)).toContain(`RULE ${to}`)
-      expect(t.sessions.queued('chat')).toEqual([])
-      expect(next.options.resume).toBe('session-1')
-    }
+  it('runs a message queued during the turn in a new process with the changed agent', async () => {
+    const t = await setup()
+    const call = await t.start()
+    expect(t.rule(call)).toContain('RULE one')
+    await t.send('And an index')
+    expect(t.sessions.queued('chat')).toHaveLength(1)
+    t.edit('two')
+    await t.finish(call)
+    const next = sdk.calls.at(-1)!
+    expect(next).not.toBe(call)
+    expect(t.stopped(call)).toBe(true)
+    expect(t.rule(next)).toContain('RULE two')
+    expect(t.sessions.queued('chat')).toEqual([])
+    expect(next.options.resume).toBe('session-1')
   })
 
   it('does the same after Stop and a message, and after Send now', async () => {
     const t = await setup()
     const call = await t.start()
     await t.sessions.interrupt('chat')
-    t.mode('build')
+    t.edit('two')
     await t.interrupted(call)
-    // The message arrives once the turn has stopped, at the process the switch left stale.
+    // The message arrives once the turn has stopped, at the process the edit left stale.
     await t.send('i guess you will just build it directly')
     const next = sdk.calls.at(-1)!
     expect(next).not.toBe(call)
-    expect(t.rule(next)).toContain('RULE build')
+    expect(t.rule(next)).toContain('RULE two')
     expect(next.sent.join('\n')).toContain('build it directly')
     expect(t.stopped(call)).toBe(true)
 
@@ -1682,26 +1680,12 @@ describe('a change made during a turn reaches the chat\'s next message (KERNEL-9
     const old = await u.start()
     await u.send('Use the staging bucket')
     await u.sessions.sendNow('chat', u.sessions.queued('chat')[0].id)
-    u.mode('build')
+    u.edit('two')
     await u.interrupted(old)
     const fresh = sdk.calls.at(-1)!
     expect(fresh).not.toBe(old)
-    expect(u.rule(fresh)).toContain('RULE build')
+    expect(u.rule(fresh)).toContain('RULE two')
     expect(u.stopped(old)).toBe(true)
-  })
-
-  it('restarts nothing when the chat is switched and switched back during the turn', async () => {
-    const t = await setup()
-    const call = await t.start()
-    await t.send('And an index')
-    t.mode('build')
-    t.mode('handoff')
-    const calls = sdk.calls.length
-    await t.finish(call)
-    expect(sdk.calls).toHaveLength(calls)
-    expect(t.stopped(call)).toBe(false)
-    expect(t.sessions.queued('chat')).toEqual([])
-    expect(t.notes()).toEqual([])
   })
 
   it('runs a queued message with Bypass turned on during the turn, and on the account and agent changed during it', async () => {
@@ -1725,7 +1709,7 @@ describe('a change made during a turn reaches the chat\'s next message (KERNEL-9
     const b = await setup()
     const old = await b.start()
     await b.send('Next')
-    b.sessions.restartIdle(['ws'])
+    b.edit('two')
     await b.finish(old)
     expect(sdk.calls.at(-1)).not.toBe(old)
     expect(b.stopped(old)).toBe(true)
@@ -1736,63 +1720,23 @@ describe('a change made during a turn reaches the chat\'s next message (KERNEL-9
     const call = await t.start()
     t.tasks(call, ['t1'])
     await t.finish(call)
-    t.mode('build')
+    t.edit('two')
     expect(t.stopped(call)).toBe(false)
     const next = await t.start('Build it')
     expect(t.stopped(call)).toBe(true)
-    expect(t.rule(next)).toContain('RULE build')
-    expect(t.notes()).toEqual(['Restarted in Build here. Background tasks started before the switch stopped.'])
+    expect(t.rule(next)).toContain('RULE two')
+    expect(t.notes()).toEqual(['Restarted. Background tasks started before the change stopped.'])
 
-    // An agent edit says so without naming a mode, and a process with no task says nothing.
-    const u = await setup()
-    const held = await u.start()
-    u.tasks(held, ['t1'])
-    await u.finish(held)
-    u.mode('handoff', 'agent')
-    await u.start('Again')
-    expect(u.notes()).toEqual(['Restarted. Background tasks started before the change stopped.'])
+    // A process with no task says nothing.
     const v = await setup()
     const plain = await v.start()
     await v.finish(plain)
-    v.mode('build')
+    v.edit('two')
     await v.start('Build it')
     expect(v.notes()).toEqual([])
   })
 
-  it('keeps a process held by a task when the chat is switched and back, but not for an agent edit made meanwhile', async () => {
-    const t = await setup()
-    const call = await t.start()
-    t.tasks(call, ['t1'])
-    await t.finish(call)
-    t.mode('build')
-    t.mode('handoff')
-    await t.start('Again')
-    expect(t.stopped(call)).toBe(false)
-    expect(t.notes()).toEqual([])
-  })
-
-  it('sends a plan approved after a switch to a fresh process, with the new mode\'s note, both ways', async () => {
-    for (const [from, to] of [['handoff', 'build'], ['build', 'handoff']] as const) {
-      const t = await setup()
-      if (from === 'build') t.mode('build')
-      const call = await t.start('Plan the column')
-      t.store.saveChat({ ...t.store.chat('chat')!, plan: true })
-      const answer = (call.options.canUseTool as CanUseTool)('ExitPlanMode', { plan: '1. Add the column' }, { signal: new AbortController().signal, toolUseID: 'p1' } as never)
-      await flush()
-      const [card] = t.store.approvals({ pendingOnly: true })
-      t.mode(to)
-      t.sessions['d'].approvals.decide(card.id, { behavior: 'allow' })
-      await answer
-      await t.interrupted(call)
-      const next = sdk.calls.at(-1)!
-      expect(next).not.toBe(call)
-      expect(t.rule(next)).toContain(`RULE ${to}`)
-      const message = next.sent.join('\n')
-      expect(message).toContain(to === 'build' ? 'Build it from the plan below.' : 'Hand off each task from the plan below now.')
-    }
-  })
-
-  it('approves a plan in the mode it went up in without a new process', async () => {
+  it('approves a plan without a new process', async () => {
     const t = await setup()
     const call = await t.start()
     const calls = sdk.calls.length

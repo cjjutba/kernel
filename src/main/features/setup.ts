@@ -430,7 +430,7 @@ export class Setup extends Feature {
     return {
       'scripts.run': async ({ workspaceId, kind, name }) => {
         const ws = this.mustWs(workspaceId)
-        if (ws.shared) throw new Error('This chat works in the shared main folder, which has no setup or run scripts. Switch it to Build here first.')
+        if (ws.shared) throw new Error('This chat works in the shared main folder, which has no setup or run scripts. Send a message in it first, which gives it a working copy.')
         // A Lead chat has no folder to run in until its worktree is made. Try again on one that failed makes it (KERNEL-542).
         if (ws.worktreePending) {
           if (kind !== 'setup' || ws.status !== 'failed') throw new Error("This chat's worktree isn't made yet.")

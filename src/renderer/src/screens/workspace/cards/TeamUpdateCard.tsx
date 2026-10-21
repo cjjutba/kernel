@@ -38,7 +38,7 @@ export function TeamUpdateCard({ item, chatId, selfId }: { item: Extract<ChatIte
   return <TeamUpdateView item={item} workspaceOf={useWorkspaceById} useNewest={useNewest} useAutoReview={useAutoReviewSetting} selfId={selfId} />
 }
 
-/** A review of the chat's own PR in Build here that Kernel drew without a turn (KERNEL-990): the same rows as a Team update, compact. */
+/** A review of the chat's own PR that Kernel drew without a turn (KERNEL-990): the same rows as a Team update, compact. */
 export function UpdateRowCard({ item }: { item: Extract<ChatItem, { kind: 'update' }> }) {
   // Merge belongs to the PR header and the ready row, so the compact card never offers it.
   return <UpdateView update={item.update} itemId={item.id} quiet workspaceOf={useWorkspaceById} useNewest={() => false} useAutoReview={useAutoReviewSetting} />
@@ -49,13 +49,13 @@ export function TeamUpdateView({ item, workspaceOf, useNewest, useAutoReview, se
   const data = cardData(item)
   // An older update whose lines no longer read as rows still shows, as Kernel's note.
   if (!data.rows.length && !data.omitted) return <KernelNote item={item} />
-  // In Build here the chat's own PR going well is a line in the transcript, so an older card drops those rows, and itself when none is left (KERNEL-990).
+  // The chat's own PR going well is a line in the transcript, so an older card drops those rows, and itself when none is left (KERNEL-990).
   if (isHiddenUpdate(item, selfId)) return null
   return <UpdateView update={{ ...data, rows: withoutSelfSuccess(data.rows, selfId) }} itemId={item.id} legacy={!item.update} workspaceOf={workspaceOf} useNewest={useNewest} useAutoReview={useAutoReview} />
 }
 
 function UpdateView({ update: data, itemId, legacy, quiet, workspaceOf, useNewest, useAutoReview }: { update: TeamUpdate; itemId: string; legacy?: boolean; quiet?: boolean; workspaceOf: WorkspaceOf; useNewest: UseNewest; useAutoReview?: UseAutoReview }) {
-  // Only a card Kernel drew itself is compact. A review in a Hand off chat's Team update keeps its header.
+  // Only a card Kernel drew itself is compact. A review in a teammate's Team update keeps its header.
   const compact = !!quiet && isReviewOnly(data.rows) && !data.omitted
   // An update from before KERNEL-117 counted the lines it left out, not workspaces. Past the 8th workspace, older updates dropped them and newer ones carry them into the next update (KERNEL-637), so the card says only that they didn't fit.
   const omitted = !data.omitted ? '' : !legacy ? `Updates on ${data.omitted} more ${data.omitted === 1 ? 'workspace' : 'workspaces'} didn't fit here` : `${data.omitted} earlier ${data.omitted === 1 ? 'update' : 'updates'} left out`

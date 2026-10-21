@@ -15,7 +15,7 @@ export function cardData(item: UserItem): TeamUpdate {
 const isSuccess = (e: TeamUpdateRow['events'][number]) => ['pr.opened', 'pr.ready', 'pr.unblocked', 'pr.merged'].includes(e.kind) || (e.kind === 'pr.review' && eventTone(e) !== 'del')
 
 /**
- * The rows of an older Team update left once the chat's own workspace's success-only rows are gone. In Build here those are
+ * The rows of an older Team update left once the chat's own workspace's success-only rows are gone. In a chat with Kernel those are
  * lines of the transcript now, so the card no longer repeats them (KERNEL-990). `selfId` is the chat's workspace.
  */
 export const withoutSelfSuccess = (rows: TeamUpdateRow[], selfId: string | undefined): TeamUpdateRow[] =>

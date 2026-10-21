@@ -25,7 +25,7 @@ async function setup(o: { dataDir?: string; home?: string; repo?: string; answer
   const repo = o.repo ?? await tempRepo(AGENTS)
   const dataDir = o.dataDir ?? await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = o.home ?? await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  if (!o.dataDir) await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  if (!o.dataDir) await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const k = new Kernel({ dataDir, home })
   const t = {
     k, repo, dataDir, home,

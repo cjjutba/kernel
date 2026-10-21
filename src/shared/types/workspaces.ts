@@ -4,11 +4,6 @@ import type { MergeMethod, ReviewKind } from './settings'
 import type { TrackerKind } from './trackers'
 
 export type WorkspaceMode = 'worktree' | 'current'
-/**
- * How a chat with Kernel works (KERNEL-770): `handoff` plans and hands tasks to teammates and never edits a file, `build`
- * has Kernel make the change itself in the chat's own worktree. Read it through `leadModeOf`.
- */
-export type LeadMode = 'handoff' | 'build'
 export type WorkspaceStatus = 'setup' | 'ready' | 'failed' | 'archived'
 /**
  * The PR header state. `creating`, `resolving` and `merging` are Kernel's own while the agent or gh works;
@@ -57,18 +52,12 @@ export interface Workspace {
    * One with no `threadId` is the shared workspace every chat lived in before. Read it through `isLeadChatWorkspace`.
    */
   lead?: true
-  /** A chat with Kernel in Hand off that runs in the project's shared main folder and has no worktree of its own (KERNEL-1050). Read it through `onSharedFolder`. */
+  /**
+   * A chat with Kernel that still runs in the project's shared main folder, with no worktree of its own (KERNEL-1050). Only
+   * chats from before one-lead-chat have it: no new chat starts there, and the chat's next send gives it a folder of its own.
+   * Read it through `onSharedFolder`. A `leadMode` or `buildGoAhead` saved on an older record is ignored.
+   */
   shared?: true
-  /**
-   * On a Lead chat's workspace: how the chat works, Hand off or Build here (KERNEL-770). Unset is Hand off, as every chat
-   * was before. Set from the app's and project's default when the chat starts, then only by `lead.setMode`.
-   */
-  leadMode?: LeadMode
-  /**
-   * On a Build here chat's workspace: the user's go-ahead to change files, quoted from their message sent at `at`, on `branch`
-   * (KERNEL-992). Saved so a restart mid-build doesn't lock Kernel out. A mode switch clears it.
-   */
-  buildGoAhead?: { quote: string; at: number; branch: string }
   port: number
   status: WorkspaceStatus
   /** For current-branch workspaces: the commit that captures pre-existing changes. */
@@ -99,10 +88,10 @@ export interface Workspace {
    * waits in the tab's queue, and Run again (`scripts.run` with `setup`) makes the worktree, then runs setup. Unset once the
    * worktree exists.
    *
-   * `fromShared` marks the working copy of a chat that started on the shared main folder (KERNEL-1051, KERNEL-1053): Kernel makes it
-   * when the first message is sent in Build here, and holds that message until the copy is ready. The mark is set at that send
+   * `fromShared` marks the working copy of a chat that sat on the shared main folder (KERNEL-1051, KERNEL-1053): Kernel makes it
+   * when the next message is sent, and holds that message until the copy is ready. The mark is set at that send
    * and cleared when the copy exists. A record that carries it with an `error` is failed with the message still held, and
-   * `lead.retryCopy` or `lead.sendAsHandoff` ends it.
+   * `lead.retryCopy` ends it.
    */
   worktreePending?: { error?: string; fromShared?: true }
   /** The worktree's folder was deleted outside Kernel. Checked at launch and when the workspace is opened (KERNEL-291). */

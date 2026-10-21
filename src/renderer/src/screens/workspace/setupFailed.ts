@@ -57,9 +57,7 @@ export function setupFailedToast(e: SetupFailed): Omit<Toast, 'id'> | undefined 
 export function worktreeFailedToast(e: WorktreeFailed): Omit<Toast, 'id'> {
   const ws = getState().workspaces.find((w) => w.id === e.workspaceId)
   const detail = ws ? chatTitle(ws, e.chatId) : undefined
-  // A Lead chat that started on the shared folder can send its message from there instead (Build here's working copy).
-  const handoff = ws?.worktreePending?.fromShared ? { label: 'Send as Hand off', sendAsHandoff: e.workspaceId } : undefined
-  return { title: "Couldn't create the worktree", sub: e.error, glyph: 'error', ...(detail ? { detail } : {}), ...(handoff ? { other: handoff } : {}), action: { label: 'Try again', retryWorktree: e.workspaceId, primary: true } }
+  return { title: "Couldn't create the worktree", sub: e.error, glyph: 'error', ...(detail ? { detail } : {}), action: { label: 'Try again', retryWorktree: e.workspaceId, primary: true } }
 }
 
 /** The agent's name comes from the project's team, which a window that just opened may not have yet. */

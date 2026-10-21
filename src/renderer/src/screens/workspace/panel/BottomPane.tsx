@@ -178,7 +178,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
   // The log stays mounted, so its first lines are announced; an empty one shows what to do instead (KERNEL-274).
   const onShared = onSharedFolder(ws)
   const empty = onShared ? (
-    <EmptyList icon="fork" title={SHARED_NOTHING}>{sharedWhy(ws)}</EmptyList>
+    <EmptyList icon="fork" title={SHARED_NOTHING}>{sharedWhy()}</EmptyList>
   ) : bottom === 'run'
     ? noRun ? (
       <EmptyList icon="play" title="No run script yet" action={<Button onClick={addScript}>Add a run script</Button>}>Add one in Settings, Project setup, and Run starts your app here.</EmptyList>

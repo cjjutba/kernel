@@ -69,7 +69,7 @@ describe('the Lead names the branch', () => {
     const out = await tool.handler({ agent: 'sean', title: 'Symlink node_modules', brief: 'Goal', branch: LINEAR } as never, {})
     expect(asked[0]).toMatchObject({ agentId: 'sean', branch: LINEAR })
     expect((out.content[0] as { text: string }).text).toBe(`Created ws-1 on ${LINEAR} for sean.`)
-    expect(LEAD_RULE).toContain('Pass branch only when the user asks for a particular name.')
+    expect(LEAD_RULE).toContain('Leave branch out unless the user names one.')
   })
 })
 
