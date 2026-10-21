@@ -108,16 +108,16 @@ export function ProjectGit({ projectId, s }: { projectId?: string; s: AppSetting
     <ProjectPage project={project} rs={rs} title="Git" desc="What this project changes from Settings, Git and worktrees.">
       <PushAccess projectId={projectId} remote={rs?.workspace.remote ?? app.remote} />
       <Section title="New workspaces">
-        <SourcedRow id="workspace-type" {...row('mode')} label="Workspace type" value={(rs?.workspace.mode ?? app.mode) === 'current' ? 'Current branch' : 'Worktree'} app={<FollowsApp to={page} />}>
+        <SourcedRow id="workspace-type" setting="workspace.mode" {...row('mode')} label="Workspace type" value={(rs?.workspace.mode ?? app.mode) === 'current' ? 'Current branch' : 'Worktree'} app={<FollowsApp to={page} />}>
           <SegmentedControl label="Workspace type" value={rs?.workspace.mode ?? app.mode} onChange={(v) => set({ mode: v })} options={[{ value: 'worktree', label: 'Worktree' }, { value: 'current', label: 'Current branch' }]} />
         </SourcedRow>
-        <SourcedRow id="branch-from" {...row('baseRef')} label="Branch from" value={own('baseRef')} app={<FollowsApp to={page} />}>
+        <SourcedRow id="branch-from" setting="workspace.baseRef" {...row('baseRef')} label="Branch from" value={own('baseRef')} app={<FollowsApp to={page} />}>
           <Select label="Branch from" align="right" value={own('baseRef')} onChange={(v) => set({ baseRef: v })} options={named(branches, own('baseRef'))} />
         </SourcedRow>
         <SourcedRow id="remote" {...row('remote')} label="Remote" value={own('remote')} app={<FollowsApp to={page} />}>
           <Select label="Remote" align="right" value={own('remote')} onChange={(v) => set({ remote: v })} options={named(remotes.length ? remotes : ['origin'], own('remote'))} />
         </SourcedRow>
-        <SourcedRow id="lead-branch-names" {...row('leadBranchPattern')} label="Branch names for chats with Kernel" value={rs?.workspace.leadBranchPattern ?? app.leadBranchPattern} app={<FollowsApp to={page} />}>
+        <SourcedRow id="lead-branch-names" setting="workspace.leadBranchPattern" {...row('leadBranchPattern')} label="Branch names for chats with Kernel" value={rs?.workspace.leadBranchPattern ?? app.leadBranchPattern} app={<FollowsApp to={page} />}>
           <LeadPattern value={rs?.workspace.leadBranchPattern ?? app.leadBranchPattern} placeholder={app.leadBranchPattern} save={(v) => set({ leadBranchPattern: v })} />
         </SourcedRow>
       </Section>

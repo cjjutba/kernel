@@ -35,6 +35,7 @@ export function ProjectReferences({ projectId, rs }: { projectId: string; rs: Pr
   return (
     <Row
       id="references"
+      setting="references"
       label={<>Reference folders<SourcePill>Your file</SourcePill></>}
       desc={folders.length ? 'Agents can read these folders and @ finds their files. They can’t change them.' : 'Folders agents can read but not change, like a design system or docs.'}
     >
