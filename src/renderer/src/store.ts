@@ -1,3 +1,4 @@
+import { isRemote, ON_THE_MAC } from './remote/isRemote'
 import { useRef, useSyncExternalStore } from 'react'
 import type { AccountAddStep, AccountProfile, Provider,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, BottomKind, Chat, ChatItem, ChatRunMode, Checkpoint, ClaudeAccount,
@@ -451,6 +452,9 @@ async function performSwitch(provider: Provider, accountId: string, reason?: 'ba
 }
 
 /** Typed writes, one group per slice. Screens call these instead of reshaping state themselves. */
+/** Dialogs that pick a folder, clone to disk or change what the Mac runs, which the Mac refuses a paired browser. */
+const MAC_ONLY_MODALS: ReadonlySet<string> = new Set(['newProject', 'connectRepo', 'openFolder', 'checkHooks', 'newAgent', 'mcpSetUp', 'envVar'])
+
 export const actions = {
   ui: {
     /**
@@ -472,6 +476,8 @@ export const actions = {
     forward: () => step('forward'),
     /** ⌘, : the Settings page you were on last, or General when that page's project is gone. */
     openSettings: () => {
+      // Settings writes, accounts and hooks all live on the Mac, so a paired browser has no Settings (remote-web-client).
+      if (isRemote()) return void actions.ui.toast({ title: ON_THE_MAC })
       const last = lastSettings
       const route: Route = last && stillThere({ name: 'settings', ...last }, state) ? { name: 'settings', ...last } : { name: 'settings', page: 'general' }
       actions.ui.go(route)
@@ -487,7 +493,10 @@ export const actions = {
         actions.ui.go(there.name === 'settings' ? landing(state) : there, { history: 'replace' })
       }
     },
-    openModal: (modal: Exclude<Modal, null>) => setUi({ modal, menu: null }),
+    openModal: (modal: Exclude<Modal, null>) => {
+      if (isRemote() && MAC_ONLY_MODALS.has(modal.name)) return void actions.ui.toast({ title: ON_THE_MAC })
+      setUi({ modal, menu: null })
+    },
     closeModal: () => setUi({ modal: null }),
     /** Opens the menu, or closes it when it is already open. */
     toggleMenu: (menu: MenuId) => setState((s) => ({ ui: { ...s.ui, menu: s.ui.menu === menu ? null : menu } })),
