@@ -48,6 +48,8 @@ export type Route =
 /** What New chat had picked besides its words, so that Cancel on the issue warning brings the box back as it was (KERNEL-500). */
 export interface NewChatPicks {
   mode: WorkspaceMode
+  /** The workspace of an earlier chat the new one joins, when Previous worktree was picked. `mode` then holds the pick before it. */
+  previous?: string
   model: string
   effort: Effort
   plan: boolean
