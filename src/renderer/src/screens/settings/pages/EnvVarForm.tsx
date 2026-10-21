@@ -56,8 +56,8 @@ export function EnvVarForm({ projectId, editName }: { projectId?: string; editNa
     })
   }
   const intro = project
-    ? <>For {project.name}. It wins over the same name in <span onClickCapture={actions.ui.closeModal}><SettingsLink to={{ page: 'env' }}>Settings, Environment</SettingsLink></span>.</>
-    : 'For every project. A project\'s variable with the same name wins.'
+    ? <>Every chat, script and terminal in this project gets it. Kernel keeps the value in your Keychain. It wins over the same name in <span onClickCapture={actions.ui.closeModal}><SettingsLink to={{ page: 'env' }}>Settings, Environment</SettingsLink></span>.</>
+    : 'Every chat, script and terminal in every project gets it. Kernel keeps the value in your Keychain. A project\'s variable with the same name wins.'
   return (
     <Modal
       title={editing ? `Edit ${editName}` : 'Add variable'}
@@ -81,12 +81,12 @@ export function EnvVarForm({ projectId, editName }: { projectId?: string; editNa
         </div>
         <div className="set-field">
           <label htmlFor={`${id}-value`}>Value</label>
-          <input id={`${id}-value`} className="input" autoComplete="off" spellCheck={false} placeholder={editing ? 'Type a new value' : 'Value'} value={value} aria-invalid={shown && !!valueProblem} aria-describedby={`${id}-value-note`} onChange={(e) => setValue(e.target.value)} />
+          <input id={`${id}-value`} className="input set-text-input" autoComplete="off" spellCheck={false} placeholder={editing ? 'Type a new value' : 'Value'} value={value} aria-invalid={shown && !!valueProblem} aria-describedby={error || (shown && valueProblem) ? `${id}-value-note` : undefined} onChange={(e) => setValue(e.target.value)} />
           {error
             ? <span id={`${id}-value-note`} role="alert" className="set-error">{error}</span>
             : shown && valueProblem
               ? <span id={`${id}-value-note`} role="alert" className="set-error">{valueProblem}</span>
-              : <span id={`${id}-value-note`} className="set-help">Stored encrypted on your Mac, never in the repo. The list shows it as dots.</span>}
+              : null}
         </div>
         {editing && (
           <div className="set-reveal">

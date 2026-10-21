@@ -534,6 +534,15 @@ const projectPrs = scene((f) => ({
   ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'prs' } }
 }))
 
+/** Client A's Environment page (KERNEL-914): variables, env files with one missing from the checkout, and Files to copy with what they match. */
+const projectEnvPage: Fixture = scene((f) => ({
+    ...envProjectA,
+    ...clientA({ env: { files: envFiles }, files: { copy: ['.env*', 'certs/*.pem', '.npmrc'], symlinkNodeModules: false }, sources: { ...kernelFiles.sources, 'env.files': 'local', 'files.copy': 'shared' } }),
+    projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, path: '/Users/you/Projects/client-a' } : r)),
+    localFiles: { [ids.projectA]: ['.env', '.env.development', '.env.local', '.env.production', '.env.test', '.npmrc', 'certs/ca.pem', 'certs/dev.pem', 'certs/localhost.pem'].map((path, i) => ({ path, size: 96 + i * 31 })) },
+    ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'environment' } }
+  }))
+
 export const platformFixtures: Record<string, Fixture> = {
   WhatsNew: whatsNew,
   // Restart to update stays busy as Restarting while the install call is out, with Later off beside it.
@@ -741,11 +750,10 @@ export const platformFixtures: Record<string, Fixture> = {
     runScripts: [],
     sources: {}
   })),
-  // KERNEL-914: Add run script over the Scripts page, with the name and the command empty.
-  SettingsRunScriptAdd: scene(() => ({
-    ...clientA({ scripts: { ...kernelFiles.scripts, setup: '', archive: '', run: '' }, runScripts: [], sources: {} }),
-    ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'setup' } }
-  })),
+  // KERNEL-914: Add a run script over the Scripts page, with a name and a command typed (scripts/shots.ts).
+  SettingsRunScriptAdd: scriptsPage,
+  // Redesign 15.38: Add preview URL over the Scripts page, with a name and an address typed (scripts/shots.ts).
+  SettingsPreviewUrlForm: scriptsPage,
   // KERNEL-684: Setup is empty, and Kernel found a script in the repo's .conductor file. Archive has a value, so it offers nothing.
   SettingsProjectScriptsSuggestion: scene((f) => ({
     ...clientA({ scripts: { ...kernelFiles.scripts, setup: '' }, sources: Object.fromEntries(Object.entries(kernelFiles.sources ?? {}).filter(([k]) => k !== 'scripts.setup')) }),
@@ -755,16 +763,15 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-254: names only, since a value only ever comes from env.reveal. Client A's list is its personal file, and one of the two files isn't there.
   SettingsEnvironment: settingsPage('env', { env: { app: ['GH_TOKEN', 'NPM_TOKEN', 'NODE_OPTIONS'] } }),
   // KERNEL-914: Files to copy sits under the env files, with the files it matches in the checkout.
-  SettingsProjectEnvironment: scene((f) => ({
-    ...envProjectA,
-    ...clientA({ env: { files: envFiles }, files: { copy: ['.env*', 'certs/*.pem', '.npmrc'], symlinkNodeModules: false }, sources: { ...kernelFiles.sources, 'env.files': 'local', 'files.copy': 'shared' } }),
-    projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, path: '/Users/you/Projects/client-a' } : r)),
-    localFiles: { [ids.projectA]: ['.env', '.env.development', '.env.local', '.env.production', '.env.test', '.npmrc', 'certs/ca.pem', 'certs/dev.pem', 'certs/localhost.pem'].map((path, i) => ({ path, size: 96 + i * 31 })) },
-    ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'environment' } }
-  })),
-  SettingsEnvironmentAdd: scene(() => ({ ...envProjectA, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'environment' }, modal: { name: 'envVar', projectId: ids.projectA } } })),
+  SettingsProjectEnvironment: projectEnvPage,
+  // Redesign 15.27: Add env file over the project's Environment page, with a path typed (scripts/shots.ts).
+  SettingsEnvironmentAdd: projectEnvPage,
+  // Redesign 15.38: Add variable over the page, with the name and the value empty.
+  SettingsEnvVariableForm: scene(() => ({ ...envProjectA, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'environment' }, modal: { name: 'envVar', projectId: ids.projectA } } })),
   // KERNEL-914: the Agents page with Permissions, Skills and MCP servers under the agents.
   SettingsProjectAgents: scene((f) => ({ ...projectPermissions(f), skills: ['setup', 'plan', 'feature'].map(skill), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } })),
+  // Redesign 15.38: a retired agent under the team, with the folded Retired section opened (scripts/shots.ts).
+  SettingsProjectAgentsRetired: scene((f) => ({ ...projectPermissions(f), agents: { ...f.agents, [ids.projectA]: [...sixAgents, { ...agentFile('mira', 'Mira', 'Brand designer', 'Designs logos and app icons'), member: false, retired: true, file: '.claude/retired-agents/mira.md' }] }, skills: ['setup', 'plan', 'feature'].map(skill), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } })),
   SettingsProjectPermissions: scene((f) => ({ ...projectPermissions(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } })),
   // KERNEL-455: the project's mode menu is open, over Use app default.
   SettingsProjectPermissionsMode: scene((f) => ({ ...projectPermissions(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' }, menu: 'projectMode' } })),
