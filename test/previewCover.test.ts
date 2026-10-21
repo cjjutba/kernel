@@ -69,7 +69,7 @@ describe('the cover list matches what Kernel draws', () => {
     expect(toasts).toMatch(/import \{[^}]*\bToast\b[^}]*\} from '..\/ui'/)
   })
   it('keeps the roles of the lists and cards that have no class of their own', () => {
-    expect(read('screens/workspace/composer/Composer.tsx')).toContain('role="listbox"')
+    expect(read('screens/workspace/composer/AutoMenu.tsx')).toContain('role="listbox"')
     expect(read('screens/workspace/composer/ModelPicker.tsx')).toContain('role="dialog"')
   })
 })
