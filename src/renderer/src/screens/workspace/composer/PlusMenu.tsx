@@ -63,7 +63,7 @@ export function PlusMenu({ panel, onPanel, anchorRef, projectId, workspaceId, pl
           <Icon name={chip.icon} size={14} /><span className="cmp-where-text ellipsis">{chip.text}</span>
         </Button>
       )}
-      <IconButton icon="plus" label="Add context" disabled={disabled && !!where} aria-haspopup="menu" aria-expanded={panel !== null} onClick={() => onPanel(panel ? null : 'plus')} />
+      <IconButton icon="plus" box="sm" label="Add context" disabled={disabled && !!where} aria-haspopup="menu" aria-expanded={panel !== null} onClick={() => onPanel(panel ? null : 'plus')} />
       {panel === 'plus' && (
         <Menu label="Add" anchorRef={anchorRef} onClose={close} style={{ ...ABOVE, width: where ? 296 : 248 }} items={[
           { id: 'issue', label: 'Link issue', icon: 'link', shortcut: '⌘I', disabled: !projectId, onSelect: () => { next.current = 'linkIssue' } },

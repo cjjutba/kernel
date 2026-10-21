@@ -247,10 +247,10 @@ const pending = (kind: 'tool' | 'plan' | 'question' | 'agent', agentId: string, 
   ({ id: `ap-${kind}-${agentId}`, kind, source: 'sdk', projectId: ids.projectA, workspaceId: ids.table, agentId, status: 'pending', createdAt: at(10, 30), title: '', ...extra })
 
 /** Codex's model list as `model/list` returns it, for a shot whose chat runs on Codex. */
-const codexModels = [...['GPT-6-Astra', 'GPT-5.6-Sol', 'GPT-5.6-Terra', 'GPT-5.6-Luna'].map((label) => ({ label, legacy: false })), ...['GPT-5.5', 'GPT-5.4', 'GPT-5.3-Codex', 'GPT-5.2'].map((label) => ({ label, legacy: true }))].map(({ label, legacy }, i) => ({ provider: 'codex' as const, id: label.toLowerCase(), label, legacy, efforts: ['low', 'medium', 'high', 'xhigh', 'max'] as Effort[], defaultEffort: 'medium' as Effort, isDefault: i === 0 }))
+export const codexModels = [...['GPT-6-Astra', 'GPT-5.6-Sol', 'GPT-5.6-Terra', 'GPT-5.6-Luna'].map((label) => ({ label, legacy: false })), ...['GPT-5.5', 'GPT-5.4', 'GPT-5.3-Codex', 'GPT-5.2'].map((label) => ({ label, legacy: true }))].map(({ label, legacy }, i) => ({ provider: 'codex' as const, id: label.toLowerCase(), label, legacy, efforts: ['low', 'medium', 'high', 'xhigh', 'max'] as Effort[], defaultEffort: 'medium' as Effort, isDefault: i === 0 }))
 
 /** Settings with a role on Codex, so the picker offers both providers. */
-const codexRoleSettings = () => {
+export const codexRoleSettings = () => {
   const d = DEFAULT_SETTINGS('/Users/you')
   return { ...d, models: { ...d.models, roles: { ...d.models.roles, qa: { ...d.models.roles.qa, prefer: 'codex' as const, codex: { model: 'gpt-6-astra', effort: 'medium' as Effort } } } } }
 }
@@ -264,7 +264,7 @@ const folded = (prefix: string, tools: number, messages: number): ChatItem[] => 
   ...Array.from({ length: messages }, (_, i): ChatItem => ({ kind: 'thinking', id: `${prefix}-fm${i}`, ts: at(10, 28), text: 'Checking the next step.' }))
 ]
 
-const tool = (id: string, label: string, detail: string, extra: Partial<Extract<ChatItem, { kind: 'tool' }>> = {}): ChatItem =>
+export const tool = (id: string, label: string, detail: string, extra: Partial<Extract<ChatItem, { kind: 'tool' }>> = {}): ChatItem =>
   ({ kind: 'tool', id, ts: at(10, 28), toolUseId: `toolu_${id}`, name: 'Bash', label, detail, status: 'done', durationMs: 100, ...extra })
 
 /** Teng's snapshot-test turn, still going (WorkspaceRunning.png). Times count back from now so the clock reads 2m 14s. */
@@ -467,8 +467,8 @@ const codexPatch = (path: string, old: string[], next: string[], context = ['exp
   [`diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`, `@@ -10,${old.length + 1} +10,${next.length + 1} @@`, ` ${context[0]}`, ...old.map((l) => `-${l}`), ...next.map((l) => `+${l}`)].join('\n')
 
 /** The brief and the follow-up in the setup shots (KERNEL-430, KERNEL-1093): a teammate's task from the Lead's plan. */
-const JOURNEY = 'Run every step of KERNEL-31 on a fresh Mac account. File each failure as its own issue, then post one comment on KERNEL-232 with the results and shots.'
-const JOURNEY_TITLE = 'Clean-account journey on a fresh Mac user'
+export const JOURNEY = 'Run every step of KERNEL-31 on a fresh Mac account. File each failure as its own issue, then post one comment on KERNEL-232 with the results and shots.'
+export const JOURNEY_TITLE = 'Clean-account journey on a fresh Mac user'
 const setupAsk: QueuedMessage = { id: 'q-setup', chatId: ids.tableChat, ts: at(10, 0), parts: [{ type: 'text' as const, text: JOURNEY }] }
 const setupFollow: QueuedMessage = { id: 'q-follow', chatId: ids.tableChat, ts: at(10, 0, 40), parts: [{ type: 'text' as const, text: 'Also attach the screenshots to the issue.' }] }
 
@@ -656,8 +656,8 @@ const contextChat = (f: Fixture, messages = 44_000) => {
 
 const file = (path: string): FileEntry => ({ path, dir: false })
 /** A stand-in for a pasted screenshot, so hovering the image chip in WorkspacePaste shows a preview. */
-const pastedLog = Array.from({ length: 212 }, (_, i) => `2025-03-11T10:${String(i % 60).padStart(2, '0')}:07Z ${i % 9 === 4 ? 'ERROR invoices.list: relation "invoice_lines" does not exist' : `INFO  request ${1000 + i} GET /api/invoices 200 ${12 + (i % 7)}ms`}`).join('\n')
-const screenshot = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800"><rect width="1280" height="800" fill="#141518"/><rect width="240" height="800" fill="#1b1c20"/><rect x="300" y="60" width="520" height="22" rx="4" fill="#3a3c42"/><rect x="300" y="120" width="920" height="420" rx="10" fill="#1f2024" stroke="#2c2e33"/><rect x="330" y="160" width="400" height="14" rx="3" fill="#5a2a2a"/><rect x="330" y="196" width="760" height="12" rx="3" fill="#2f3136"/><rect x="330" y="224" width="680" height="12" rx="3" fill="#2f3136"/></svg>')}`
+export const pastedLog = Array.from({ length: 212 }, (_, i) => `2025-03-11T10:${String(i % 60).padStart(2, '0')}:07Z ${i % 9 === 4 ? 'ERROR invoices.list: relation "invoice_lines" does not exist' : `INFO  request ${1000 + i} GET /api/invoices 200 ${12 + (i % 7)}ms`}`).join('\n')
+export const screenshot = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800"><rect width="1280" height="800" fill="#141518"/><rect width="240" height="800" fill="#1b1c20"/><rect x="300" y="60" width="520" height="22" rx="4" fill="#3a3c42"/><rect x="300" y="120" width="920" height="420" rx="10" fill="#1f2024" stroke="#2c2e33"/><rect x="330" y="160" width="400" height="14" rx="3" fill="#5a2a2a"/><rect x="330" y="196" width="760" height="12" rx="3" fill="#2f3136"/><rect x="330" y="224" width="680" height="12" rx="3" fill="#2f3136"/></svg>')}`
 /** A deeper repo for the file trees (KERNEL-399): every git status, two compact folder chains (.github/workflows, lib/db) and many file types. */
 const treeChanges: ChangedFile[] = [
   { path: 'docs/ARCHITECTURE.md', status: 'M', added: 12, removed: 3 },
@@ -703,7 +703,7 @@ const mentionAgentTree: FileEntry[] = ['src/lib/money.ts', 'docs/journeys/clean-
 
 const mentionTree: FileEntry[] = ['src/app/invoices/table.tsx', 'tests/invoices.spec.ts', 'src/pdf/invoice-pdf.ts', 'src/db/schema/invoices.ts', 'src/app/invoices/invoice-row.tsx', 'package.json'].map(file)
 
-const skills: Skill[] = [
+export const skills: Skill[] = [
   ['plan', 'Plan before editing'], ['feature', 'Build a feature from a spec'], ['verify', 'Run tests and attach the output'], ['image', 'Generate or edit an image'], ['setup', 'Set up the project']
 ].map(([name, description]) => ({ name, description, source: 'project' as const, enabled: true }))
 
@@ -2016,9 +2016,9 @@ const queued = (s: Partial<Fixture>): Partial<Fixture> => {
 // ---- KERNEL-1094, The agent works (Pen Part 7): Teng's clean-account journey in each moment of a turn. ----
 
 /** A time on the journey's day, 13:41 to 13:52 (the clocks the canvas shows). */
-const J = (m: number, s = 0) => at(13, m, s)
+export const J = (m: number, s = 0) => at(13, m, s)
 /** A time counted back from now, for a turn that is still running, so its clock reads what the shot says. */
-const ago = (secs: number) => Date.now() - secs * 1000
+export const ago = (secs: number) => Date.now() - secs * 1000
 
 /** The workspace Teng works in: made at 13:41, set up in 1:12, a task of the Lead's plan, with the rail's stages to read. */
 const JOURNEY_WS: Partial<Workspace> = {
@@ -2027,14 +2027,14 @@ const JOURNEY_WS: Partial<Workspace> = {
 }
 const JOURNEY_PROJECT: NonNullable<Fixture['projectSettings']> = { [ids.projectA]: { scripts: { setup: 'pnpm install' }, runScripts: [], files: { copy: [] }, workspace: {} } }
 
-const jBrief = (ts = J(43)): ChatItem => ({ kind: 'user', id: 'j-u', ts, parts: [{ type: 'text', text: JOURNEY }] })
-const jTool = (id: string, ts: number, command: string, description: string, extra: Partial<ToolItem> = {}): ChatItem =>
+export const jBrief = (ts = J(43)): ChatItem => ({ kind: 'user', id: 'j-u', ts, parts: [{ type: 'text', text: JOURNEY }] })
+export const jTool = (id: string, ts: number, command: string, description: string, extra: Partial<ToolItem> = {}): ChatItem =>
   tool(id, description, command, { ts, input: { command, description }, ...extra })
-const jRead = (ts = J(43, 5)): ChatItem => tool('j-read', 'Read', 'docs/qa/kernel-31.md', { name: 'Read', ts, durationMs: 80, input: { file_path: 'docs/qa/kernel-31.md' } })
-const jIssue = (ts = J(43, 12)): ChatItem => mcpCall('j-issue', 'linear', 'get_issue', { id: 'KERNEL-232' }, { ts, durationMs: 900, output: 'KERNEL-232  Clean-account journey on a fresh Mac user' })
+export const jRead = (ts = J(43, 5)): ChatItem => tool('j-read', 'Read', 'docs/qa/kernel-31.md', { name: 'Read', ts, durationMs: 80, input: { file_path: 'docs/qa/kernel-31.md' } })
+export const jIssue = (ts = J(43, 12)): ChatItem => mcpCall('j-issue', 'linear', 'get_issue', { id: 'KERNEL-232' }, { ts, durationMs: 900, output: 'KERNEL-232  Clean-account journey on a fresh Mac user' })
 const JOURNEY_PASS = ['✓ 1  installs from the DMG', '✓ 2  opens on New chat', '✓ 3  adds a project from GitHub', '✓ 4  sends the first brief', '✓ 5  approves the plan']
-const jRun15 = (ts = J(43, 20), extra: Partial<ToolItem> = {}): ChatItem => jTool('j-run15', ts, 'pnpm test:journey --steps 1-5', 'Run steps 1 to 5', { durationMs: 42_000, output: JOURNEY_PASS.join('\n'), ...extra })
-const jShots = (ts = J(44, 10), extra: Partial<ToolItem> = {}): ChatItem => jTool('j-shots', ts, 'pnpm shots --all', 'Capture every screen', { durationMs: 38_000, output: 'Captured 214 screens', ...extra })
+export const jRun15 = (ts = J(43, 20), extra: Partial<ToolItem> = {}): ChatItem => jTool('j-run15', ts, 'pnpm test:journey --steps 1-5', 'Run steps 1 to 5', { durationMs: 42_000, output: JOURNEY_PASS.join('\n'), ...extra })
+export const jShots = (ts = J(44, 10), extra: Partial<ToolItem> = {}): ChatItem => jTool('j-shots', ts, 'pnpm shots --all', 'Capture every screen', { durationMs: 38_000, output: 'Captured 214 screens', ...extra })
 const jEdit = (ts = J(46)): ChatItem => tool('j-edit', 'Edit journey.test.ts', 'test/journey.test.ts', {
   name: 'Edit', ts, durationMs: 120,
   input: { file_path: 'test/journey.test.ts', old_string: "  await shots(['Review'])", new_string: "  await shots(['Review', 'ReviewRc'])\n  expect(diff('Review', 'ReviewRc')).toBeLessThan(0.01)\n  expect(missing()).toEqual([])" }
@@ -2045,21 +2045,21 @@ const jWrite = (ts = J(46, 30)): ChatItem => tool('j-write', 'Create journey.ts'
 })
 const jTypes = (ts = J(47, 10)): ChatItem => jTool('j-types', ts, 'pnpm typecheck', 'Check types', { status: 'failed', durationMs: 6100, output: "Exit code 2\ntest/journey.test.ts(41,7): error TS2322: Type 'string' is not assignable to type 'number'." })
 const jRun6 = (ts = J(48), extra: Partial<ToolItem> = {}): ChatItem => jTool('j-run6', ts, 'pnpm test:journey --steps 6', 'Run step 6', { durationMs: 21_000, output: '✓ 6  compares the review screen', ...extra })
-const jSay = (id: string, ts: number, text: string): ChatItem => ({ kind: 'text', id, ts, text })
+export const jSay = (id: string, ts: number, text: string): ChatItem => ({ kind: 'text', id, ts, text })
 const jThink = (id: string, ts: number, text: string): ChatItem => ({ kind: 'thinking', id, ts, text })
-const jResult = (ts: number, ms: number, extra: Partial<Extract<ChatItem, { kind: 'result' }>> = {}): ChatItem => ({ kind: 'result', id: 'j-res', ts, durationMs: ms, ok: true, ...extra })
+export const jResult = (ts: number, ms: number, extra: Partial<Extract<ChatItem, { kind: 'result' }>> = {}): ChatItem => ({ kind: 'result', id: 'j-res', ts, durationMs: ms, ok: true, ...extra })
 const jFiles: ChangedFile[] = [{ path: 'test/journey.test.ts', status: 'M', added: 3, removed: 1 }, { path: 'fixtures/journey.ts', status: 'A', added: 64, removed: 0 }]
-const jReply = 'All six steps pass on a clean account. Step 6 needed a fixture for the release candidate\'s review screen, so I added one and a test that compares the two.'
+export const jReply = 'All six steps pass on a clean account. Step 6 needed a fixture for the release candidate\'s review screen, so I added one and a test that compares the two.'
 
 /** The turn at rest: Teng read the checklist and the issue, ran steps 1 to 5 and told you where it stands (7.1). */
-const jRest = (): ChatItem[] => [
+export const jRest = (): ChatItem[] => [
   jBrief(), jRead(), jIssue(), jRun15(),
   jSay('j-reply', J(49, 10), 'Steps 1 to 5 pass on a clean account. Step 6 compares the review screen with the release candidate, so it needs the full screenshot run before I can call it.'),
   jResult(J(49, 12), 372_000)
 ]
 
 /** The whole turn, finished: every kind of step, a failed one, thinking and the messages between (7.3 and 7.4). */
-const jDay = (): ChatItem[] => [
+export const jDay = (): ChatItem[] => [
   jBrief(), jThink('j-th1', J(43, 2), "Step 6 needs the release candidate's review screen, and the fixtures don't have one yet."), jRead(), jIssue(), jRun15(),
   jSay('j-s1', J(44, 5), 'Steps 1 to 5 pass. Capturing every screen next.'), jShots(), jEdit(), jWrite(),
   jThink('j-th2', J(47), 'The typecheck failure is in my own test. The threshold takes a number.'), jTypes(),
@@ -2067,13 +2067,13 @@ const jDay = (): ChatItem[] => [
   jSay('j-reply', J(49, 10), jReply), jResult(J(49, 12), 372_000, { files: jFiles })
 ]
 
-interface Works { running?: boolean; approvals?: Approval[]; placed?: Approval[]; ws?: Partial<Workspace>; chat?: Partial<Chat>; view?: Record<string, unknown>; panel?: boolean; toasts?: import('@shared/types').Toast[] }
+export interface Works { running?: boolean; approvals?: Approval[]; placed?: Approval[]; ws?: Partial<Workspace>; chat?: Partial<Chat>; view?: Record<string, unknown>; panel?: boolean; toasts?: import('@shared/types').Toast[] }
 
 /**
  * Teng's chat on the journey, with the Session rail beside it (the panel closed). `approvals` wait in the chat after `items`, `placed` are ones the items already hold,
  * and `running` is a turn still going.
  */
-function works(f: Fixture, items: ChatItem[], o: Works = {}): Partial<Fixture> {
+export function works(f: Fixture, items: ChatItem[], o: Works = {}): Partial<Fixture> {
   const s = scene2(f, { ...JOURNEY_WS, ...o.ws }, JOURNEY_TITLE, items, o.approvals ? { approvals: o.approvals } : {}, o.chat)
   const base = o.approvals ? s : noApprovals(s)
   return {

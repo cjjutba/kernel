@@ -39,10 +39,16 @@ export function useComposerLoads(chatId: string): { failed: LoadFailure; retry: 
   return { failed, retry: load }
 }
 
-/** The one line above the box for what failed to load. */
+/** What the toast says failed to load. */
 export function loadFailureLine(f: LoadFailure): string | undefined {
-  if (f.queue && f.mode) return "Couldn't load this chat's queue and mode."
-  if (f.queue) return "Couldn't load this chat's queued messages."
-  if (f.mode) return "Couldn't load this chat's mode."
+  if (f.queue && f.mode) return "Couldn't load this chat's queue and mode"
+  if (f.queue) return "Couldn't load this chat's queued messages"
+  if (f.mode) return "Couldn't load this chat's mode"
   return undefined
+}
+
+/** Why it matters: the box runs in the mode it already shows until the mode loads, and the tray fills in once the queue does. */
+export function loadFailureSub(f: LoadFailure, mode: string): string | undefined {
+  if (f.mode) return `The composer uses ${mode} until ${f.queue ? 'they load' : 'it loads'}.`
+  return f.queue ? 'Queued messages show once they load.' : undefined
 }

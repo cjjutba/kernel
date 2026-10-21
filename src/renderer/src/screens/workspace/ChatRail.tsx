@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type KeyboardEvent, type PointerEvent, type RefObject } from 'react'
-import { atEnd, entryInView, JUMP_OFFSET, markFit, railKey, type RailEntry } from './railEntries'
+import { atEnd, entryInView, JUMP_OFFSET, markFit, railKey, railTime, type RailEntry } from './railEntries'
 
 /** The jumped-to message keeps its ring this long. The last 400ms fade it (`jump-ring` in workspace.css). */
 const RING_MS = 1200
 /** The list's padding, which a row scrolled into view keeps clear of the edge. */
 const LIST_PAD = 6
+/** Half the height of the preview card, which sits level with the mark it shows. */
+const PEEK_HALF = 39
 
 interface ViewProps {
   entries: RailEntry[]
@@ -18,27 +20,41 @@ interface ViewProps {
   listRef?: (el: HTMLDivElement | null) => void
   onPick?: (i: number) => void
   onPoint?: (i: number, e: PointerEvent) => void
+  /** The mark under the pointer, which grows and shows its message beside the rail (KERNEL-1095). `peekTop` is where that card sits, level with the mark. */
+  hot?: number
+  peekTop?: number
 }
 
 /** The rail, one mark per entry, and its list while open. Drawn from state, so a test can draw the open list. */
-export function RailView({ entries, current, at, open, id, button, listRef, onPick, onPoint }: ViewProps) {
+export function RailView({ entries, current, at, open, id, button, listRef, onPick, onPoint, hot, peekTop }: ViewProps) {
   const listId = `${id}-list`
   return (
     <>
       <button type="button" className="rail-btn" aria-label="Jump to message" aria-haspopup="listbox" aria-expanded={open} aria-controls={open ? listId : undefined} aria-activedescendant={open ? `${id}-${at}` : undefined} {...button}>
-        {entries.map((e, i) => <span key={e.id} className="rail-m" aria-hidden="true" data-update={e.update || undefined} data-now={i === current || undefined} />)}
+        {entries.map((e, i) => <span key={e.id} className="rail-m" aria-hidden="true" data-update={e.update || undefined} data-now={i === current || undefined} data-hot={i === hot || undefined} />)}
       </button>
+      {hot !== undefined && !open && entries[hot] && (
+        <div className="rail-peek" style={{ top: peekTop }} aria-hidden="true">
+          <div className="rail-peek-top"><span className="rail-peek-who">{entries[hot].update ? 'Update' : 'You'}</span><span>{railTime(entries[hot].ts)}</span><span className="rail-peek-n">{hot + 1} of {entries.length}</span></div>
+          <p className="rail-peek-tx">{entries[hot].label}</p>
+        </div>
+      )}
       {open && (
         <div className="rail-pop">
+          <div className="rail-card">
+          <div className="rail-head" aria-hidden="true"><span>{entries.length} messages</span><span>Jump to</span></div>
           <div id={listId} ref={listRef} className="rail-list" role="listbox" aria-label="Jump to message" onMouseDown={(e) => e.preventDefault()}>
             {entries.map((e, i) => (
               <div key={e.id} id={`${id}-${i}`} className="rail-opt" role="option" aria-selected={i === current} aria-label={e.more ? `${e.label}, and ${e.more} more` : undefined}
                 data-now={i === current || undefined} data-update={e.update || undefined} data-active={i === at || undefined}
                 onPointerMove={(ev) => onPoint?.(i, ev)} onClick={() => onPick?.(i)}>
+                <span className="rail-opt-mk" aria-hidden="true" />
                 <span className="rail-opt-tx">{e.label}</span>
                 {e.more > 0 && <span className="rail-opt-nx" aria-hidden="true">+{e.more}</span>}
+                {e.ts !== undefined && <span className="rail-opt-time" aria-hidden="true">{railTime(e.ts)}</span>}
               </div>
             ))}
+          </div>
           </div>
         </div>
       )}
@@ -62,11 +78,12 @@ export function ChatRail({ entries, scroller, glide: glider }: { entries: RailEn
   const id = useId()
   const count = entries.length
   const [current, setCurrent] = useState(count - 1)
-  const [hover, setHover] = useState(false)
+  // The mark under the pointer and where its preview sits. A pointer shows the message beside its mark and a click jumps to it. The list, which names every message, is for the keyboard (KERNEL-1095).
+  const [hot, setHot] = useState<{ i: number; top: number } | null>(null)
   const [focus, setFocus] = useState(false)
   const [dismissed, setDismissed] = useState(false)
   const [pick, setPick] = useState<number | null>(null)
-  const open = count >= 2 && (hover || focus) && !dismissed
+  const open = count >= 2 && focus && !dismissed
   const at = Math.min(pick ?? current, count - 1)
   const wrap = useRef<HTMLDivElement>(null)
   const list = useRef<HTMLDivElement | null>(null)
@@ -173,6 +190,19 @@ export function ChatRail({ entries, scroller, glide: glider }: { entries: RailEn
     })
   }
 
+  /** The mark nearest the pointer, and the top of a preview card 78px tall level with it, kept inside the column. */
+  const peek = (clientY: number) => {
+    const el = wrap.current
+    const marks = el ? Array.from(el.querySelectorAll<HTMLElement>('.rail-m')) : []
+    if (!el || !marks.length) return
+    let best = 0
+    let gap = Infinity
+    marks.forEach((m, i) => { const r = m.getBoundingClientRect(); const d = Math.abs(r.top + r.height / 2 - clientY); if (d < gap) { gap = d; best = i } })
+    const r = marks[best].getBoundingClientRect()
+    const host = el.getBoundingClientRect()
+    setHot((h) => (h?.i === best ? h : { i: best, top: Math.round(r.top + r.height / 2 - host.top - PEEK_HALF) }))
+  }
+
   const key = (e: KeyboardEvent) => {
     if (e.altKey || e.ctrlKey || e.metaKey) return
     const next = railKey(e.key, { open, active: at, count })
@@ -187,9 +217,15 @@ export function ChatRail({ entries, scroller, glide: glider }: { entries: RailEn
 
   if (count < 2) return null
   return (
-    <div ref={wrap} className="chat-rail" onPointerEnter={(e) => { if (e.pointerType === 'mouse' || e.pointerType === 'pen') { setHover(true); setDismissed(false) } }} onPointerLeave={() => { setHover(false); setPick(null) }}>
-      <RailView entries={entries} current={current} at={at} open={open} id={id} listRef={(el) => { list.current = el }}
-        button={{ onFocus: () => { setFocus(true); setDismissed(false) }, onBlur: () => { setFocus(false); setPick(null) }, onKeyDown: key, onClick: () => setDismissed(false) }}
+    <div ref={wrap} className="chat-rail" onPointerMove={(e) => { if (e.pointerType === 'mouse' || e.pointerType === 'pen') peek(e.clientY) }} onPointerLeave={() => { setHot(null); setPick(null) }}>
+      <RailView entries={entries} current={current} at={at} open={open} id={id} listRef={(el) => { list.current = el }} hot={hot?.i} peekTop={hot?.top}
+        button={{
+          // Focus from a press doesn't open the list: a press jumps. Focus from Tab does.
+          onFocus: (e) => { if (e.currentTarget.matches(':focus-visible')) { setFocus(true); setDismissed(false); setHot(null) } },
+          onBlur: () => { setFocus(false); setPick(null) },
+          onKeyDown: key,
+          onClick: (e) => { if (e.detail > 0 && hot) { jump(hot.i); setHot(null); e.currentTarget.blur() } else setDismissed(false) }
+        }}
         onPick={(i) => { setDismissed(true); setPick(null); jump(i) }}
         onPoint={(i, e) => { if (e.clientX === point.current.x && e.clientY === point.current.y) return; point.current = { x: e.clientX, y: e.clientY }; setPick(i) }} />
     </div>

@@ -175,6 +175,13 @@ const K = {
   plan: <><path d="M1.8 4L5.6 2.6L10.4 4.2L14.2 2.8V12L10.4 13.4L5.6 11.8L1.8 13.2Z"/><path d="M5.6 2.6V11.8"/><path d="M10.4 4.2V13.4"/></>,
   keyboard: <><rect x="1.5" y="3.5" width="13" height="9" rx="2.2"/><path d="M4.8 6.4V6.5"/><path d="M8 6.4V6.5"/><path d="M11.2 6.4V6.5"/><path d="M4.8 9.6V9.7"/><path d="M8 9.6V9.7"/><path d="M11.2 9.6V9.7"/></>,
   lock: <><rect x="3" y="7.2" width="10" height="6.8" rx="2"/><path d="M5.3 7.2V5A2.7 2.7 0 0 1 10.7 5V7.2"/></>,
+  /** A token whose file left the disk (KERNEL-1095): a page with a cross, and an image frame struck through. */
+  /** Plan mode (KERNEL-1095): a checked line above two plain ones. */
+  checklist: <><path d="M2.4 4.2L3.6 5.4L5.6 3"/><path d="M7.6 4.2H13.6"/><path d="M2.4 10.2L3.6 11.4L5.6 9"/><path d="M7.6 10.2H13.6"/></>,
+  /** A skill in the / menu: a square with a pen stroke (KERNEL-1095). */
+  squarePen: <><rect x="2.2" y="2.2" width="11.6" height="11.6" rx="2.4"/><path d="M10.2 5.8L5.8 10.2"/></>,
+  fileX: <><path d="M3.8 1.8H9.2L12.4 5V12.6A1.6 1.6 0 0 1 10.8 14.2H5.2A1.6 1.6 0 0 1 3.6 12.6V3.4A1.6 1.6 0 0 1 3.8 1.8Z"/><path d="M9.2 1.8V5H12.4"/><path d="M6.3 7.8L9.7 11.2"/><path d="M9.7 7.8L6.3 11.2"/></>,
+  imageOff: <><path d="M5.2 2.4H10.8A2.8 2.8 0 0 1 13.6 5.2V10.8"/><path d="M3.4 4.2A2.8 2.8 0 0 0 2.4 5.2V10.8A2.8 2.8 0 0 0 5.2 13.6H10.8A2.8 2.8 0 0 0 11.6 13.5"/><path d="M2.4 11L5.6 7.8L8.4 10.6"/><path d="M1.8 1.8L14.2 14.2"/></>,
   eyeoff: <><path d="M1.5 8C3 5.2 5.3 3.9 8 3.9S13 5.2 14.5 8C13 10.8 10.7 12.1 8 12.1S3 10.8 1.5 8Z"/><path d="M2.8 13.4L13.2 2.6"/></>,
   link: <><path d="M9 4.2L9.6 3.6A2.9 2.9 0 0 1 13.7 7.7L11.7 9.7A2.9 2.9 0 0 1 7.6 9.7"/><path d="M7 11.8L6.4 12.4A2.9 2.9 0 0 1 2.3 8.3L4.3 6.3A2.9 2.9 0 0 1 8.4 6.3"/></>,
   plug: <><path d="M6 1.8V5"/><path d="M10 1.8V5"/><path d="M4 5H12V7.6A4 4 0 0 1 4 7.6Z"/><path d="M8 11.6V14.2"/></>,

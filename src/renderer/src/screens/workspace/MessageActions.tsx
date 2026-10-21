@@ -2,14 +2,14 @@ import { useRef } from 'react'
 import type { MenuId } from '@shared/types'
 import { actions, useStore } from '../../store'
 import { cleanError } from '../../api'
-import { CopyButton, IconButton, Menu, useBusy, type IconName } from '../../ui'
+import { CopyButton, IconButton, Menu, MENU_SEPARATOR, useBusy, type IconName } from '../../ui'
 
 /** What a failed action says. A channel that no lane has built yet rejects with "Not built yet: ...", which is fine to show as it is. */
 export async function attempt(title: string, fn: () => Promise<unknown>): Promise<boolean> {
   try { await fn(); return true } catch (e) { actions.ui.toast({ title, sub: cleanError(e) }); return false }
 }
 
-export interface MessageAction { icon: IconName; label: string; busyLabel?: string; onClick: () => unknown }
+export interface MessageAction { icon: IconName; label: string; busyLabel?: string; /** A rule is drawn above it in the "..." menu, setting it apart from the rest (Revert files to here). */ rule?: boolean; onClick: () => unknown }
 
 /** The "..." menu at the end of the row. `menu` is its id in the store, so one menu is open at a time and a fixture can open it. */
 export interface MoreActions { menu: MenuId; items: MessageAction[] }
@@ -50,7 +50,7 @@ export function CopyOverlay({ text }: { text: string }) {
   )
 }
 
-/** The "..." button and its menu, opening upward since the composer sits just below the last reply. */
+/** The "..." button and its menu, which opens below its button, 8px from it (KERNEL-1095). */
 function MoreMenu({ more, busy, run }: { more: MoreActions; busy: string | null; run: (key: string, fn: () => Promise<unknown>) => Promise<void> }) {
   const open = useStore((s) => s.ui.menu === more.menu)
   const anchor = useRef<HTMLSpanElement>(null)
@@ -60,8 +60,8 @@ function MoreMenu({ more, busy, run }: { more: MoreActions; busy: string | null;
       <IconButton icon="more" size={14} label="More actions" aria-haspopup="menu" aria-expanded={open} busy={!!running} busyLabel={running?.busyLabel} disabled={busy !== null}
         onClick={() => actions.ui.toggleMenu(more.menu)} />
       {open && (
-        <Menu label="More actions" anchorRef={anchor} onClose={actions.ui.closeMenu} style={{ left: 0, bottom: 'calc(100% + 4px)', width: 232 }}
-          items={more.items.map((a) => ({ id: a.label, label: a.label, icon: a.icon, onSelect: () => void run(a.label, async () => a.onClick()) }))} />
+        <Menu label="More actions" anchorRef={anchor} onClose={actions.ui.closeMenu} style={{ left: 0, top: 'calc(100% + 8px)', width: 248 }}
+          items={more.items.flatMap((a) => [...(a.rule ? [MENU_SEPARATOR] : []), { id: a.label, label: a.label, icon: a.icon, onSelect: () => void run(a.label, async () => a.onClick()) }])} />
       )}
     </span>
   )

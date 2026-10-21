@@ -17,11 +17,24 @@ const CONTEXT_NEAR = 75
 /** The class that colors the ring and the popover's top meter: red from the banner's threshold, amber from `CONTEXT_NEAR`. */
 const contextLevel = (pct: number) => pct >= CONTEXT_WARN ? 'ctx-full' : pct >= CONTEXT_NEAR ? 'ctx-near' : undefined
 
+/** The rows the popover lists: the engine's tools and MCP rows are one line, so are memory files and skills, and the rest keep their order. */
+export function contextRows(rows: NonNullable<Chat['contextUsage']>['rows']): typeof rows {
+  const joined: Record<string, string> = { 'System tools': 'Tools and MCP', 'MCP tools': 'Tools and MCP', 'Memory files': 'Memory and skills', Skills: 'Memory and skills' }
+  const out: typeof rows = []
+  for (const r of rows) {
+    const name = joined[r.name] ?? r.name
+    const at = out.findIndex((x) => x.name === name && x.kind === r.kind)
+    if (at >= 0) out[at] = { ...out[at], tokens: out[at].tokens + r.tokens }
+    else out.push({ ...r, name })
+  }
+  return out
+}
+
 /**
  * How full the context window is: a small ring in the composer's footer. Hover shows the token counts, click opens the breakdown
  * by category and Compact now (KERNEL-96). The breakdown is what `Sessions.refreshContext` saved on the chat after the last turn.
  */
-export function ContextRing({ chat, blocked, open, onOpen }: { chat: Chat; blocked: boolean; open: boolean; onOpen: (open: boolean) => void }) {
+export function ContextRing({ chat, name, blocked, open, onOpen }: { chat: Chat; /** The agent in the chat, who compacts before the next turn once the window is full. */ name: string; blocked: boolean; open: boolean; onOpen: (open: boolean) => void }) {
   const anchor = useRef<HTMLSpanElement>(null)
   const ring = useRef<HTMLButtonElement>(null)
   const foot = useRef<HTMLDivElement>(null)
@@ -45,7 +58,7 @@ export function ContextRing({ chat, blocked, open, onOpen }: { chat: Chat; block
 
   return (
     <span ref={anchor} style={{ position: 'relative' }}>
-      <button ref={ring} type="button" className={['icon-btn ctx-ring', level].filter(Boolean).join(' ')} aria-label={`Context, ${pct}% used`} aria-haspopup="dialog" aria-expanded={open}
+      <button ref={ring} type="button" className={['icon-btn sm ctx-ring', level].filter(Boolean).join(' ')} aria-label={`Context, ${pct}% used`} aria-haspopup="dialog" aria-expanded={open}
         data-tip={usage ? `${formatTokens(usage.used)} of ${formatTokens(usage.max)} tokens used` : `${pct}% of context used`}
         onClick={() => onOpen(!open)}>
         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -56,30 +69,25 @@ export function ContextRing({ chat, blocked, open, onOpen }: { chat: Chat; block
       <Popover open={open} onClose={() => onOpen(false)} label="Context" side="top" align="right" className={['ctx-pop', level].filter(Boolean).join(' ')} anchorRef={anchor as RefObject<HTMLElement | null>}>
         <div className="ctx-head">
           <span className="ctx-title">Context</span>
-          <span className="muted">{usage ? `${formatTokens(usage.used)} of ${formatTokens(usage.max)} tokens` : `${pct}% used`}</span>
+          <span className="muted">{usage ? `${formatTokens(usage.used)} of ${formatTokens(usage.max)} tokens` : chat.context === undefined ? 'New chat' : `${pct}% used`}</span>
         </div>
-        <Meter value={pct / 100} label={`Context, ${pct}% used`} />
         {usage ? (
-          <ul className="ctx-rows">
-            {usage.rows.filter((r) => r.kind === 'used').map((r) => (
-              <li key={r.name} className="ctx-row">
-                <span className="ellipsis">{r.name}</span>
-                <span className="ctx-n">{formatTokens(r.tokens)}</span>
-                <Meter value={usage.max ? r.tokens / usage.max : 0} label={r.name} />
-              </li>
-            ))}
-            {usage.rows.filter((r) => r.kind !== 'used').map((r) => (
-              <li key={r.name} className="ctx-row ctx-rest muted">
-                <span className="ellipsis">{r.name}</span>
-                <span className="ctx-n">{formatTokens(r.tokens)}</span>
-              </li>
-            ))}
-          </ul>
+          <>
+            <Meter value={pct / 100} label={`Context, ${pct}% used`} />
+            <ul className="ctx-rows">
+              {contextRows(usage.rows).map((r) => (
+                <li key={r.name} className="ctx-row" data-rest={r.kind !== 'used' || undefined}>
+                  <span className="ellipsis">{r.name}</span>
+                  <span className="ctx-n">{formatTokens(r.tokens)}</span>
+                </li>
+              ))}
+            </ul>
+            <div ref={foot} className="ctx-foot">
+              <p className="muted">{level === 'ctx-full' ? `${name} compacts before its next turn.` : 'Compacting summarizes the chat so far and keeps going.'}</p>
+              <Button variant="secondary" busy={busy === 'compact'} busyLabel="Compacting" disabled={blocked} onClick={() => void doCompact()}>Compact now</Button>
+            </div>
+          </>
         ) : <p className="muted ctx-empty">Details show after the next reply.</p>}
-        <div ref={foot} className="ctx-foot">
-          <p className="muted">Compacting keeps a summary and frees space.</p>
-          <Button variant="secondary" busy={busy === 'compact'} busyLabel="Compacting" disabled={blocked} onClick={() => void doCompact()}>Compact now</Button>
-        </div>
       </Popover>
     </span>
   )

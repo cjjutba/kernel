@@ -9,15 +9,15 @@ export type ComposerMode = PermissionMode | 'plan'
 /** The order of the menu and of Shift+Tab (ComposerModes.png, KERNEL-435). */
 export const MODE_ORDER: readonly ComposerMode[] = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions']
 
-export const MODE_ICON: Record<ComposerMode, IconName> = { default: 'lock', acceptEdits: 'filePen', plan: 'plan', auto: 'shieldCheck', bypassPermissions: 'unlock' }
+export const MODE_ICON: Record<ComposerMode, IconName> = { default: 'lock', acceptEdits: 'filePen', plan: 'checklist', auto: 'shieldCheck', bypassPermissions: 'unlock' }
 
-/** One line a mode, shorter than Settings' sentences (ComposerModeMenu.png). */
+/** What each mode does, as the Permission mode menu says it (KERNEL-1095). */
 export const MODE_DESC: Record<ComposerMode, string> = {
-  default: 'Asks before every edit and command',
-  acceptEdits: 'Edits files without asking',
-  plan: 'Plans first and changes nothing until you approve',
-  auto: 'A classifier approves routine work',
-  bypassPermissions: 'Skips every prompt, Always ask included'
+  default: 'Asks before every edit and command.',
+  acceptEdits: 'Edits files without asking. Commands still ask unless a rule allows them.',
+  plan: 'Plans first and changes nothing until you approve.',
+  auto: 'A classifier approves routine work and asks you about anything else.',
+  bypassPermissions: 'Skips every prompt, including your Always ask list.'
 }
 
 export const modeName = (mode: ComposerMode) => (mode === 'plan' ? 'Plan' : MODE_INFO[mode].label)
