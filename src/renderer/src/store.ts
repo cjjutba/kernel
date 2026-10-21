@@ -142,7 +142,7 @@ function toolCalls(): ToolCalls {
 const workspaceView: WorkspaceView = { right: 'changes', leadRight: 'prs', bottom: 'run', toolCalls: toolCalls(), changesView: changesView() }
 
 /** The sidebar and right panel toggles outlast a restart. A key is stored only while its panel is hidden, and localStorage may be missing or blocked. */
-const HIDDEN = { sidebar: 'kernel.sidebarHidden', rightPanel: 'kernel.rightPanelHidden' } as const
+const HIDDEN = { sidebar: 'kernel.sidebarHidden', rightPanel: 'kernel.rightPanelHidden', rail: 'kernel.railHidden' } as const
 function showing(panel: keyof typeof HIDDEN) {
   try { return localStorage.getItem(HIDDEN[panel]) !== '1' } catch { return true }
 }
@@ -212,7 +212,7 @@ function dropLastTabs(gone: (threadId: string) => boolean) {
   keepLastTabs(next)
 }
 /** Panels a narrow window folded (`ui.fold`). A fold never touches the saved toggle, and toggling a panel by hand forgets its fold. */
-const folded = new Set<keyof typeof HIDDEN>()
+const folded = new Set<'sidebar' | 'rightPanel'>()
 
 let state: State = {
   projects: [], projectSetup: {}, overlaps: {},
@@ -223,7 +223,7 @@ let state: State = {
   prs: {}, prPending: {},
   usage: [], account: null, accounts: [], accountAdd: null, mcpRuns: {}, settings: null, projectSettings: {}, shared: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null, github: {} },
-  ui: { route: { name: 'onboarding', step: 'loading' }, nav: { canBack: false, canForward: false }, modal: null, menu: null, toasts: [], banner: null, theme: startupTheme(), workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel'), panelHeld: [], bottomRatio: bottomRatio(), bottomCollapsed: { lead: bottomCollapsed('lead'), teammate: bottomCollapsed('teammate') }, usageView: usageView(), usageOpen: usageOpenAtFirst(usageView()), switching: null }
+  ui: { route: { name: 'onboarding', step: 'loading' }, nav: { canBack: false, canForward: false }, modal: null, menu: null, toasts: [], banner: null, theme: startupTheme(), workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel'), rail: showing('rail'), panelHeld: [], bottomRatio: bottomRatio(), bottomCollapsed: { lead: bottomCollapsed('lead'), teammate: bottomCollapsed('teammate') }, usageView: usageView(), usageOpen: usageOpenAtFirst(usageView()), switching: null }
 }
 const listeners = new Set<() => void>()
 
@@ -571,6 +571,8 @@ export const actions = {
     },
     restoreBottomCollapsed: (kind: BottomKind) => actions.ui.setBottomCollapsed(kind, bottomCollapsed(kind), false),
     setSidebar: (open: boolean) => { folded.delete('sidebar'); setUi({ sidebar: open }); keep('sidebar', open) },
+    /** The Session rail is wanted while the right panel is closed (KERNEL-1096). It never closes the panel itself: the title bar toggle and Focus mode do that with `setRightPanel`. */
+    setRail: (open: boolean) => { setUi({ rail: open }); keep('rail', open) },
     /** Opening or closing the panel by hand ends the hold a New chat put on the workspace in view (KERNEL-788). */
     setRightPanel: (open: boolean) => {
       folded.delete('rightPanel')
@@ -582,7 +584,7 @@ export const actions = {
     /** The workspace's panel stays closed until the toggle is pressed in it, whatever the global setting says. The panel never opens by itself (KERNEL-788). */
     holdPanel: (workspaceId: string) => { if (!state.ui.panelHeld.includes(workspaceId)) setUi({ panelHeld: [...state.ui.panelHeld, workspaceId] }) },
     /** The window got too narrow for a panel, or wide enough again. Widening brings back only a panel that folding hid (D-080). */
-    fold: (panel: keyof typeof HIDDEN, narrow: boolean) => {
+    fold: (panel: 'sidebar' | 'rightPanel', narrow: boolean) => {
       if (narrow && getState().ui[panel]) { folded.add(panel); setUi(panel === 'sidebar' ? { sidebar: false } : { rightPanel: false }) }
       else if (!narrow && folded.delete(panel)) setUi(panel === 'sidebar' ? { sidebar: true } : { rightPanel: true })
     }

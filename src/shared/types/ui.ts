@@ -147,12 +147,15 @@ export interface Toast {
 /** The three ways a turn's folds behave. */
 export type ToolCalls = 'auto' | 'closed' | 'open'
 
+/** The right panel's tabs. Files, Changes, Review and Pull request are a workspace's own, `prs` is the Lead's list, and `preview` is the app's preview (KERNEL-1096). */
+export type PanelTab = 'prs' | 'files' | 'changes' | 'review' | 'pr' | 'preview'
+
 /** The workspace screen's panes, so fixtures can open any of them. */
 export interface WorkspaceView {
-  /** The right panel's tab. `prs` is the Lead's own, so a teammate's workspace shows Changes in its place (KERNEL-354). */
-  right: 'prs' | 'files' | 'changes' | 'checks' | 'shared'
+  /** The right panel's tab. `prs` is the Lead's own, so a teammate's workspace shows Changes in its place (KERNEL-354). `review` and `pr` are the Review and Pull request tabs (KERNEL-1096). */
+  right: PanelTab
   /** The tab the Lead's workspace shows. The store starts it at `prs` and sets it back on entering a workspace, as it does `right` to `changes`; a fixture can leave it out. */
-  leadRight?: 'prs' | 'files' | 'changes' | 'checks' | 'shared'
+  leadRight?: PanelTab
   bottom: 'setup' | 'run' | 'terminal'
   /** How a turn's folds start (Settings, Appearance, Tool calls). `auto` shows the steps while the turn works and folds them when it ends, `closed` starts every fold closed, `open` starts every fold open and never folds one. A fixture can leave it out for `auto`. */
   toolCalls?: ToolCalls
@@ -210,6 +213,11 @@ export interface UiState {
   nav: { canBack: boolean; canForward: boolean }
   /** The screen's right panel is showing: a workspace's files and run panels. Cmd+Option+B; kept across launches. */
   rightPanel: boolean
+  /**
+   * The Session rail is wanted on the right while the right panel is closed. The title bar's two view toggles switch between them, and pressing the one that is on
+   * leaves neither, which is Focus mode with the sidebar hidden (KERNEL-1096). Kept across launches.
+   */
+  rail: boolean
   /** Ids of the workspaces whose right panel stays closed whatever `rightPanel` says, until the toggle is pressed in that chat. A chat started from New chat is one (KERNEL-788). */
   panelHeld: string[]
   /** The right panel's bottom pane (Setup, Run, Terminal) as a fraction of the panel below its header. One size for every chat; kept across launches (KERNEL-513). */
