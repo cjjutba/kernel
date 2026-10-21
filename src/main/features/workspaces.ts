@@ -2,7 +2,7 @@ import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { PORT_BLOCK, type AgentDef, type Chat, type ChatPart, type CompareTarget, type Effort, type Provider, type Project, type ResolvedPath, type Workspace, type WorkspaceMode, type WorkspaceSource } from '@shared/types'
 import { chatProvider, providerOf } from '@shared/providers'
-import { isLeadChatWorkspace, ownsFolder } from '@shared/leadWorkspace'
+import { checkoutHolder, isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { newId } from '../db'
 import { bus } from '../bus'
 import { DEFAULT_BASE_REF, loadRepoSettings, referencesInProject, type RepoSettings } from '../services/settings'
@@ -13,7 +13,7 @@ import { linkNodeModules, NoFreePortBlock, portBlock } from '../services/scripts
 import { exec } from '../services/exec'
 import { listTree, readImage, readWorkspaceFile, resolvePaths, scratchpadDir, searchFiles } from '../services/files'
 import { commitHunks, listHunks } from '../services/hunks'
-import { head, messageOf, NEW_TAB } from './shared'
+import { head, messageOf, NEW_CHAT, NEW_TAB } from './shared'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
@@ -180,8 +180,8 @@ export class Workspaces extends Feature {
       }
       // A project with no commit to start from keeps the Lead on the checkout, with no baseline, as before KERNEL-355.
       if (o.lead && !main) return save(project.path, await currentBranch(project.path).catch(() => project.defaultBranch))
-      if (s.workspace.oneCurrentBranchPerProject && this.onCheckout(projectId, { agentId: agent.id, lead: !!o.lead }))
-        throw new Error('Another workspace is already working on the current branch in this project.')
+      const held = s.workspace.oneCurrentBranchPerProject ? this.onCheckout(projectId, { agentId: agent.id, lead: !!o.lead }) : undefined
+      if (held) throw new Error(this.checkoutTaken(held))
       return save(project.path, await currentBranch(project.path).catch(() => project.defaultBranch), s.workspace.baselineCurrentBranch ? (await snapshotBaseline(project.path)).ref : undefined)
     })
     // Until its brief has gone out, the Lead's messages to it wait here (KERNEL-118). Nobody messages the Lead's own workspace.
@@ -597,8 +597,14 @@ export class Workspaces extends Feature {
    * does a chat of the same agent unless both are chats with Kernel.
    */
   onCheckout(projectId: string, self: { id?: string; agentId: string; lead?: boolean }): Workspace | undefined {
-    return this.store.workspaces(projectId).find((w) => w.mode === 'current' && w.status !== 'archived' && w.id !== self.id
-      && (w.agentId !== self.agentId || (!!self.lead && ownsFolder(w))))
+    return checkoutHolder(this.store.workspaces(projectId), projectId, self)
+  }
+
+  /** Why the checkout can't be shared, naming the chat or workspace that holds it and the way out. */
+  checkoutTaken(holder: Workspace): string {
+    const titled = holder.threadId ? this.store.thread(holder.threadId)?.title : undefined
+    const name = (titled && titled !== NEW_TAB && titled !== NEW_CHAT ? titled : undefined) || holder.title || holder.name
+    return `Another workspace is already working on the current branch in this project: ${name}. Pick New worktree, or archive it first.`
   }
 
   /**

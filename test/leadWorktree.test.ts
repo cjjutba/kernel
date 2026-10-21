@@ -880,3 +880,60 @@ describe('the working copy of a chat from the shared folder, made on its next se
     await worktree.workspaces.worktreeMade(cut.id)
   })
 })
+
+// New chat's Workspace menu (docs/decisions/workspace-picker.md): `lead.start` takes where the chat works, whatever Settings says.
+describe('where a new chat works', () => {
+  it('cuts a worktree when asked, though Workspace type is current', async () => {
+    const { repo } = await withOrigin()
+    const k = await boot(await dirs({ mode: 'current' }))
+    const project = await k.addProject(repo)
+    const chat = await k.handlers()['lead.start']({ projectId: project.id, prompt: 'Plan it', where: { kind: 'worktree' } })
+    const ws = await setUp(k, chat.id)
+    expect(ws).toMatchObject({ mode: 'worktree', branch: 'kernel/plan-it' })
+    expect(ws.path).not.toBe(repo)
+  })
+
+  it('works in the checkout with a baseline when asked, though Workspace type is a worktree, and holds it against a second chat', async () => {
+    const { repo } = await withOrigin()
+    const k = await boot(await dirs({ mode: 'worktree' }))
+    const project = await k.addProject(repo)
+    await writeFile(join(repo, 'wip.txt'), 'mine\n')
+    sdk.calls.length = 0
+    const chat = await k.handlers()['lead.start']({ projectId: project.id, prompt: 'Fix it here', baseRef: 'origin/main', where: { kind: 'current' } })
+    const ws = k.store.workspace(chat.workspaceId)!
+    expect(ws).toMatchObject({ mode: 'current', path: repo, branch: 'main', status: 'ready' })
+    expect(ws.baselineRef).toBeTruthy()
+    expect(ws.worktreePending).toBeFalsy()
+    await vi.waitFor(() => expect(callIn(repo)).toHaveLength(1))
+    // The checkout is taken: a second chat is refused with the first one's name, and nothing is saved for it.
+    const before = k.store.workspaces(project.id).length
+    await expect(k.handlers()['lead.start']({ projectId: project.id, prompt: 'And here', where: { kind: 'current' } })).rejects.toThrow(/already working on the current branch in this project: .*Fix it here.*New worktree/)
+    expect(k.store.workspaces(project.id)).toHaveLength(before)
+    // A worktree is still open to it, and with the setting off so is the checkout.
+    const other = await k.handlers()['lead.start']({ projectId: project.id, prompt: 'Elsewhere', where: { kind: 'worktree' } })
+    expect((await setUp(k, other.id)).mode).toBe('worktree')
+    k.settings.workspace.oneCurrentBranchPerProject = false
+    const shared = await k.handlers()['lead.start']({ projectId: project.id, prompt: 'Together', where: { kind: 'current' } })
+    expect(k.store.workspace(shared.workspaceId)).toMatchObject({ mode: 'current', path: repo })
+  })
+
+  it('adds a tab to a previous worktree, keeping its one workspace, and refuses one that is archived or missing', async () => {
+    const { repo } = await withOrigin()
+    const k = await boot(await dirs())
+    const project = await k.addProject(repo)
+    const first = await k.handlers()['lead.start']({ projectId: project.id, prompt: 'Plan the export' })
+    const ws = await setUp(k, first.id)
+    const before = k.store.workspaces(project.id).length
+    sdk.calls.length = 0
+    const chat = await k.handlers()['lead.start']({ projectId: project.id, prompt: 'Also add a CSV option', clientId: 'c-prev', where: { kind: 'previous', workspaceId: ws.id } })
+    expect(chat).toMatchObject({ workspaceId: ws.id, threadId: first.threadId })
+    expect(chat.id).not.toBe(first.id)
+    expect(k.store.workspaces(project.id)).toHaveLength(before)
+    expect(k.chatTabs(ws.id).map((c) => c.id)).toContain(chat.id)
+    await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(1))
+
+    await expect(k.handlers()['lead.start']({ projectId: project.id, prompt: 'Nope', where: { kind: 'previous', workspaceId: 'gone' } })).rejects.toThrow(/can't take a new chat/)
+    k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, status: 'archived' })
+    await expect(k.handlers()['lead.start']({ projectId: project.id, prompt: 'Nope', where: { kind: 'previous', workspaceId: ws.id } })).rejects.toThrow(/can't take a new chat/)
+  })
+})
