@@ -474,14 +474,6 @@ async function openBaseBranch(page: Page) {
   await page.waitForTimeout(300)
 }
 
-// Settings, Accounts is a long page and its Pen frame is drawn at full length, so its shots make the window tall enough to hold it. `then` runs after.
-const TALL_ACCOUNTS = 1560
-const accountsTall = (then?: (page: Page, app: ElectronApplication) => Promise<void>) => async (page: Page, app: ElectronApplication) => {
-  await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.w, size.h), { w: WIDTH, h: TALL_ACCOUNTS })
-  await page.waitForTimeout(400)
-  await then?.(page, app)
-}
-
 // The Add an account dialog (Redesign 15, Pen 15.5): the page's Add account row opens three cards, and Continue opens the step the pick needs. The dialog and the pick are local to the page.
 async function openAddAccount(page: Page, opts: { pick?: string; next?: string | true } = {}) {
   await page.getByRole('button', { name: 'Add account' }).click()
@@ -589,13 +581,6 @@ const windowAt = (w: number) => async (page: Page, app: ElectronApplication) => 
   await page.waitForTimeout(400)
 }
 
-// A long Settings page drawn at its full length: the window grows to the height of the page's scroll box, so nothing is cut (Redesign 15).
-async function windowFull(page: Page, app: ElectronApplication) {
-  const h = await page.locator('.set-scroll').evaluate((el) => el.scrollHeight + (window.innerHeight - el.clientHeight))
-  await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.w, size.h), { w: WIDTH, h })
-  await page.waitForTimeout(400)
-}
-
 // SettingsPRsInstructions is Create PR's sheet with a space added at the end of its text and left, so the footer says Saved (Redesign 15).
 async function editInstructions(page: Page) {
   await page.getByRole('button', { name: 'Edit the Create PR instructions' }).click()
@@ -615,8 +600,8 @@ async function addCommand(page: Page) {
   await page.waitForTimeout(300)
 }
 
-// A long Settings page at full length (Redesign 15): the window is as tall as the page, so nothing on it is cut. The shot is as long as the page.
-const fullLengthE2 = (then?: (page: Page, app: ElectronApplication) => Promise<void>) => async (page: Page, app: ElectronApplication) => {
+// A long Settings page drawn at its full length (Redesign 15): the window grows to the height of the page, so nothing on it is cut and the shot is as long as the page. `then` runs first.
+const fullLength = (then?: (page: Page, app: ElectronApplication) => Promise<void>) => async (page: Page, app: ElectronApplication) => {
   await then?.(page, app)
   const h = await page.locator('.set-page').evaluate((el) => (el as HTMLElement).scrollHeight)
   await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.w, size.h), { w: WIDTH, h: Math.max(HEIGHT, h + 80) })
@@ -710,6 +695,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceModelPickerCodex: openLegacyModels,
   WorkspaceModelPickerLegacy: openLegacyModels,
   WorkspaceModelPickerLegacyChat: openLegacyModels,
+  SettingsModels: fullLength(),
   SettingsModelsPicker: (page) => openRolePicker(page),
   SettingsModelsPickerCodex: (page) => openRolePicker(page, 'Codex', false, 'Frontend'),
   // The picker opens on a legacy pick with the Legacy models group already open.
@@ -757,7 +743,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   NewChatPermissionMenu: openPermissionMenu,
   NewChatBuildHere: pickBuildHere,
   PanelFilter: filterChanges,
-  SettingsAccounts: accountsTall(),
+  SettingsAccounts: fullLength(),
   SettingsAddAccountApiKey: typeApiKey,
   SettingsAddAccount: (page) => openAddAccount(page),
   SettingsAddAccountBrowser: (page) => openAddAccount(page, { next: 'Finish signing in to Claude in your browser' }),
@@ -767,7 +753,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   SettingsAccountsRename: (page) => secondMenu(page, 'Rename'),
   SettingsAccountsMenu: (page) => secondMenu(page),
   SettingsAccountsRemove: (page) => secondMenu(page, 'Remove'),
-  SettingsAccountsAdvanced: accountsTall(openAdvanced),
+  SettingsAccountsAdvanced: fullLength(openAdvanced),
   SettingsAccountsFallback: (page) => scrollToSection(page, 'Limits'),
   SettingsAccountsFallbackDisabled: (page) => scrollToSection(page, 'Limits'),
   SearchSwitchAccount: typeSwitch,
@@ -874,8 +860,8 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceScrollComposerQueueMotion: (page) => focusComposer(page),
   WorkspaceScrollTurnFoldMotion: scrollUp,
   WorkspaceScrollPlanRoundTripReducedMotion: async (page) => { await reducedMotion(page); await toEnd(page) },
-  SettingsGit: windowFull,
-  SettingsPRs: windowFull,
+  SettingsGit: fullLength(),
+  SettingsPRs: fullLength(),
   SettingsPRsInstructions: editInstructions,
   SettingsBigTerminalPreset: addCommand,
   SettingsPRsSaving: (page) => leaveSizeLimit(page, '600'),
@@ -884,15 +870,15 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   SettingsPRsClamped: (page) => leaveSizeLimit(page, '999999'),
   SettingsIntegrationsLinearToken: async (page) => { await page.getByRole('button', { name: 'Connect', exact: true }).click(); await page.getByLabel('Linear API token').fill('lin_api_abcdefghijkl'); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
   SettingsMcpSetUp: async (page) => { await page.getByRole('button', { name: /^Sign in to Linear/ }).click(); await page.getByRole('dialog', { name: 'Set up Linear' }).waitFor(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
-  SettingsProjectScripts: fullLengthE2(),
+  SettingsProjectScripts: fullLength(),
   SettingsProjectScriptsRuns: (page) => scrollToSection(page, 'Run scripts'),
   SettingsPreviewUrlForm: async (page) => { await page.getByRole('button', { name: 'Add preview URL', exact: true }).click(); await page.getByRole('dialog', { name: 'Add preview URL' }).waitFor(); await page.getByRole('textbox', { name: 'Name' }).fill('Storybook'); await page.getByRole('textbox', { name: 'Address' }).fill('http://localhost:$((KERNEL_PORT + 1))'); await page.waitForTimeout(300) },
-  SettingsProjectEnvironment: fullLengthE2(),
+  SettingsProjectEnvironment: fullLength(),
   SettingsProjectSetupFiles: (page) => scrollToSection(page, 'Files to copy'),
   SettingsProjectSetupProduction: (page) => scrollToSection(page, 'Files to copy'),
   SettingsEnvironmentAdd: async (page) => { await page.getByRole('button', { name: 'Add env file', exact: true }).click(); await page.getByRole('textbox', { name: 'File' }).fill('.env.local'); await page.waitForTimeout(300) },
-  SettingsProjectAgents: fullLengthE2(),
-  SettingsProjectAgentsRetired: fullLengthE2(async (page) => { await page.getByRole('button', { name: /^Retired/ }).click() }),
+  SettingsProjectAgents: fullLength(),
+  SettingsProjectAgentsRetired: fullLength(async (page) => { await page.getByRole('button', { name: /^Retired/ }).click() }),
   SettingsSkillsFailed: (page) => scrollToSection(page, 'Skills'),
   SettingsSkillsLoading: (page) => scrollToSection(page, 'Skills'),
   SettingsProjectPermissionsMode: async (page) => { await scrollToSection(page, 'Permissions'); await page.keyboard.press('Escape'); await page.getByRole('button', { name: /Use app default/ }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
