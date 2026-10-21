@@ -109,11 +109,14 @@ button.ws-issue:hover { background: var(--surface-3); }
 .bubble { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px 14px; border-radius: var(--r-md); border: 1px solid var(--card-line); background: var(--card-bg); color: var(--ink-2); font-size: var(--fs-chat); line-height: var(--lh-loose); }
 /* The setup wait (KERNEL-430): messages waiting for setup sit where they will land, at lower contrast, with one line or card for setup. */
 .msg-user[data-queued] .bubble { background: var(--surface); color: var(--muted); }
+/* A message git couldn't send reads as sent, with Not sent under it (KERNEL-1093). */
+.msg-user[data-queued][data-failed] .bubble { background: var(--card-bg); color: var(--ink-2); }
 .queued-meta { display: flex; align-items: center; gap: 14px; font-size: var(--fs-meta); color: var(--muted); }
 /* A message waiting for setup keeps its Edit and Cancel out of sight until it is pointed at or tabbed into (KERNEL-951). */
 .msg-user[data-queued] .queued-edit { display: inline-flex; gap: 14px; opacity: 0; }
 .msg-user[data-queued]:hover .queued-edit, .msg-user[data-queued]:focus-within .queued-edit { opacity: 1; }
 .queued-meta .btn { margin: -4px 0; }
+.not-sent { display: inline-flex; align-items: center; gap: 6px; }
 .msg-chip { display: inline-flex; align-items: center; gap: 6px; height: 22px; margin-right: 4px; padding: 0 7px; vertical-align: middle; border-radius: var(--r-sm); border: 1px solid var(--chip-line); background: var(--surface-3); font: var(--fs-chip) var(--mono); color: var(--ink-2); }
 .msg-chip .chip-meta { color: var(--muted); }
 .msg-chip[data-state='unreadable'] { opacity: 0.6; }
@@ -300,6 +303,8 @@ button.msg-chip:hover { border-color: var(--line-3); }
 /* With no reply, the card sits in the thread's 12px gap under the fold, and the time under it is 10px away. */
 .thread > .tf + .meta { margin-top: -2px; }
 .meta { font-size: var(--fs-meta); color: var(--muted); }
+.running[data-note] { font: var(--fs-code) var(--font); color: var(--ink-3); }
+.running-note { color: var(--muted); }
 .running { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; font: var(--fs-code) var(--mono); color: var(--muted); }
 .interrupted { align-self: flex-start; font: var(--fs-meta) var(--mono); letter-spacing: 0.06em; color: var(--muted); }
 .note { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: var(--r); background: var(--card-bg); color: var(--ink-3); font-size: var(--fs-code); }
@@ -571,35 +576,37 @@ button.msg-chip:hover { border-color: var(--line-3); }
 .check-spin { display: inline-flex; margin: 0 1px; }
 .code-view.code-view-flush { padding: 8px 0; }
 
-/* Project setup on New chat (KERNEL-948): plain rows at the top. No boxes but the banner. */
+/* A chat that is still loading (Pen 6.12): bars where the messages will be. They pulse, and hold still under reduced motion. */
+.ts-skel { width: 100%; max-width: 760px; margin: 0 auto auto; display: flex; flex-direction: column; gap: 18px; }
+.ts-skel-you { align-self: flex-end; width: 260px; height: 46px; border-radius: var(--r-lg); background: var(--surface); animation: pulse var(--dur-pulse) ease-in-out infinite; }
+.ts-skel-reply { display: flex; flex-direction: column; gap: 9px; }
+.ts-skel-reply i { display: block; height: 10px; border-radius: var(--r-2xs); background: var(--surface-2); animation: pulse var(--dur-pulse) ease-in-out infinite; }
+.ts-skel-reply i:nth-child(1) { width: 140px; height: 9px; background: var(--surface-3); }
+.ts-skel-reply i:nth-child(2) { width: 82%; }
+.ts-skel-reply i:nth-child(3) { width: 74%; }
+.ts-skel-reply i:nth-child(4) { width: 40%; }
+@media (prefers-reduced-motion: reduce) { .ts-skel-you, .ts-skel-reply i { animation: none; } }
+
+/* A project's first chat opens with its worktree and setup (KERNEL-951, KERNEL-1093): a bubble, then plain rows, no card. */
 .lead-top[data-setup] { justify-content: flex-start; text-align: left; padding-top: 24px; overflow-y: auto; }
-.su-rows { width: 100%; max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 4px; }
-.su-banner { margin: 0 0 10px; padding: 13px 16px; border-radius: var(--r); background: var(--surface-2); color: var(--ink); font-size: var(--fs-chat); }
+.su-rows { width: 100%; max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.su-rows.su-chat { margin-bottom: 18px; flex-shrink: 0; }
+.su-list { display: flex; flex-direction: column; gap: 2px; padding-top: 2px; }
+.su-bubble { margin: 0; }
+.su-bubble code { padding: 1px 7px; border-radius: var(--r-sm); background: var(--surface-3); font: var(--fs-ui) var(--mono); color: var(--ink); }
 .su-shared { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; color: var(--ink-3); font-size: var(--fs-code); }
-.su-banner code { font: var(--fs-ui) var(--mono); }
-.su-row { display: flex; align-items: center; gap: 12px; min-height: 34px; font-size: var(--fs-chat); color: var(--ink-2); }
-.su-row[data-state='run'] { color: var(--muted); }
+.su-row { display: flex; align-items: center; gap: 12px; min-height: 36px; padding: 0 2px; border-radius: var(--r-md); font-size: var(--fs-chat); color: var(--ink-2); }
 .su-ico { width: 16px; display: inline-flex; justify-content: center; flex-shrink: 0; color: var(--muted); }
-.su-row[data-state='fail'] .su-ico { color: var(--del); }
-.su-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.su-error { font: var(--fs-meta) var(--mono); color: var(--ink-3); white-space: pre-wrap; }
+.su-text { min-width: 0; flex: 1; }
+.su-row code { font: var(--fs-code) var(--mono); color: var(--ink-2); }
 .su-out { display: inline-flex; padding: 2px; border: 0; background: transparent; color: var(--muted); }
 .su-out:hover { color: var(--ink); }
-button.su-link { border: 0; background: transparent; padding: 0; text-align: left; color: var(--muted); align-self: flex-start; }
-button.su-link:hover { color: var(--ink); }
-button.su-link:hover .su-link-text { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-3); }
-/* A chat's worktree and setup script, as rows above its first message (KERNEL-951). Same rows as project setup. */
-.su-rows.su-chat { margin-bottom: 18px; flex-shrink: 0; }
-.su-rows code { font: var(--fs-ui) var(--mono); color: var(--ink); }
-.su-row .grow { flex: 1; }
-.su-tall { align-items: flex-start; padding-top: 7px; }
-.su-tall .su-ico, .su-tall .su-out { margin-top: 2px; }
-.su-tall .btn { margin-top: -3px; }
-.su-head { display: flex; align-items: baseline; gap: 10px; }
-.su-ink { color: var(--ink); }
+button.su-link { width: 100%; border: 0; background: transparent; text-align: left; color: var(--muted); cursor: pointer; transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
+button.su-link:hover, button.su-link[data-on] { background: var(--surface-2); color: var(--ink-2); }
+button.su-link > svg { flex-shrink: 0; color: var(--muted); }
+.su-row[data-state='run'] { color: var(--muted); }
 .su-clock { font: var(--fs-meta) var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
-.su-tail { font: var(--fs-meta) var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.su-row[data-state='run'] .su-text { color: var(--ink-2); }
+.su-go { display: inline-flex; align-items: center; gap: 4px; padding-right: 2px; font-size: var(--fs-meta); color: var(--muted); }
 
 /* A path an agent mentioned that the workspace has: inline code that opens the file (clickable file mentions). */
 .md-file-wrap { position: relative; }

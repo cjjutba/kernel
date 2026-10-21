@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Chat, Workspace } from '@shared/types'
-import { bannerFor, limitBannerExpired, limitBannerKey, setupCommand, type BannerInput } from '../src/renderer/src/screens/workspace/banners/model'
+import { bannerFor, limitBannerExpired, limitBannerKey, type BannerInput } from '../src/renderer/src/screens/workspace/banners/model'
 
 const now = new Date(2026, 9, 7, 11, 0).getTime()
 const S = (ms: number) => Math.round(ms / 1000)
@@ -194,11 +194,10 @@ describe('workspace banners', () => {
       expect(usage(bannerFor(input({ usage: [near('seven_day', 0.85, monday)] })))).toEqual([{ id: 'usage', label: 'See usage' }])
     })
 
-    it('comes after the blocking banners, and before overloaded, context and hooks', () => {
+    it('comes after sign-out and offline, and before overloaded, context and hooks', () => {
       const usage = [near('five_hour', 0.95, at340)]
       expect(bannerFor(input({ usage, account: { signedIn: false } }))?.id).toBe('signedOut')
       expect(bannerFor(input({ usage, online: false }))?.id).toBe('offline')
-      expect(bannerFor(input({ usage, ws: { ...ws, status: 'failed' } }))?.id).toBe('setup')
       // A limit that already rejected is the stronger line, whichever window it is.
       expect(bannerFor(input({ usage: [near('five_hour', 0.95, at340), { type: 'seven_day', status: 'rejected', resetsAt: S(monday) }] }))?.id).toBe('weekly')
       expect(bannerFor(input({ usage: [{ type: 'five_hour', status: 'rejected', resetsAt: S(at340) }] }))?.id).toBe('session')
@@ -208,43 +207,16 @@ describe('workspace banners', () => {
     })
   })
 
-  it('puts sign-out first, then offline, then a failed setup', () => {
+  it('puts sign-out first, then offline', () => {
     const all = { account: { signedIn: false }, online: false, ws: { ...ws, status: 'failed' as const } }
     expect(bannerFor(input(all))).toMatchObject({ id: 'signedOut', blocks: true })
     expect(bannerFor(input({ ...all, account: { signedIn: true } }))).toMatchObject({ id: 'offline', blocks: false })
-    expect(bannerFor(input({ ...all, account: null, online: true }))).toMatchObject({ id: 'setup', blocks: true })
   })
 
-  it('names the setup command that failed and its exit code', () => {
-    const scripts = [{ kind: 'setup' as const, line: '$ pnpm install --frozen-lockfile && cp ../.env .env', stream: 'stdout' as const }]
-    expect(setupCommand(scripts)).toBe('pnpm install')
-    expect(bannerFor(input({ ws: { ...ws, status: 'failed' }, scripts, setupCode: 1 }))?.sub).toBe('pnpm install exited with code 1. Christian starts when you run it again.')
-  })
-
-  it('names the agent and doesn\'t block when setup failed and the chat works on (KERNEL-1012)', () => {
-    const ran = { ...ws, status: 'ready' as const, setupRun: { startedAt: 1, endedAt: 2, end: 1 } }
-    expect(bannerFor(input({ ws: ran, skipsSetup: true }))).toMatchObject({ id: 'setup', title: 'Setup failed', sub: 'Christian keeps working without it.', blocks: false, actions: [{ label: 'Edit script' }, { label: 'Rerun setup' }] })
-    expect(bannerFor(input({ ws: { ...ran, setupRun: { startedAt: 1, endedAt: 2, end: 0 } }, skipsSetup: true }))).toBeNull()
-    expect(bannerFor(input({ ws: { ...ran, setupRun: { startedAt: 1, endedAt: 2, end: null } }, skipsSetup: true }))).toBeNull()
-  })
-
-  it("keeps a chat that isn't held open after setup fails, and says the agent keeps working (KERNEL-490)", () => {
-    const scripts = [{ kind: 'setup' as const, line: '$ pnpm install', stream: 'stdout' as const }]
-    const kernel = { agentName: 'Kernel', skipsSetup: true }
-    expect(bannerFor(input({ ...kernel, ws: { ...ws, status: 'failed' }, scripts, setupCode: 1 }))).toMatchObject({
-      id: 'setup', sub: 'Kernel keeps working without it.', blocks: false, actions: [{ id: 'editScript' }, { id: 'runAgain' }]
-    })
-  })
-
-  it('keeps a chat with history open after setup fails, and says messages wait only while some are held (KERNEL-1018)', () => {
-    const scripts = [{ kind: 'setup' as const, line: '$ pnpm install', stream: 'stdout' as const }]
-    const failed = { ws: { ...ws, status: 'failed' as const }, scripts, setupCode: 1, hasHistory: true }
-    expect(bannerFor(input({ ...failed, heldForSetup: true }))).toMatchObject({
-      sub: 'pnpm install exited with code 1. Messages you send go out when you run it again.', blocks: false, actions: [{ id: 'editScript' }, { id: 'runAgain' }]
-    })
-    expect(bannerFor(input({ ...failed, heldForSetup: false }))).toMatchObject({
-      sub: 'pnpm install exited with code 1.', blocks: false, actions: [{ id: 'editScript' }, { id: 'runAgain' }]
-    })
+  it('has no banner for a failed setup or a failed worktree: they are toasts (KERNEL-1093)', () => {
+    expect(bannerFor(input({ ws: { ...ws, status: 'failed' } }))).toBeNull()
+    expect(bannerFor(input({ ws: { ...ws, status: 'ready', setupRun: { startedAt: 1, endedAt: 2, end: 1 } } }))).toBeNull()
+    expect(bannerFor(input({ ws: { ...ws, status: 'failed', worktreePending: { error: 'fatal: already exists' } } }))).toBeNull()
   })
 
   describe('errors are a toast, and the box says why a message can\'t go (Pen 14.7)', () => {
