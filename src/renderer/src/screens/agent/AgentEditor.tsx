@@ -5,7 +5,7 @@ import { roleOf } from '@shared/team'
 import { roleSide } from '@shared/rolePick'
 import { call } from '../../api'
 import { useStore } from '../../store'
-import { Icon, Menu } from '../../ui'
+import { Button, Icon, Menu } from '../../ui'
 import { ModelField } from '../workspace/composer/ModelField'
 import { Row, SettingsLink } from '../settings/kit'
 import { agentSource } from '../settings/pages/agentRows'
@@ -127,9 +127,13 @@ export function AgentFields({ agent, form, set, skillNames, readOnly = false, no
         </p>
       )}
       {!locked && !!agent.warnings?.length && (
-        <ul className="ap-warns" aria-label="What Kernel noticed in this file">
-          {agent.warnings.map((w) => <li key={w.kind}><Icon name="warning" size={14} />{warningText(w)}</li>)}
-        </ul>
+        <section className="ap-notices" aria-labelledby="ap-notices-title">
+          <h3 id="ap-notices-title">What Kernel noticed in this file</h3>
+          <ul className="ap-warns">
+            {agent.warnings.map((w) => <li key={w.kind}><Icon name="alertCircle" size={14} />{warningText(w)}</li>)}
+          </ul>
+          {!readOnly && !!form.model && agent.warnings.some((w) => w.kind === 'model-unavailable' || w.kind === 'model-unknown') && <Button size="sm" onClick={() => set({ model: '' })}>Use Settings</Button>}
+        </section>
       )}
       <fieldset className="ap-fields" disabled={locked}>
         <div className="set-card ae-card">

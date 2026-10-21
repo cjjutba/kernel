@@ -724,6 +724,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   },
   SettingsModelsPickerBoth: async (page) => { await openRolePicker(page); await page.getByRole('tab', { name: 'Codex' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
   SettingsModelsPickerCompact: async (page) => { await openRolePicker(page, undefined, false, 'QA'); await page.getByPlaceholder('Search models').fill('hai'); await page.waitForTimeout(300) },
+  NewAgentDrafting: async (page) => { await page.getByRole('button', { name: 'Draft with Kernel' }).click(); await page.getByRole('button', { name: 'Drafting' }).waitFor() },
   NewAgentPicker: async (page) => { await page.getByRole('button', { name: /^Model, / }).click(); await page.getByRole('dialog').last().waitFor() },
   SettingsAgentEditPicker: async (page) => { await page.getByRole('button', { name: /^Model and effort, / }).click() },
   SettingsModelsPickerCodexRole: async (page) => { await openRolePicker(page, undefined, false, 'Frontend'); await page.getByRole('tab', { name: 'Codex' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },

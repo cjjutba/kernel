@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { EFFORT_LABELS, type AgentDef, type AppSettings, type LeadMode, type TeamPatch } from '@shared/types'
+import { type AgentDef, type AppSettings, type LeadMode, type TeamPatch } from '@shared/types'
 import { KERNEL_LEAD, reviewerChoice } from '@shared/team'
 import { leadModeName, newChatLeadMode } from '@shared/leadMode'
 import { call, cleanError } from '../../../api'
 import { actions, go, loadProject, useStore } from '../../../store'
-import { AgentAvatar, Button, ConfirmDialog, Icon, LinkButton, Menu, ProviderMark, Select, Toggle, useBusy } from '../../../ui'
+import { AgentAvatar, Button, ConfirmDialog, Icon, LinkButton, Menu, Select, Toggle, useBusy } from '../../../ui'
 import { ReviewerPicker } from '../../projects/ReviewerPicker'
 import './projects.css'
 import './teamRows.css'
 import './envScripts.css'
 import { shortFile, warningText } from '../../agent/model'
-import { agentModelLabel, useProviderModels } from '../../workspace/composer/providerModels'
+import { ModelTag } from '../../agent/ModelTag'
 import { STARTER_TEAMMATES } from '../../projects/draft'
 import { NoProject, Row, ProjectPage, Section, SettingsLink, useProjectPage } from '../kit'
 import { patchProjectSettings } from '../useSettings'
@@ -40,19 +40,6 @@ function rowDesc(a: AgentDef) {
       {role && <span>{role}</span>}
       {a.warnings?.map((w, i) => <span key={i} className="set-warn"><Icon name="warning" size={12} />{warningText(w)}</span>)}
     </>
-  )
-}
-
-/** The model an agent's file pins, as the composer's control names it: the provider's mark, the model and the effort. A file with no pin runs on its role's model. */
-function ModelTag({ agent }: { agent: AgentDef }) {
-  const provider = agent.provider === 'codex' ? 'codex' : 'claude'
-  const models = useProviderModels(provider)
-  return (
-    <span className="rm-model" aria-label={`${agent.name} model and effort, ${agent.model ? agentModelLabel(agent.model, models) : 'Default'}${agent.effort ? `, ${EFFORT_LABELS[agent.effort]}` : ''}`}>
-      <ProviderMark provider={provider} size={14} />
-      <span className="rm-model-name">{agent.model ? agentModelLabel(agent.model, models) : 'Default'}</span>
-      {agent.effort && <span className="rm-model-effort">{EFFORT_LABELS[agent.effort]}</span>}
-    </span>
   )
 }
 
