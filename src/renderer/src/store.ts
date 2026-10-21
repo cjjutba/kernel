@@ -1117,6 +1117,8 @@ export function launchRoute(): Route {
       route = restored.route
     } else if (last) route = nearest(projectHome(last.id, state), state)
   }
+  // A paired browser has no Settings (a project nobody has briefed would open its Agents page there), so it opens the Inbox.
+  if (isRemote() && route.name === 'settings') route = { name: 'inbox' }
   return launch = route
 }
 
