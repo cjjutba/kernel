@@ -560,6 +560,9 @@ const LEAD_PLAN = [
 /** Kernel's plan for T-15 waiting on you in plan mode, in the Lead's chat: its write-up, then one row per task. */
 const planWaiting = (f: Fixture): Partial<Fixture> => leadPlan(f, { agentId: 'kernel-lead' }, { detail: LEAD_PLAN })
 
+/** The same plan with some steps Kernel's own (no agent) and the rest handed to teammates, as the Lead proposes it (plan-step-owners). */
+const planOwners = (f: Fixture): Partial<Fixture> => leadPlan(f, { agentId: 'kernel-lead' }, { detail: LEAD_PLAN, steps: T15_STEPS.map(({ agentId, ...st }, i) => (i === 1 || i === 3 ? st : { ...st, agentId })) })
+
 /** The same plan once approved: it keeps its place with your Approved bubble under it, plan mode is off and each task has a workspace to open. */
 const planApproved = (f: Fixture): Partial<Fixture> => {
   const s = planWaiting(f)
@@ -2886,6 +2889,10 @@ export const workspaceFixtures: Record<string, Fixture> = {
     { ...jPerm({ input: { command: 'pnpm test:journey --steps 1-5' }, title: 'Run pnpm test:journey --steps 1-5', detail: 'Runs the first five steps on the clean account.', createdAt: Date.now() - 3_000 }), id: 'ap-tool-teng-2' }
   ] }))), motion: { action: { click: 'Show permission 2' }, ms: 700, area: '.ws-main' } },
   WorkspacePlan: scene(planWaiting),
+  /** A plan whose steps are split between Kernel and teammates, each owner a button that changes who does the step. */
+  WorkspacePlanOwners: scene(planOwners),
+  /** The owner menu of step 2 open: Kernel first, then the teammates who take tasks, the current owner checked. */
+  WorkspacePlanOwnerMenu: scene((f) => { const s = planOwners(f); return { ...s, ui: { ...s.ui, menu: `owner:${s.approvals?.[0]?.id}:1` as const } } }),
   /** KERNEL-950: back to a Lead chat with a plan waiting from another tab. The transcript must not move once the strip has opened. */
   WorkspacePlanRoundTrip: { ...scene((f) => { const s = planAfterHistory(planWaiting(f)); return { ...s, chats: [...(s.chats ?? f.chats), { ...extraChat('chat-other', 'Empty state copy'), workspaceId: ids.lead, threadId: 't-lead' }], items: { ...s.items, 'chat-other': [userMsg('o1', 'Shorten the empty state copy.')] }, ui: { ...s.ui, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.lead]: { tab: ids.leadChat, files: [], diffs: [] } } } } }), motion: { action: { press: ['click:Empty state copy', 'click:Export invoices as PDF'] }, ms: 600, area: '.ws-scroll' } },
   /** KERNEL-952 (a): a pending plan in a chat left at its end, to another tab and back. */

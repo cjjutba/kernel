@@ -114,7 +114,7 @@ export type Modal =
   */
 export type MenuId =
   | 'projects' | `project:${string}` | 'account' | 'plan'
-  | 'pr' | 'tab' | 'newTab' | `reply:${string}` | `step:${string}`
+  | 'pr' | 'tab' | 'newTab' | `reply:${string}` | `step:${string}` | `owner:${string}`
   | 'plus' | 'model' | 'effort' | 'mode' | 'mention' | 'slash' | 'linkIssue' | 'linkPr' | 'linkWorkspaces'
   | 'branch' | 'from' | 'settingsFiles' | 'projectIcon' | 'projectMode' | 'preview'
   | 'projectTracker' | 'help'

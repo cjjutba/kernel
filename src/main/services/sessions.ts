@@ -1740,7 +1740,7 @@ export class Sessions {
    * (one-lead-chat), and a teammate builds it. The settled card says the plan was approved, so the chat gets no note. A message
    * Kernel sends carries `approvalId`, so the chat can show the user's answer.
    */
-  async planApproved(chatId: string, o: { queue?: boolean; restarted?: boolean; approvalId?: string } = {}): Promise<string> {
+  async planApproved(chatId: string, o: { queue?: boolean; restarted?: boolean; approvalId?: string; owners?: string } = {}): Promise<string> {
     await this.configure(chatId, { plan: false }).catch(() => undefined)
     const chat = this.mustChat(chatId)
     const lead = this.isLeadChat(chatId)
@@ -1749,7 +1749,7 @@ export class Sessions {
     const ws = o.restarted ? this.d.store.workspace(chat.workspaceId) : undefined
     const plan = ws && this.d.store.approvals({ projectId: ws.projectId }).find((a) => a.chatId === chatId && a.kind === 'plan')
     const planFile = ws && plan?.planFile && existsSync(join(ws.path, plan.planFile)) ? plan.planFile : undefined
-    const note = planApproval({ lead, planFile, plan: plan?.detail, restarted: o.restarted, queued: o.queue })
+    const note = planApproval({ lead, planFile, plan: plan?.detail, restarted: o.restarted, queued: o.queue, owners: o.owners })
     const text = forProvider(note.text, chatProvider(chat))
     // A message is a turn of its own, so it goes only where no turn is waiting on the answer: Codex, and after a restart.
     if (o.queue) await this.send(chatId, [{ type: 'text', text }], { from: 'kernel', approvalId: o.approvalId })

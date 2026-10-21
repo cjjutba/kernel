@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Approval, Decision, PlanCriterion, PlanStep } from '@shared/types'
 import { criterionCheck, criterionText } from '@shared/criteria'
+import { applyOwners, KERNEL_OWNER } from '@shared/planOwners'
 import type { Store } from '../db'
 import { bus } from '../bus'
 import { toolAsk, toolView } from '@shared/toolView'
@@ -205,7 +206,7 @@ export class Approvals {
     if (!decision && this.keepPlans && prev.kind === 'plan') return undefined
     if (!decision) return this.save({ ...prev, status, ...expiredBy(prev, o.by) }, `${status} ${prev.title}`)
     const answers = decision.behavior === 'answer' ? decision.answers ?? prev.answers : prev.answers
-    return this.save({ ...prev, status, ...answerOf(prev, decision, o.typed), answers }, `${status} ${prev.title}`)
+    return this.save({ ...prev, status, ...answerOf(prev, decision, o.typed), ...ownersOn(prev, decision), answers }, `${status} ${prev.title}`)
   }
 }
 
@@ -218,7 +219,13 @@ const expiredBy = (a: Approval, by?: ExpiredBy): Pick<Approval, 'expiredBy'> => 
 /** A waiting plan as `settle` saves it, so its answer can go in the chat before Kernel's message does. */
 export function settledAs(prev: Approval, decision: Decision, typed?: Typed): Approval {
   const status = decision.behavior === 'allow' ? 'allowed' : decision.behavior === 'deny' ? 'denied' : 'answered'
-  return { ...prev, status, ...answerOf(prev, decision, typed) }
+  return { ...prev, status, ...answerOf(prev, decision, typed), ...ownersOn(prev, decision) }
+}
+
+/** An approved plan's steps with the owners the user left on the card. The inbox has already kept only the ids that may own a step. */
+function ownersOn(prev: Approval, decision: Decision): Pick<Approval, 'steps'> | Record<string, never> {
+  if (decision.behavior !== 'allow' || !decision.owners || !prev.steps?.length) return {}
+  return { steps: applyOwners(prev.steps, decision.owners, new Set(decision.owners.filter((o): o is string => !!o))) }
 }
 
 /**
@@ -243,12 +250,18 @@ function cleanCriterion(c: PlanCriterion): PlanCriterion | undefined {
   return !text ? undefined : check ? { text, check } : text
 }
 
-/** "T-15a PDF renderer · Sean" becomes a step with the agent's id. Lines without a known name stay as plain text. */
-export function parsePlanSteps(lines: { task: string; criteria?: PlanCriterion[] }[], agents: { id: string; name: string }[]): PlanStep[] {
+/**
+ * "T-15a PDF renderer · Sean" becomes a step with the agent's id. "· Kernel", or the Lead's own name, is the Lead itself and
+ * sets no agent. Lines without a known owner stay as plain text, which the card shows as Kernel's.
+ */
+export function parsePlanSteps(lines: { task: string; criteria?: PlanCriterion[] }[], agents: { id: string; name: string }[], lead?: { id: string; name: string }): PlanStep[] {
+  const is = (a: { id: string; name: string }, who: string) => a.name.toLowerCase() === who || a.id.toLowerCase() === who
   return lines.map(({ task: line, criteria }) => {
     const at = line.lastIndexOf(' · ')
-    const agent = at < 0 ? undefined : agents.find((a) => a.name.toLowerCase() === line.slice(at + 3).trim().toLowerCase() || a.id === line.slice(at + 3).trim().toLowerCase())
-    const title = agent ? line.slice(0, at).trim() : line.trim()
+    const who = at < 0 ? '' : line.slice(at + 3).trim().toLowerCase()
+    const self = !!who && (who === KERNEL_OWNER.toLowerCase() || (!!lead && is(lead, who)))
+    const agent = !who || self ? undefined : agents.find((a) => a.id !== lead?.id && is(a, who))
+    const title = agent || self ? line.slice(0, at).trim() : line.trim()
     const id = /^(T-\d+[a-z]?)\b/.exec(title)?.[1]
     return { title, criteria: (criteria ?? []).map(cleanCriterion).filter((c): c is PlanCriterion => !!c), ...(id ? { taskId: id } : {}), ...(agent ? { agentId: agent.id } : {}) }
   })

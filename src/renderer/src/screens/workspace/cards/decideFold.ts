@@ -4,6 +4,7 @@ import { call } from '../../../api'
 import { actions } from '../../../store'
 import { attempt } from '../MessageActions'
 import { cssMs, reducedMotion } from '../archiveMotion'
+import { withOwners } from './planOwners'
 import './decideFold.css'
 
 /**
@@ -33,7 +34,7 @@ export function decideAtOnce(a: Approval, decision: Decision): void {
     set(a.id, 'folding')
     timers.set(a.id, window.setTimeout(() => { timers.delete(a.id); if (phases.get(a.id) === 'folding') set(a.id, 'folded') }, cssMs('--archive-fold') + 50))
   }
-  void attempt('Could not send your answer', async () => actions.approvals.upsert(await call('approvals.decide', { id: a.id, decision }))).then((ok) => {
+  void attempt('Could not send your answer', async () => actions.approvals.upsert(await call('approvals.decide', { id: a.id, decision: withOwners(a, decision) }))).then((ok) => {
     if (ok) return
     window.clearTimeout(timers.get(a.id))
     timers.delete(a.id)

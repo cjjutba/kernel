@@ -121,3 +121,63 @@ describe('a plan change request with images, through approvals.decide', () => {
     await expect(decide({ id: gone.approval.id, decision: { behavior: 'deny', message: 'x', images } })).rejects.toThrow('already timed out or was answered')
   })
 })
+
+describe('who does each plan step (plan-step-owners)', () => {
+  async function kernel() {
+    const repo = await tempRepo({
+      '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
+      '.claude/agents/sean.md': '---\nname: sean\ndescription: Engine engineer.\n---\nYou are Sean. Open a PR for each task.',
+      '.claude/agents/artkin.md': '---\nname: artkin\ndescription: Reviewer.\nrole: reviewer\n---\nYou review.'
+    })
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    const k = new Kernel({ dataDir, home })
+    await k.start()
+    onTestFinished(() => k.stop({ budgetMs: 0 }))
+    const project = await k.addProject(repo)
+    const chat = await k.leadChat(project.id)
+    const ask = () => k.approvals.request({
+      projectId: project.id, workspaceId: chat.workspaceId, chatId: chat.id, agentId: 'kernel-lead', kind: 'plan', source: 'sdk', title: 'Plan', detail: PLAN,
+      steps: [{ title: 'T-1 Renderer', criteria: [], taskId: 'T-1', agentId: 'sean' }, { title: 'T-2 Button', criteria: [], taskId: 'T-2' }, { title: 'T-3 Docs', criteria: [], taskId: 'T-3' }]
+    })
+    return { k, project, ask, decide: k.handlers()['approvals.decide'] }
+  }
+
+  it('keeps the proposed owners when the user changes none, and Kernel owns a step with none', async () => {
+    const { k, project, ask, decide } = await kernel()
+    const { approval } = ask()
+    const done = await decide({ id: approval.id, decision: { behavior: 'allow' } })
+    expect(done.steps?.map((s) => s.agentId)).toEqual(['sean', undefined, undefined])
+    expect(done.steps?.some((s) => s.ownerChanged)).toBe(false)
+    expect(k.tasks.list(project.id).map((t) => [t.id, t.agentId])).toEqual([['T-1', 'sean'], ['T-2', 'kernel-lead'], ['T-3', 'kernel-lead']])
+  })
+
+  it("saves the user's owners on the plan and its tasks, and tells the Lead which steps moved", async () => {
+    const { k, project, ask, decide } = await kernel()
+    const { approval, decision } = ask()
+    const done = await decide({ id: approval.id, decision: { behavior: 'allow', owners: [null, 'sean', null] } })
+    expect(await decision).toMatchObject({ behavior: 'allow', owners: [null, 'sean', null] })
+    expect(done.steps?.map((s) => [s.agentId, !!s.ownerChanged])).toEqual([[undefined, true], ['sean', true], [undefined, false]])
+    expect(k.tasks.list(project.id).map((t) => [t.id, t.agentId])).toEqual([['T-1', 'kernel-lead'], ['T-2', 'sean'], ['T-3', 'kernel-lead']])
+    expect(await k.lead.ownerNote(project.id, approval.id)).toBe([
+      'Who does each step:', '1. T-1 Renderer: you do it yourself', '2. T-2 Button: hand it to Sean', '3. T-3 Docs: you do it yourself',
+      'The user changed who does steps 1, 2. Keep their choice.'
+    ].join('\n'))
+  })
+
+  it('ignores an owner that is not a teammate who takes tasks, or is past the last step', async () => {
+    const { ask, decide } = await kernel()
+    const { approval } = ask()
+    const done = await decide({ id: approval.id, decision: { behavior: 'allow', owners: ['nobody', 'artkin', 'kernel', 'sean'] as never } })
+    expect(done.steps?.map((s) => s.agentId)).toEqual(['sean', undefined, undefined])
+    expect(done.steps?.some((s) => s.ownerChanged)).toBe(false)
+  })
+
+  it('leaves the steps alone when a plan is denied with owners', async () => {
+    const { ask, decide } = await kernel()
+    const { approval } = ask()
+    const done = await decide({ id: approval.id, decision: { behavior: 'deny', message: 'No', owners: [null, null, null] } as never })
+    expect(done.steps?.map((s) => s.agentId)).toEqual(['sean', undefined, undefined])
+  })
+})

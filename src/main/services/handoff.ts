@@ -1,4 +1,4 @@
-import type { Provider, ReviewKind } from '@shared/types'
+import type { PlanStep, Provider, ReviewKind } from '@shared/types'
 import { reviewsText } from '@shared/merge'
 import { CODEX_TOOL_PREFIX } from './providers/codex/tools'
 
@@ -101,6 +101,20 @@ export const UPDATE_HEADER = 'Team update, not from the user.'
 /** Sent with a Lead's approval itself, after the approval line (`planApproval`): carry the plan out as the Lead's rule says. */
 export const CARRY_OUT = "The user approved the plan. Carry it out now, as your rule says: do each step yourself, or hand it to a teammate with mcp__kernel__create_workspace and a complete brief. Teammates start from the base and won't see uncommitted edits in this chat's folder. Don't stop at the plan."
 
+/** Sent instead of `CARRY_OUT` when the approval names who does each step. */
+export const CARRY_OUT_OWNED = "The user approved the plan. Carry it out now, as the owners above say: do your own steps yourself, and hand each teammate's step to them with mcp__kernel__create_workspace and a complete brief. Teammates start from the base and won't see uncommitted edits in this chat's folder. Don't stop at the plan."
+
+/**
+ * Who does each step of an approved plan, in short lines for the Lead's reply. A step the user moved to someone else is named
+ * in one more line, so the Lead keeps their choice. `name` gives a teammate's name from their id.
+ */
+export function ownerLines(steps: PlanStep[], name: (agentId: string) => string): string {
+  const lines = steps.map((s, i) => `${i + 1}. ${s.title}: ${s.agentId ? `hand it to ${name(s.agentId)}` : 'you do it yourself'}`)
+  const moved = steps.flatMap((s, i) => (s.ownerChanged ? [i + 1] : []))
+  const note = moved.length ? `The user changed who does step${moved.length > 1 ? 's' : ''} ${moved.join(', ')}. Keep their choice.` : ''
+  return ['Who does each step:', ...lines, note].filter(Boolean).join('\n')
+}
+
 /** Added to an approval that reaches the agent after Kernel restarted, since the turn that asked was cut off. */
 export const PLAN_RESTARTED = 'Kernel restarted while the plan waited, so check git status before you start.'
 
@@ -111,17 +125,18 @@ export const PLAN_RESTARTED = 'Kernel restarted while the plan waited, so check 
  * says to carry the plan out. Only after a restart does it name the plan's file, or carry the plan's text when the file is
  * gone, and add the restart sentence, since the turn that planned was cut off.
  */
-export function planApproval(o: { lead: boolean; planFile?: string; plan?: string; restarted?: boolean; queued?: boolean }): { line: string; text: string } {
+export function planApproval(o: { lead: boolean; planFile?: string; plan?: string; restarted?: boolean; queued?: boolean; owners?: string }): { line: string; text: string } {
+  const carry = o.owners ? CARRY_OUT_OWNED : CARRY_OUT
   if (!o.restarted) {
     const line = 'Plan approved.'
-    return { line, text: o.lead ? `${line}\n\n${CARRY_OUT}` : o.queued ? `${line} Carry it out.` : line }
+    return { line, text: o.lead ? [line, o.owners, carry].filter(Boolean).join('\n\n') : o.queued ? `${line} Carry it out.` : line }
   }
   const file = o.planFile ? `\`${o.planFile}\`` : undefined
   const line = o.lead
     ? file ? `Plan approved. Carry out each step from ${file} now.` : 'Plan approved. Carry out each step from the plan below now.'
     : file ? `Plan approved. Build it from ${file}.` : 'Plan approved. Build it from the plan below.'
   const plan = !file && o.plan?.trim() ? o.plan.trim() : undefined
-  return { line, text: [line, plan, o.lead && CARRY_OUT, PLAN_RESTARTED].filter(Boolean).join('\n\n') }
+  return { line, text: [line, plan, o.lead && o.owners, o.lead && carry, PLAN_RESTARTED].filter(Boolean).join('\n\n') }
 }
 
 /** What a plan the user wants changed goes back as: in a message after a restart, naming the file the revision overwrites, or in Codex's next plan-mode turn. */

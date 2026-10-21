@@ -32,7 +32,7 @@
 .tcard textarea.grow-input { height: auto; padding: 8px 10px; resize: vertical; line-height: var(--lh); }
 .tcard .grow-input:focus-visible { outline: 1px solid var(--focus); outline-offset: 1px; }
 .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.steps li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; min-height: 24.6px; font-size: var(--fs-row); color: var(--ink-2); }
+.steps li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto auto; align-items: center; min-height: 24.6px; font-size: var(--fs-row); color: var(--ink-2); }
 .steps .n { color: var(--muted); font-size: var(--fs-meta); }
 .steps .open { border: 0; background: transparent; margin-left: 12px; padding: 0; color: var(--ink-2); font-size: var(--fs-code); text-decoration: underline; text-underline-offset: 2px; }
 .tc-pager { display: inline-flex; align-items: center; gap: 2px; color: var(--muted); font-size: var(--fs-meta); }
@@ -104,6 +104,11 @@
 .plan-task { flex: 1; min-width: 0; }
 .plan-who { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; align-self: flex-start; margin-left: 12px; color: var(--ink-2); font-size: var(--fs-code); font-weight: var(--fw-regular); }
 .plan-role { color: var(--muted); }
+.plan-owner { position: relative; display: inline-flex; flex-shrink: 0; align-self: flex-start; margin-left: 12px; }
+.plan-owner .plan-who { margin-left: 0; align-self: auto; }
+.plan-who-btn { margin: -3px -6px; padding: 3px 6px; border: 0; border-radius: var(--r-xs); background: transparent; font: inherit; font-size: var(--fs-code); cursor: pointer; }
+.plan-who-btn:hover, .plan-who-btn[aria-expanded="true"] { background: var(--hover); color: var(--ink); }
+.plan-who-btn svg { color: var(--muted); }
 .plan-file { display: inline-flex; align-items: center; min-width: 0; max-width: 340px; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: var(--fs-chip); text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--line-3); }
 .plan-file:hover { color: var(--ink); }
 .plan-inline > .trow .plan-copy { margin-left: auto; }

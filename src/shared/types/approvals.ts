@@ -6,13 +6,19 @@ export type ApprovalKind = 'tool' | 'plan' | 'question' | 'agent'
 /** One acceptance criterion. `check` is the CI check the Lead named as proof of it (KERNEL-1069). A plain string is a criterion with no named check, which is how plans saved before this stored them. */
 export type PlanCriterion = string | { text: string; check?: string }
 
+/** Who does a plan step, in the order of the plan's steps: a teammate's agent id, or null for Kernel itself. */
+export type PlanOwner = string | null
+
 /** One line of a plan card. `taskId` and `agentId` are set when the Lead plans a hand-off. */
 export interface PlanStep {
   title: string
   /** What must be true for the step to be done, 2 to 5 testable lines. Plans saved before this have none. */
   criteria?: PlanCriterion[]
   taskId?: string
+  /** The teammate who does the step. Unset means Kernel does it, in the Lead's own folder. */
   agentId?: string
+  /** Set when the user picked a different owner on the plan card than the Lead proposed. */
+  ownerChanged?: boolean
   /** The workspace the Lead created for this step, set once the plan is approved and handed off. */
   workspaceId?: string
 }
@@ -75,8 +81,8 @@ export interface Approval {
 }
 
 export type Decision =
-  /** `scope`: on an agent approval, who the user hires the agent for (KERNEL-466). */
-  | { behavior: 'allow'; always?: boolean; scope?: AgentScope }
+  /** `scope`: on an agent approval, who the user hires the agent for (KERNEL-466). `owners`: on a plan, who does each step as the user left it on the card, one per step. */
+  | { behavior: 'allow'; always?: boolean; scope?: AgentScope; owners?: PlanOwner[] }
   /** `images` go with a plan's change request: main saves each one in the workspace and names its path in `message` (D-134). */
   | { behavior: 'deny'; message?: string; images?: { name: string; dataUrl: string }[] }
   /** `answers` maps each question's text to its answer; `text` is them joined for display. A text-only answer goes to the first question. */
