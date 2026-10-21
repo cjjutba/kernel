@@ -178,3 +178,75 @@ describe('the plan strip', () => {
     })
   })
 })
+
+// Who does each step is picked on the plan card and sent with Approve (plan-step-owners).
+describe('the owner of a plan step', () => {
+  const agents = [
+    { id: 'lead', name: 'Kernel', role: 'Lead', lead: true, member: false },
+    { id: 'sean', name: 'Sean', role: 'Engine', lead: false, member: true },
+    { id: 'helper', name: 'Scout', role: 'Helper', lead: false, member: false }
+  ] as never
+  const steps = [{ title: 'T-1 Renderer', agentId: 'sean' }, { title: 'T-2 Docs' }]
+  const owned = (id: string, status: Approval['status'] = 'pending') => ({ id, chatId: 'c1', kind: 'plan', status, title: 'Plan', detail: '# Plan', steps }) as unknown as Approval
+  let root: Root
+  let host: HTMLElement
+  beforeEach(() => {
+    call.mockReset()
+    host = document.createElement('div')
+    document.body.append(host)
+    window.matchMedia = ((q: string) => ({ matches: false, media: q, addEventListener: () => undefined, removeEventListener: () => undefined })) as unknown as typeof window.matchMedia
+    root = createRoot(host)
+  })
+  afterEach(() => { act(() => root.unmount()); host.remove(); document.body.querySelectorAll('.menu-anchor').forEach((m) => m.remove()) })
+
+  const draw = async (a: Approval) => {
+    const { PlanTasks, usePlanStrip } = await import('../src/renderer/src/screens/workspace/cards/plan')
+    function Both() {
+      const strip = usePlanStrip(a)
+      return React.createElement('div', null, React.createElement(PlanTasks, { a, agents }), React.createElement('button', { type: 'button', onClick: strip.approve }, 'Approve'))
+    }
+    act(() => root.render(React.createElement(Both)))
+  }
+  const press = (el: Element | null | undefined) => act(() => { (el as HTMLElement).click() })
+  const trigger = (n: number) => host.querySelector(`button[aria-label^="Who does step ${n}:"]`)
+  const items = () => [...document.body.querySelectorAll('[role=menuitemradio], [role=menuitem]')]
+  const approve = async () => {
+    press([...host.querySelectorAll('button')].find((b) => b.textContent === 'Approve'))
+    await act(async () => { await Promise.resolve() })
+  }
+
+  it('shows Kernel for a step with no owner, and lists Kernel then the teammates who take tasks', async () => {
+    await draw(owned('o1'))
+    expect(trigger(2)?.textContent).toContain('Kernel')
+    press(trigger(2))
+    expect(items().map((i) => i.textContent?.replace(/does it itself|Engine/, '').trim())).toEqual(['Kernel', 'Sean'])
+    expect(trigger(2)?.getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('sends only the owners the user changed, with Approve', async () => {
+    call.mockResolvedValue(undefined)
+    await draw(owned('o2'))
+    press(trigger(2))
+    press(items().find((i) => i.textContent?.startsWith('Sean')))
+    expect(trigger(2)?.textContent).toContain('Sean')
+    await approve()
+    expect(call).toHaveBeenCalledWith('approvals.decide', { id: 'o2', decision: { behavior: 'allow', owners: ['sean', 'sean'] } })
+  })
+
+  it('sends no owners when a pick goes back to what the Lead proposed', async () => {
+    call.mockResolvedValue(undefined)
+    await draw(owned('o3'))
+    press(trigger(2))
+    press(items().find((i) => i.textContent?.startsWith('Sean')))
+    press(trigger(2))
+    press(items().find((i) => i.textContent?.startsWith('Kernel')))
+    await approve()
+    expect(call).toHaveBeenCalledWith('approvals.decide', { id: 'o3', decision: { behavior: 'allow' } })
+  })
+
+  it('is plain text once the plan is decided', async () => {
+    await draw(owned('o4', 'allowed'))
+    expect(host.querySelector('button[aria-haspopup=menu]')).toBeNull()
+    expect(host.querySelector('.plan-who')?.textContent).toContain('Sean')
+  })
+})
