@@ -34,6 +34,9 @@ export class Remote extends Feature {
 
   private get auth(): RemoteAuth { return (this._auth ??= new RemoteAuth(this.store)) }
 
+  /** Resolves once the server has done what the setting asked: listening, or not listening. */
+  get settled(): Promise<void> { return this.applying }
+
   start(): Promise<void> {
     bus.on('push', this.onPush)
     return this.apply()
@@ -44,11 +47,11 @@ export class Remote extends Feature {
     await this.apply(false)
   }
 
-  /** Settings changed: the server follows `remote` if it moved. */
-  async settingsChanged(before: AppSettings['remote'] | undefined): Promise<void> {
+  /** Settings changed: the server follows `remote` if it moved. Nothing to wait for, and so no promise, when it didn't. */
+  settingsChanged(before: AppSettings['remote'] | undefined): Promise<void> | undefined {
     const now = this.settings.remote
-    if (before?.enabled === now?.enabled && before?.host === now?.host && before?.port === now?.port) return
-    await this.apply()
+    if (before?.enabled === now?.enabled && before?.host === now?.host && before?.port === now?.port) return undefined
+    return this.apply()
   }
 
   private apply(want = true): Promise<void> {

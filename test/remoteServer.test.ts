@@ -27,6 +27,7 @@ async function boot(remote: { enabled?: boolean; host?: 'local' | 'network'; por
   const k = new Kernel({ dataDir, home })
   stops.push(() => k.stop({ budgetMs: 0 }))
   await k.start()
+  await k.remote.settled
   const h = k.handlers()
   const base = () => `http://127.0.0.1:${k.remote.status().port}`
   return { k, h, port, dataDir, base }

@@ -230,9 +230,10 @@ export class Kernel {
     void this.waits.sweepWaits().catch(() => undefined).then(() => this.autoArchive.sweepMerged()).catch(() => undefined)
     this.archive.start()
     this.reviews.start()
-    await this.remote.start()
     // A reset on claude.ai while Kernel was closed shows only in the real numbers, so ask at once.
     if (this.store.projects().some((r) => r.pausedBy === 'limit')) void this.account.checkLimits()
+    // Not awaited: an extra wait here changes when the chats that carry on send (test/health.test.ts). `remote.settled` is the wait.
+    void this.remote.start()
   }
 
   /**
