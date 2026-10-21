@@ -846,7 +846,7 @@ function ghWords(s: Simple): { words: string[]; dynamic: boolean[]; flags: { fla
 
 /**
  * Whether a command puts work where others see it: `git commit`, `git push` or `gh pr create`, in a chain, under `bash -c` or
- * after env prefixes (KERNEL-992). Build here denies them while the chat is in plan mode (KERNEL-1113).
+ * after env prefixes (KERNEL-992). A chat with Kernel is denied them while it is in plan mode (KERNEL-1113).
  */
 export function publishesWork(command: string): boolean {
   return analyze(command.trim()).effective.some((s) => {

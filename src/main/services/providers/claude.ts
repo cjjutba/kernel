@@ -771,7 +771,7 @@ function kernelHooks(o: {
     }
     hooks.PreToolUse!.push({ matcher: 'Edit|Write|MultiEdit|NotebookEdit', hooks: [write] })
   }
-  // Build here edits files only after a go-ahead, whatever the mode says, so Bypass permissions can't skip it (KERNEL-992).
+  // A Lead changes files only outside plan mode, whatever the mode says, so Bypass permissions can't skip it (KERNEL-992, KERNEL-1113).
   if (buildGate) {
     const closed: HookCallback = async (input) => {
       const { tool_name: tool, tool_input, cwd } = input as PreToolUseHookInput

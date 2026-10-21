@@ -371,7 +371,7 @@ export class Lead extends Feature {
     if (this.k.stopped) return
     const ids = o.workspaceId ? [o.workspaceId] : this.chatWorkspaces(projectId).map((w) => w.id)
     // A folder that waits to move to match its branch moves first, while the chat is idle (KERNEL-424).
-    // A Build here chat whose PR merged starts its next branch before the sync (KERNEL-778).
+    // A chat with Kernel whose PR merged starts its next branch before the sync (KERNEL-778).
     await Promise.all([
       ...ids.map((id) => this.inOrder(id, async () => { await this.moveNow(id); await this.freshNow(id); await this.syncNow(id) }).catch(failed)),
       // The shared main folder of chats from before one-lead-chat moves with the base too, once every chat on it is idle (KERNEL-1050).
@@ -379,10 +379,10 @@ export class Lead extends Feature {
     ])
   }
 
-  /** The merged Build here chats Kernel told it couldn't update to the latest base, by workspace and PR, so each is told once (KERNEL-990). */
+  /** The merged chats with Kernel Kernel told it couldn't update to the latest base, by workspace and PR, so each is told once (KERNEL-990). */
   private told = new Set<string>()
 
-  /** The fetch after a merge failed, so a merged Build here chat stays where it is and says so in a row (KERNEL-990). */
+  /** The fetch after a merge failed, so a merged chat with Kernel stays where it is and says so in a row (KERNEL-990). */
   private offline(projectId: string, base: string) {
     for (const ws of this.chatWorkspaces(projectId)) {
       if (!ownsFolder(ws) || ws.prState !== 'merged' || ws.status !== 'ready' || ws.mode !== 'worktree' || ws.folderGone || ws.worktreePending) continue
@@ -394,7 +394,7 @@ export class Lead extends Feature {
   }
 
   /**
-   * Commits on a merged Build here chat's branch that are neither in the PR, by its last head as GitHub read it or the commit a
+   * Commits on a merged chat with Kernel's branch that are neither in the PR, by its last head as GitHub read it or the commit a
    * local merge made, nor on the base. A squash or rebase merge puts other commits on the base, so the base alone can't tell.
    * A commit pushed to the branch after the merge isn't in the PR either, so the branch as pushed doesn't count.
    */
@@ -405,11 +405,11 @@ export class Lead extends Feature {
     return Number((await git(ws.path, 'rev-list', '--count', 'HEAD', '--not', base, ...shipped)).trim())
   }
 
-  /** Build here chats Kernel told it kept on a merged PR's branch, by workspace, PR and reason, so each is told once. */
+  /** chats with Kernel Kernel told it kept on a merged PR's branch, by workspace, PR and reason, so each is told once. */
   private keptMerged = new Set<string>()
 
   /**
-   * A Build here chat whose PR merged goes on from a new branch, cut from `<remote>/<default>` in the same worktree and named
+   * A chat with Kernel whose PR merged goes on from a new branch, cut from `<remote>/<default>` in the same worktree and named
    * the way `nameChatBranch` names a chat's first one, so its next PR is a new one (KERNEL-778). Only while the chat is idle.
    * The PR's number, state and reviews start over, and so does a linked issue. A worktree with uncommitted changes, or with
    * commits the PR didn't include, stays on the merged branch, and the chat hears why, once per PR and reason.
@@ -770,7 +770,7 @@ export class Lead extends Feature {
   }
 
   /**
-   * Links a Build here chat's own work to a tracker issue (KERNEL-778), from the link_issue tool. Before
+   * Links a chat with Kernel's own work to a tracker issue (KERNEL-778), from the link_issue tool. Before
    * the first push, and with no PR, its branch takes a teammate's name for the issue, `feat/kernel-760-retry-button`, and its
    * folder follows once the chat is idle. After that only the link changes. The PR body names the key, so the issue closes on
    * merge.

@@ -37,7 +37,7 @@ export function leadUpdateDeps(k: Kernel): LeadUpdateDeps {
     // With no Lead tab open, an update that needs the Lead opens one rather than being dropped (KERNEL-365).
     open: (projectId, owner) => k.lead.openUpdateTab(projectId, owner),
     isLead: (ws) => !!k.team.agentOf(ws.projectId, ws.agentId)?.lead,
-    // A Build here chat's PR reports to that chat (KERNEL-778).
+    // A chat with Kernel's PR reports to that chat (KERNEL-778).
     ownChat: (ws) => k.lead.buildTab(ws),
     agentName: (projectId, agentId) => k.team.agentOf(projectId, agentId)?.name,
     post: (chatId, text, update) => k.sessions.post(chatId, [{ type: 'text', text }], { update }),
@@ -53,7 +53,7 @@ export function leadUpdateDeps(k: Kernel): LeadUpdateDeps {
       const object = update.rows.length > 1 ? `${update.rows.length} teammates` : one.prNumber ? `${one.name}'s PR #${one.prNumber}` : `${one.name}'s work`
       bus.activity({ kind: 'note', projectId, workspaceId: chat.workspaceId, agentId: ws?.agentId, text: 'heard from Kernel about', object, data: { leadUpdate: true } })
     },
-    // A review of the chat's own PR in Build here is a row in its transcript, with no turn (KERNEL-990).
+    // A review of the chat's own PR is a row in its transcript, with no turn (KERNEL-990).
     row: (chatId, update) => updateRow(k.store, chatId, update),
     opened: (chat, rows) => k.openItems.delivered(chat, rows),
     // Delivery timings reach Kernel's log, so Help, Copy diagnostics shows why an update was late. The log hears warnings
@@ -83,7 +83,7 @@ export function listen(k: Kernel): () => void {
     // Script lines only go out as pushes, so Kernel keeps them for a window that loads later (KERNEL-340).
     keepScript(e)
     if (e.type === 'chat.running') k.chats.onRunning(e)
-    // A mode switch made during the turn leaves its divider after it (KERNEL-770).
+    // A chat whose working copy waits for a turn to end makes it now (KERNEL-1053).
     if (e.type === 'chat.running' && !e.running) k.lead.turnEnded(e.chatId)
     // A chat that stopped running, or whose queue emptied, may take a Team update now, and a turn's end frees a slot for the
     // others. The update goes then, not at the next PR poll (KERNEL-637).

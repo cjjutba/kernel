@@ -38,16 +38,16 @@ export interface LeadUpdateDeps {
    * `target` would. Called only when the update goes out now, so a project with no open Lead tab gets no tab it won't use.
    */
   open?: (projectId: string, owner?: string) => { chat: Chat; from?: From } | 'opening' | undefined
-  /** Whether the workspace is the Lead's own. Its events are never reported back to it, except its PR's in Build here (`ownChat`). */
+  /** Whether the workspace is the Lead's own. Its events are never reported back to it, except its PR's (`ownChat`). */
   isLead: (ws: Workspace) => boolean
   /**
-   * The tab of the Build here chat whose own workspace `ws` is (KERNEL-778). Its PR's news, and its reviews' verdicts, go to
+   * The tab of the chat with Kernel whose own workspace `ws` is (KERNEL-778). Its PR's news, and its reviews' verdicts, go to
    * that chat as a Team update, the way a teammate's go to the chat that handed the work off. Left out, none.
    */
   ownChat?: (ws: Workspace) => string | undefined
   agentName: (projectId: string, agentId: string) => string | undefined
   /**
-   * Draws a Team update in the chat without sending it to the session: a review of the chat's own PR in Build here, which
+   * Draws a Team update in the chat without sending it to the session: a review of the chat's own PR, which
    * costs no turn (KERNEL-990). Left out, such a verdict is dropped.
    */
   row?: (chatId: string, update: TeamUpdate) => void
@@ -893,11 +893,11 @@ export class LeadUpdates {
     else if (!ws.prBlocked && told) this.add(ws, { kind: 'pr.unblocked' })
   }
 
-  /** The chat that hears about the workspace: the one that handed it off, or the Build here chat it is the PR of (KERNEL-778). */
+  /** The chat that hears about the workspace: the one that handed it off, or the chat with Kernel it is the PR of (KERNEL-778). */
   private ownerOf(ws: Workspace) { return ws.leadChatId ?? this.d.ownChat?.(ws) }
 
-  /** The Lead's own workspace, whose news never reaches a chat. A Build here chat's PR does (KERNEL-778). */
-  /** The Build here chat's own workspace, whose PR news is rows and wakes the chat only when the user has to act (KERNEL-990). */
+  /** The Lead's own workspace, whose news never reaches a chat. A chat with Kernel's PR does (KERNEL-778). */
+  /** The chat with Kernel's own workspace, whose PR news is rows and wakes the chat only when the user has to act (KERNEL-990). */
   private isSelf(ws: Workspace) { return this.d.isLead(ws) && !!this.d.ownChat?.(ws) }
 
   private silent(ws: Workspace) { return this.d.isLead(ws) && !this.d.ownChat?.(ws) }
@@ -1209,7 +1209,7 @@ export const fromLine = (f: From) => (f.tab ? `From "${f.title}", a tab you clos
  * starts reviews of a PR that passed checks by itself (on when unset), whether this merge was the last, and the reviews of
  * another workspace's PR by its id, for a verdict about it (KERNEL-549), and why Kernel didn't merge a workspace's ready PR by
  * itself with auto-merge on (KERNEL-556). `toldLimit`: the Lead last heard this workspace's teammate was paused by a limit (KERNEL-777).
- * `self`: the workspace is the Build here chat's own, whose PR the chat fixes itself rather than through a teammate (KERNEL-778).
+ * `self`: the workspace is the chat with Kernel's own, whose PR the chat fixes itself rather than through a teammate (KERNEL-778).
  */
 export interface WakeContext { review?: ReviewState; reviewer?: AgentDef; autoReview?: boolean; allMerged: () => boolean; workspace?: (id: string) => Workspace | undefined; stateOf?: (id: string) => ReviewState | undefined; refused?: (id: string) => string | undefined; toldLimit?: boolean; self?: (id: string) => boolean }
 
@@ -1246,7 +1246,7 @@ function stillBlockedTodo(pr: string, s: NonNullable<ReviewState['stillBlocked']
  */
 function blockersTodo(kinds: ReviewKind[], author: string | undefined, at: string): string {
   const whose = `${reviewsOf(kinds)}${kinds.length > 1 ? "'" : "'s"}`
-  // This chat's own PR in Build here (`author` unset): the chat fixes them itself, and Kernel reviews the new head (KERNEL-778).
+  // This chat's own PR (`author` unset): the chat fixes them itself, and Kernel reviews the new head (KERNEL-778).
   if (!author) {
     const fix = `Fix ${whose} blockers in this chat's worktree, then push. Kernel reviews the PR again once its checks pass.`
     return kinds.length < 2 ? fix : `${fix} If blockers from two reviews contradict each other, ask the user which to follow with ask_user first.`
@@ -1268,7 +1268,7 @@ export function blockedTodo(pr: string, name: string, at: string, blocked: PrBlo
   return `GitHub's branch rules block ${pr}. Tell the user.`
 }
 
-/** How the Build here chat brings its own PR up to date with `base` (KERNEL-778), by a merge since the PR's branch is pushed (KERNEL-886). */
+/** How the chat with Kernel brings its own PR up to date with `base` (KERNEL-778), by a merge since the PR's branch is pushed (KERNEL-886). */
 const selfUpdate = (what: string, base: string) => `${what} in this chat's worktree: fetch, merge ${base} into the branch, re-run the tests and push as usual.`
 
 /**
@@ -1315,7 +1315,7 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
   const { ws, name } = b
   const out = { wake: new Set<TeamEvent>(), todo: [] as string[] }
   const at = `(workspace ${ws.id})`
-  // This chat's own PR in Build here: the chat fixes it in its own worktree, with nobody to message (KERNEL-778).
+  // This chat's own PR: the chat fixes it in its own worktree, with nobody to message (KERNEL-778).
   const self = !!c.self?.(ws.id)
   // An archived workspace takes no more messages, and archiving it was the user's call, so only news that asks nothing
   // of it still wakes the Lead: the last merge of a plan, and a review's verdict, which is about other work.
@@ -1343,7 +1343,7 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         // archived its workspace, which can't review again.
         const state = c.stateOf?.(r.of)
         const ofAt = `(workspace ${r.of})`
-        // A review of this chat's own PR in Build here: its blockers are the chat's to fix (KERNEL-778).
+        // A review of this chat's own PR: its blockers are the chat's to fix (KERNEL-778).
         const ofSelf = !!c.self?.(r.of)
         // The user overruled this kind's blockers on the head since, so nobody fixes them, and the PR reads as the rest of its
         // reviews have it (KERNEL-732).

@@ -2835,7 +2835,11 @@ describe('a chat with Kernel, on Claude (KERNEL-770, one-lead-chat)', () => {
   const lead = { id: 'kernel', name: 'Kernel', role: 'Lead', description: 'Lead.', lead: true, prompt: 'You are Kernel.', file: '/r/kernel.md' } as AgentDef
   const leadWs = { agentId: 'kernel', lead: true as const, threadId: 'thread' }
   const gateOf = (options: Options) => options.hooks!.PreToolUse!.filter((m) => !m.matcher).flatMap((m) => m.hooks).at(-1) as HookCallback
-  const closedGate = (options: Options) => options.hooks!.PreToolUse!.find((m) => m.matcher === 'Edit|Write|MultiEdit|NotebookEdit')!.hooks[0] as HookCallback
+  /** Every hook on file edits in turn, as the SDK runs them, answering with the first that has an opinion. */
+  const closedGate: (options: Options) => HookCallback = (options) => async (input, id, ctx) => {
+    for (const m of options.hooks!.PreToolUse!.filter((x) => x.matcher === 'Edit|Write|MultiEdit|NotebookEdit')) for (const h of m.hooks) { const out = await h(input, id, ctx); if (Object.keys(out).length) return out }
+    return {}
+  }
   const use = (gate: HookCallback, tool: string, input: Record<string, unknown> = {}) => gate({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, tool_use_id: tool, session_id: 's', transcript_path: '', cwd: '/tmp/ws' } as never, tool, { signal: new AbortController().signal } as never)
 
   it.each([['with no tools line', undefined], ['with a tools line that leaves Edit and Write out', ['Read', 'Grep', 'Glob', 'Bash']]])('takes the one Lead rule and may edit files, %s', async (_what, tools) => {
@@ -2843,7 +2847,7 @@ describe('a chat with Kernel, on Claude (KERNEL-770, one-lead-chat)', () => {
     const prompt = (options.systemPrompt as { append: string }).append
     expect(prompt).toContain(LEAD_RULE)
     expect(options.disallowedTools ?? []).not.toContain('Edit')
-    expect(options.disallowedTools ?? []).not.toContain('NotebookEdit')
+    expect(options.disallowedTools ?? []).not.toContain('Write')
     const gate = gateOf(options)
     for (const tool of ['Edit', 'Write', 'MultiEdit']) expect(await use(gate, tool, { file_path: '/tmp/ws/src/app.ts' }), tool).toEqual({})
     for (const tool of ['Read', 'Bash', 'mcp__kernel__create_workspace', 'mcp__kernel__link_issue']) expect(await use(gate, tool), tool).toEqual({})
@@ -2851,10 +2855,11 @@ describe('a chat with Kernel, on Claude (KERNEL-770, one-lead-chat)', () => {
     if (tools) expect(await use(gate, 'WebFetch')).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } })
   })
 
-  it('leaves out only what disallowedTools names', async () => {
+  it('refuses only the editing tools disallowedTools names', async () => {
     const { options } = await setup('acceptEdits', { agent: { ...lead, disallowedTools: ['Write'] }, ws: leadWs })
-    expect(options.disallowedTools).toContain('Write')
-    expect(options.disallowedTools).not.toContain('Edit')
+    const gate = gateOf(options)
+    expect(await use(gate, 'Write', { file_path: '/tmp/ws/src/app.ts' })).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } })
+    expect(await use(gate, 'Edit', { file_path: '/tmp/ws/src/app.ts' })).toEqual({})
   })
 
   it('denies an edit while the chat is in plan mode, and while it still sits on the shared main folder, but not a plan file', async () => {

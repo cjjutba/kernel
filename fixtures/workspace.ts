@@ -2459,14 +2459,14 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // one-lead-chat: a chat with Kernel that changed the refund rounding itself and handed the export to Sean, in one thread. Its changes are open, its PR is up, and Sean's workspace is the team's.
   WorkspaceLeadDidAndHandedOff: scene((f) => {
     const s = leadScene(f, {
-      right: 'changes', changes: lmFiles, ws: { ...lmPr, prState: 'ready' },
+      right: 'prs', ws: { ...lmPr, prState: 'ready', stat: { files: 2, added: 33, removed: 3 } },
       items: [
         { kind: 'text', id: 'lm-b-x', ts: at(10, 3), text: 'I rounded refunds half away from zero in money.ts and added a test for the cent case. The export has its own rounding, which is a separate lane, so Sean has it.' },
         mcpCall('lm-b-t1', 'kernel', 'create_workspace', { agent: 'sean', title: 'Round refunds in the CSV export', brief: 'The export rounds half to even. Match money.ts.' }, { output: 'Created ws-export on feat/refund-export for sean.' }),
         ...lmReply('lm-b', 'I opened PR #171 and started Sean on the export. I will tell you when it is ready.', 6)
       ]
     })
-    return { ...s, ui: { ...s.ui!, rightPanel: true } }
+    return s
   }),
   WorkspaceLeadOwnPrReview: scene((f) => leadScene(f, {
     right: 'changes', changes: lmFiles, ws: { ...lmPr, prState: 'ready' },
@@ -3186,14 +3186,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
   NewChatLocal: scene((f) => ({ ...leadNoChats(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), workspace: { ...DEFAULT_SETTINGS('/Users/you').workspace, mode: 'current' }, models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: false } } })),
   NewChatPlus: scene((f) => noPlan(leadNoChats(f))),
   NewChatLinkIssue: scene((f) => noPlan(leadNoChats(f))), // the + menu's Link issue picker over the project's Linear issues
-  // KERNEL-805: New chat has the Hand off | Build here switch. NewChat is Hand off at rest and NewChatBuildHere has Build here picked on it (scripts/shots.ts).
   // New chat with the permission menu open from its own button (scripts/shots.ts).
   NewChatPermissionMenu: scene((f) => noPlan(leadNoChats(f))),
   NewChatNarrow: scene((f) => noPlan(leadNoChats(f))),
-  NewChatSwitchNarrow: scene((f) => noPlan(leadNoChats(f))), // the chat column at 460px (scripts/shots.ts): the switch keeps its icons and drops its labels
-  NewChatBuildHere: scene((f) => noPlan(leadNoChats(f))),
-  // The Build here side hovered, with its shortcut in the tooltip (scripts/shots.ts).
-  NewChatSwitchTip: scene((f) => noPlan(leadNoChats(f))),
   // KERNEL-788: NewChat is the page at rest, with the header a chat has and one New chat tab. NewChatAfterSend is the chat right after the send: the box stays at the same y, the
   // breadcrumb and tab take the chat's title, and the panel setting is on but held closed. ChatPanelOpened is that chat after the toggle was pressed.
   NewChatAfterSend: scene((f) => noPlan(startedFromNewChat(f, false))),

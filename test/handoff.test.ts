@@ -83,8 +83,7 @@ describe('what teammates are told about setup (KERNEL-1012)', () => {
 describe('the Lead leaves acceptance criteria out of the brief (KERNEL-1080)', () => {
   it('asks for goal and files, and says the plan step\'s criteria are added', () => {
     for (const rule of [LEAD_RULE, forProvider(LEAD_RULE, 'codex')]) {
-      expect(rule).toContain('with a complete brief: goal and files.')
-      expect(rule).toContain("Its plan step's criteria are added for you.")
+      expect(rule).toContain("a complete brief (goal and files; the plan step's criteria are added for you)")
       expect(rule).not.toMatch(/goal, files, acceptance criteria/)
     }
   })
@@ -359,9 +358,9 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
 
   it('tells the Lead to ask for approval only in plan mode, and otherwise to ask in the chat before handing off', () => {
     expect(LEAD_RULE).not.toContain('in plan mode or through request_plan_approval')
-    // "Don't ask" holds only after an approved plan, so it can't be read against asking first with plan mode off.
-    const dontAsk = LEAD_RULE.split('\n').filter((l) => /don't ask/i.test(l))
-    expect(dontAsk).toEqual([expect.stringMatching(/^After an approved plan, don't end the turn with only the plan, and don't ask again whether to hand it off\./)])
+    // After an approved plan the Lead carries it out in the same turn, which can't be read against asking first with plan mode off.
+    expect(LEAD_RULE).toContain('After approval, carry the plan out in the same turn.')
+    expect(LEAD_RULE).toContain('Before creating several workspaces, say who gets what, ask one yes-or-no question')
     const tool = kernelTools({} as KernelToolDeps).find((x) => x.name === 'request_plan_approval')!
     expect(tool.description).toContain('Only while the chat is in plan mode. With plan mode off it refuses, and you ask in the chat before handing off.')
   })

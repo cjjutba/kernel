@@ -493,25 +493,17 @@ async function driveWhereByKeyboard(page: Page) {
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
-// NewChatBuildHere is New chat with Build here picked on the Hand off | Build here switch (KERNEL-805).
 // NewChatPermissionMenu is New chat with the permission menu open.
 async function openPermissionMenu(page: Page) {
   await openWhere(page, /^Permission mode:/, /Accept edits/)
 }
-async function pickBuildHere(page: Page) {
-  await page.getByRole('button', { name: 'Build here' }).click()
-  await page.mouse.move(0, 0)
-  await page.waitForTimeout(300)
-}
 async function openBranchMenu(page: Page) {
-  await page.getByRole('button', { name: 'Build here' }).click()
   await openPlusPicker(page, /^Branch/, /invoice-table/)
   // The row with a workspace shows Open workspace while it is the active one, as on hover or focus.
   await page.getByRole('menuitemradio', { name: /t-12-invoice-schema/ }).focus()
   await page.waitForTimeout(300)
 }
 async function pickBranchChip(page: Page) {
-  await page.getByRole('button', { name: 'Build here' }).click()
   await openPlusPicker(page, /^Branch/, /invoice-table/)
   await page.getByRole('menuitemradio', { name: /t-14-invoice-table/ }).click()
   await page.mouse.move(0, 0)
@@ -521,7 +513,6 @@ async function pickBranchChip(page: Page) {
 // LeadNoChatsBranch is New chat with Kernel with the + menu's Branch picker open, main checked. The menu is the composer's own, so open it and wait for the
 // remote's branches, which the menu reads when it opens.
 async function openBaseBranch(page: Page) {
-  await page.getByRole('button', { name: 'Build here' }).click()
   await openPlusPicker(page, /^Branch/, /invoice-table/)
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
@@ -602,11 +593,6 @@ async function hoverRow(page: Page, row: string) {
   await page.waitForTimeout(300)
 }
 
-async function hoverLeadSwitch(page: Page) {
-  await page.locator('.cmp-switch-side').last().hover()
-  await page.waitForTimeout(800)
-}
-
 async function hoverFileChip(page: Page) {
   await page.locator('.cmp-chip[data-tip]').first().hover()
   await page.waitForTimeout(800)
@@ -627,8 +613,7 @@ async function hoverUsage(page: Page) {
   await page.waitForTimeout(900)
 }
 
-// NewChatSwitchNarrow pins the chat column to 460px, which the window's minimum width never reaches on its own, to show the Hand off | Build here switch as two icons.
-// NewChatNarrow and ComposerModesNarrow are the box with the window at 600px: the chat column is about 600px, where the permission name and the Hand off label give way to their icons.
+// NewChatNarrow and ComposerModesNarrow are the box with the window at 600px: the chat column is about 600px, where the permission name gives way to its icon.
 const windowAt = (w: number) => async (page: Page, app: ElectronApplication) => {
   await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.w, size.h), { w, h: HEIGHT })
   await page.waitForTimeout(400)
@@ -802,7 +787,6 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceModelPickerLocked: hoverLockedProvider,
   ComposerAttaching: dropWhileReading,
   ComposerFileTip: hoverFileChip,
-  NewChatSwitchTip: hoverLeadSwitch,
   ConfirmOverrule: openOverrule,
   UsageFooter: hoverUsage,
   AuditSidebarWide: async (page) => { const h = page.getByRole('separator', { name: 'Resize sidebar' }); await h.focus(); await page.keyboard.press('End'); await h.blur(); await page.waitForTimeout(300) },
@@ -831,10 +815,8 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   NewChatPlus: (page) => openWhere(page, 'Add context'),
   NewChatLinkIssue: async (page) => { await page.getByRole('button', { name: 'Add context' }).click(); await page.getByRole('menuitem', { name: /Link issue/ }).click(); await page.getByRole('listbox').waitFor(); await page.mouse.move(0, 0); await page.waitForTimeout(400) },
   NewChatNarrow: windowAt(600),
-  NewChatSwitchNarrow: async (page) => { await page.locator('.ws-main').evaluate((el) => { el.style.width = '460px'; el.style.justifySelf = 'start' }); await page.waitForTimeout(400) },
   ComposerModesNarrow: windowAt(600),
   NewChatPermissionMenu: openPermissionMenu,
-  NewChatBuildHere: pickBuildHere,
   PanelFilter: filterChanges,
   SettingsAccounts: fullLength(),
   SettingsAddAccountApiKey: typeApiKey,

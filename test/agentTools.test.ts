@@ -209,7 +209,7 @@ describe('agent tools', () => {
   })
 
   it('gives a Lead the tools that edit files whatever its tools line says, and lets disallowedTools take them away (one-lead-chat)', () => {
-    const edits = ['Edit', 'Write', 'NotebookEdit']
+    const edits = ['Edit', 'Write', 'MultiEdit']
     const lead = toolPolicy(['Read', 'Grep', 'Bash'], { lead: true })!
     for (const t of edits) { expect(lead.allows(t), t).toBe(true); expect(lead.hidden, t).not.toContain(t) }
     const mate = toolPolicy(['Read', 'Grep', 'Bash'])!

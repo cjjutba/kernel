@@ -27,7 +27,7 @@ Requests go the other way: screens call `call(channel, req)`, the preload forwar
 
 ## Sessions
 
-`services/sessions.ts` keeps what every chat shares, whatever it runs on: queues, pauses and holds, usage limits, the chats a limit or a quit cut off, carry-on, the idle stop, pids and hand-offs. Each chat's process is a `Runner` (`services/providers/types.ts`): `ClaudeRunner` (`providers/claude.ts`) or `CodexRunner` (`providers/codex/runner.ts`), picked by `Chat.provider`. A runner calls back through its `RunnerHost` for rows, the turn's start and end, limits, approvals and plans. Plan approval is one `requestPlan`, which Claude's ExitPlanMode and a Codex plan-mode turn both call (KERNEL-406).
+`services/sessions.ts` keeps what every chat shares, whatever it runs on: queues, pauses and holds, usage limits, the chats a limit or a quit cut off, carry-on, the idle stop and pids. Each chat's process is a `Runner` (`services/providers/types.ts`): `ClaudeRunner` (`providers/claude.ts`) or `CodexRunner` (`providers/codex/runner.ts`), picked by `Chat.provider`. A runner calls back through its `RunnerHost` for rows, the turn's start and end, limits, approvals and plans. Plan approval is one `requestPlan`, which Claude's ExitPlanMode and a Codex plan-mode turn both call (KERNEL-406).
 
 `Sessions.runMode` answers `chats.runMode` with the mode a chat runs in, the mode picked for it and why they differ (`chatMode` in `services/permissions.ts`). `chat.runMode` pushes each change, for chats with no process too (KERNEL-572).
 

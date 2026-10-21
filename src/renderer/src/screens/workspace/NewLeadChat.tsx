@@ -275,7 +275,7 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
           {usable
             ? <>
               <h2 className="lead-ask">What's next for {projectPicker('title')}?</h2>
-              <p className="lead-note">Brief the Lead. It plans the work, then hands each task to your team.</p>
+              <p className="lead-note">Brief the Lead. It answers, makes small changes itself, or hands tasks to your team.</p>
             </>
             : projects.length
               ? <>

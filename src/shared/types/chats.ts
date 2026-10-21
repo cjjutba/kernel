@@ -242,7 +242,7 @@ export type ChatItem =
   | { kind: 'interrupted'; id: string; ts: number }
   /**
    * A Team update drawn in the transcript and never sent to the session (KERNEL-990). Kernel posts one for a review of the chat's
-   * own PR in Build here, holding only the reviewer's row, so the verdict shows without a turn.
+   * own PR, holding only the reviewer's row, so the verdict shows without a turn.
    */
   | { kind: 'update'; id: string; ts: number; update: TeamUpdate }
   /** Where an approval card sits in the transcript. The card itself reads the Approval, so the Inbox and the transcript stay in sync (D-007). */

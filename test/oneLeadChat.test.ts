@@ -63,6 +63,7 @@ describe('what the old modes left behind is ignored (one-lead-chat)', () => {
     const ws = k.store.workspace(c.workspaceId)!
     k.store.saveWorkspace({ ...ws, leadMode: 'handoff', buildGoAhead: { quote: 'fix it', at: 1, branch: ws.branch } } as Workspace)
     expect(ownsFolder(k.store.workspace(ws.id))).toBe(true)
+    k.store.saveChat({ ...k.store.chat(c.id)!, plan: false })
     expect(k.lead.buildOpen(c.id)).toBe(true)
     const handlers = k.handlers() as Record<string, unknown>
     expect(handlers).not.toHaveProperty('lead.setMode')
@@ -92,6 +93,9 @@ describe('a new chat (one-lead-chat)', () => {
     expect(ws.branch).toMatch(/^kernel\//)
     expect(ws.port).toBeGreaterThan(0)
     expect(ownsFolder(ws)).toBe(true)
+    // Plan mode is on for a new chat unless Settings says otherwise, and it shuts the gate until the plan is approved.
+    expect(k.lead.buildOpen(c.id)).toBe(!c.plan)
+    k.store.saveChat({ ...k.store.chat(c.id)!, plan: false })
     expect(k.lead.buildOpen(c.id)).toBe(true)
     expect(existsSync(k.mainFolder.path(project.id))).toBe(false)
   })
@@ -191,15 +195,12 @@ describe("Kernel's tools in every chat (one-lead-chat)", () => {
     await writeFile(join(ws.path, 'money.ts'), 'export const round = (n: number) => Math.round(n)\n')
     await git(ws.path, 'add', '-A')
     await git(ws.path, 'commit', '-qm', 'round refunds')
-    const lead = (await k.agents(project.id)).find((a) => a.lead) as AgentDef
-    const create = kernelTools(k.lead.leadToolDeps(project.id, lead, k.store.chat(c.id)!)).find((t) => t.name === 'create_workspace')!
     // The teammate's part, started from the Lead's branch, so it sees the Lead's commit.
-    const r = await create.handler({ agent: 'christian', title: 'Export rounding', brief: 'Round the CSV export the same way.', base_ref: ws.branch } as never, {})
-    expect((r.content[0] as { text: string }).text).toMatch(/^Created /)
-    const mate = k.store.workspaces(project.id).find((w) => w.agentId === 'christian')!
-    await k.workspaces.worktreeMade(mate.id).catch(() => undefined)
-    expect((await git(project.path, 'merge-base', '--is-ancestor', ws.branch, mate.branch).then(() => 'yes', () => 'no'))).toBe('yes')
+    const mate = await k.createWorkspace(project.id, { prompt: 'Round the CSV export the same way.', agentId: 'christian', title: 'Export rounding', baseRef: ws.branch, leadChatId: c.id })
+    expect((await git(mate.path, 'log', '-1', '--format=%s')).trim()).toBe('round refunds')
+    expect(mate.baseRef).toBe(ws.branch)
     expect(mate.leadChatId).toBe(c.id)
+    expect(existsSync(join(mate.path, 'money.ts'))).toBe(true)
   })
 })
 
@@ -273,6 +274,7 @@ describe('a chat still on the shared folder edits nothing, and moves to its own 
   it('leaves the gate shut in plan mode, in a folder of its own too', async () => {
     const { k, chat } = await setup()
     const c = await chat()
+    k.store.saveChat({ ...k.store.chat(c.id)!, plan: false })
     expect(k.lead.buildOpen(c.id)).toBe(true)
     k.store.saveChat({ ...k.store.chat(c.id)!, plan: true })
     expect(k.lead.buildOpen(c.id)).toBe(false)

@@ -987,9 +987,9 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     await k.chats.closeChat(icons.id)
     expect(k.lead.chatWorkspaces(project.id)).toEqual([])
     expect(k.store.threads(project.id).map((t) => t.id)).toEqual([first.threadId, icons.threadId])
-    // Restore opens the chat again on the shared main folder, which has no setup to wait for (KERNEL-1050).
+    // Restore opens the chat again in its own worktree, which sets up again like any restored workspace.
     const back = await k.restoreWorkspace(first.workspaceId)
-    expect(back.status).toBe('ready')
+    expect(back.status).toBe('setup')
     expect(k.store.thread(first.threadId!)!.closedAt).toBeUndefined()
     expect(pushed.at(-1)).toBe(`${first.threadId}:open`)
     expect(k.chatTabs(first.workspaceId).map((c) => c.id)).toEqual([second.id])

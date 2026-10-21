@@ -256,9 +256,9 @@ export interface SessionDeps {
    * to carry on (KERNEL-777). `refused`: it was a carry-on that a limit refused again within seconds, which is no news unless
    * `stuck`: the third strike, after which `carryOn` stops (KERNEL-1031).
    */
-  /** Whether a Build here chat may change files now, read at each step (`Lead.buildOpen`, KERNEL-992). Left out, it always may. */
+  /** Whether a chat with Kernel may change files now, read at each step (`Lead.buildOpen`, KERNEL-992). Left out, it always may. */
   buildOpen?: (chatId: string) => boolean
-  /** The user approved a plan in a Build here chat, which counts as the go-ahead (KERNEL-992). */
+  /** The user approved a plan in a chat with Kernel, which counts as the go-ahead (KERNEL-992). */
   onTurnDone?: (ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy; account?: string; limit?: true; refused?: true; stuck?: true }) => void
   /**
    * A chat a usage limit or a quit cut off answered its carry-on cleanly: its queue went, or Kernel's nudge did, and the
