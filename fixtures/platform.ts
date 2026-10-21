@@ -248,7 +248,7 @@ const envProjectA: Partial<Fixture> = {
   ...clientA({ env: { files: envFiles }, sources: { ...kernelFiles.sources, 'env.files': 'local' } }),
   env: { projects: { [ids.projectA]: { names: ['DATABASE_URL', 'STRIPE_SECRET_KEY'], files: envFiles.map((path) => ({ path, missing: path.startsWith('src/') })) } } }
 }
-const prSettings = { ...DEFAULT_SETTINGS('/Users/you'), pr: { ...DEFAULT_SETTINGS('/Users/you').pr, autoMerge: { on: false, maxLines: 200, alwaysReview: ['infra/**', 'scripts/release.sh'], withoutReview: false }, createInstructions: '# Create a pull request\n1. Rebase on origin/main and run pnpm test\n2. Title it as a Conventional Commit\n3. Fill in summary, scope and risk', resolveInstructions: '# Resolve conflicts\n1. Rebase on origin/main\n2. Re-run pnpm test and pnpm typecheck', fixChecksInstructions: '# Fix failing checks\n1. Read the failing job log\n2. Fix the cause, not the test\n3. Push and wait for the checks', addressReviewInstructions: '# Address review comments\n1. Read every open thread\n2. Change the code or reply with a reason\n3. Push and resolve the threads' } }
+const prSettings = { ...DEFAULT_SETTINGS('/Users/you'), pr: { ...DEFAULT_SETTINGS('/Users/you').pr, autoMerge: { on: false, maxLines: 400, alwaysReview: ['src/main/db.ts', 'electron-builder.yml'], withoutReview: false }, fixChecksInstructions: '# Fix failing checks\n1. Read the failing job log\n2. Fix the cause, not the test\n3. Push and wait for the checks' } }
 /** What approvals saved with Always allow in this project. The gh one is long enough to clamp to two lines. */
 const projectRules = [
   'pnpm test', 'pnpm typecheck',
@@ -668,6 +668,7 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-455: Auto is the pick, and the fixture's availability has it working on Claude Code and not on Codex.
   SettingsPermissions: settingsPage('permissions', { settings: { ...autoMode(), permissions: { ...autoMode().permissions, neverAllow: ['git push origin main', 'curl * | sh'] } } }),
   SettingsBigTerminal: settingsPage('bigterm', bigTerminal),
+  SettingsBigTerminalPreset: settingsPage('bigterm', { terminalClis: [codex] }),
   SettingsAbout: settingsPage('about', { preflight: [] }),
   // KERNEL-397: usage data is opt-in. This build can send, and the user hasn't said yes, so every event is kept on the Mac.
   SettingsPrivacy: settingsPage('privacy', { telemetry: { canSend: true, recent: [
@@ -742,8 +743,11 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-726: Client A changes the merge method, so the app page says so under the row and links to the project.
   SettingsPRs: settingsPage('prs', { settings: prSettings, ...clientA({ pr: { ...kernelFiles.pr, mergeMethod: 'rebase' }, sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local' } }) }),
   SettingsPRsWithoutReview: settingsPage('prs', { settings: { ...prSettings, pr: { ...prSettings.pr, autoMerge: { ...prSettings.pr.autoMerge, on: true, withoutReview: true } } } }),
+  SettingsPRsMergeWithoutReview: settingsPage('prs', { settings: { ...prSettings, pr: { ...prSettings.pr, autoMerge: { ...prSettings.pr.autoMerge, on: true, withoutReview: true } } } }),
+  // Redesign 15: Create PR's text in its sheet, with one edit saved so the footer says Saved. The edit is in scripts/shots.ts.
+  SettingsPRsInstructions: settingsPage('prs', { settings: prSettings }),
   // KERNEL-727: a search for "size limit" landed here: the row is highlighted and its field has focus.
-  SettingsPRsLanded: scene(() => ({ settings: prSettings, ui: { route: { name: 'settings', page: 'prs', row: 'size-limit' } } })),
+  SettingsPRsLanded: scene(() => ({ settings: prSettings, ...clientA({ pr: { ...kernelFiles.pr, mergeMethod: 'rebase' }, sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local' } }), ui: { route: { name: 'settings', page: 'prs', row: 'merge-method' } } })),
   // KERNEL-1066: the evidence comment setting, off by default, landed on from a search.
   SettingsPRsEvidenceComment: scene(() => ({ settings: prSettings, ui: { route: { name: 'settings', page: 'prs', row: 'evidence-comment' } } })),
   // KERNEL-721: Size limit typed and left, shown while main is still saving, just after it answered and after main clamped it. The typing is in scripts/shots.ts.
