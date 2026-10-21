@@ -14,8 +14,8 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 
-describe('the right panel\'s bottom pane in the store', () => {
-  it('starts a third of the panel, collapsed in Kernel\'s chats and open in a teammate\'s', async () => {
+describe('the bottom drawer in the store', () => {
+  it('starts a third of the chat column, collapsed in Kernel\'s chats and open in a teammate\'s', async () => {
     const { getState } = await launch()
     expect(getState().ui.bottomRatio).toBeCloseTo(1 / 3)
     expect(getState().ui.bottomCollapsed).toEqual({ lead: true, teammate: false })
@@ -77,22 +77,22 @@ describe('the right panel\'s bottom pane in the store', () => {
   })
 })
 
-describe('the two panes of the right panel', () => {
-  it('splits 544 and 272 under the 44px band at 1440x900', () => {
+describe('the chat column and its drawer', () => {
+  it('gives the drawer a third of the chat column at 1440x900', () => {
     expect(bottomHeight(1 / 3, 816)).toBe(272)
   })
-  it('keeps the top at 160px and the bottom at its tab bar plus 120px', () => {
+  it('keeps the chat at 320px and the drawer at its tab bar plus 120px', () => {
     expect(bottomLimits(816)).toEqual({ min: BOTTOM_MIN, max: 816 - TOP_MIN })
     expect(bottomHeight(0.05, 816)).toBe(BOTTOM_MIN)
     expect(bottomHeight(0.95, 816)).toBe(816 - TOP_MIN)
   })
-  it('keeps the bottom its minimum in a panel too short for both', () => {
+  it('keeps the bottom its minimum in a column too short for both', () => {
     expect(bottomLimits(250)).toEqual({ min: BOTTOM_MIN, max: BOTTOM_MIN })
     expect(bottomHeight(1 / 3, 250)).toBe(BOTTOM_MIN)
   })
   it('saves a dragged height as a share, so a window of another height keeps the proportion', () => {
     const ratio = ratioFor(408, 816)
     expect(ratio).toBe(0.5)
-    expect(bottomHeight(ratio, 600)).toBe(300)
+    expect(bottomHeight(ratio, 1000)).toBe(500)
   })
 })

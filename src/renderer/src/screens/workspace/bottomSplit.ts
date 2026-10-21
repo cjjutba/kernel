@@ -3,19 +3,19 @@ import { isLeadWorkspace, leadOf } from '../../lead'
 import { actions, BOTTOM_RATIO_DEFAULT, getState, type State } from '../../store'
 
 /**
- * The right panel's two panes (KERNEL-513). The bottom pane is a fraction of the panel below the PR band, and `.ws-split` and `.bottom-panel` in
- * workspace.css clamp it to the same limits: the top keeps `TOP_MIN` and the bottom its tab bar plus about 120px, so a window of any height keeps both panes.
+ * The chat column and the drawer under it (KERNEL-513, moved out of the right panel by KERNEL-1212). The drawer is a fraction of the chat column's height, and `.bottom-panel`
+ * in workspace.css clamps it to the same limits: the chat keeps `TOP_MIN` for the transcript and composer and the drawer its tab bar plus about 120px, so a window of any height keeps both.
  */
 export const TAB_BAR = 40
 export const BOTTOM_MIN = TAB_BAR + 120
-export const TOP_MIN = 160
+export const TOP_MIN = 320
 
-/** The smallest and largest the bottom pane gets in a panel `container` px tall. The panel never gets so short that `max` falls under `min`. */
+/** The smallest and largest the bottom pane gets in a chat column `container` px tall. The column never gets so short that `max` falls under `min`. */
 export function bottomLimits(container: number) {
   return { min: BOTTOM_MIN, max: Math.max(BOTTOM_MIN, container - TOP_MIN) }
 }
 
-/** The height a saved fraction gives in a panel `container` px tall, as workspace.css computes it. */
+/** The height a saved fraction gives in a chat column `container` px tall, as workspace.css computes it. */
 export function bottomHeight(ratio: number, container: number) {
   const { min, max } = bottomLimits(container)
   return Math.round(Math.min(max, Math.max(min, ratio * container)))
@@ -29,13 +29,12 @@ export function ratioFor(height: number, container: number) {
 /** Lead chats and teammates' workspaces each remember whether the bottom pane is collapsed. */
 export const bottomKindOf = (s: Pick<State, 'agents'>, ws: Workspace): BottomKind => (isLeadWorkspace(ws, ws.projectId, leadOf(s.agents, ws.projectId)?.id) ? 'lead' : 'teammate')
 
-/** ⌘J. On a workspace screen it collapses or opens the bottom pane; with the right panel hidden it brings the panel back with the pane open. */
+/** ⌘J and the title bar's first toggle. On a workspace screen it folds or opens the drawer under the chat, whether or not the right panel shows. */
 export function toggleBottomPanel() {
   const s = getState()
-  const { route, rightPanel, bottomCollapsed } = s.ui
+  const { route, bottomCollapsed } = s.ui
   const ws = route.name === 'workspace' ? s.workspaces.find((w) => w.id === route.workspaceId) : undefined
   if (!ws) return
   const kind = bottomKindOf(s, ws)
-  if (!rightPanel) actions.ui.setRightPanel(true)
-  actions.ui.setBottomCollapsed(kind, rightPanel ? !bottomCollapsed[kind] : false)
+  actions.ui.setBottomCollapsed(kind, !bottomCollapsed[kind])
 }

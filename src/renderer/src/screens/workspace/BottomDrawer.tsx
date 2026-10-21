@@ -1,22 +1,22 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { ScriptSuggestion, Workspace } from '@shared/types'
 import { onSharedFolder } from '@shared/leadWorkspace'
 import { scriptKey } from '@shared/scriptLog'
-import { call } from '../../../api'
-import { isLeadWorkspace, leadOf, openLeadChat } from '../../../lead'
-import { actions, go, useStore, type State } from '../../../store'
-import { useRemembered } from '../../../remember'
-import { Button, EmptyList, Icon, IconButton, Menu, MENU_SEPARATOR, Spinner, SplitButton, useBusy, type MenuEntry } from '../../../ui'
-import { patchProjectSettings, useProjectSettings } from '../../settings/useSettings'
-import { attempt } from '../MessageActions'
-import { BottomResize } from '../BottomResize'
-import { collapsedWord } from '../bottomWord'
-import { bottomKindOf } from '../bottomSplit'
-import { pickerNames, runAllNames, runningRuns } from '../runScripts'
-import { ScriptView } from '../ScriptView'
-import { TerminalView } from '../terminal/Terminal'
-import { SHARED_NOTHING, sharedWhy } from './ChangesTab'
-import { TabStrip } from './TabStrip'
+import { call } from '../../api'
+import { isLeadWorkspace, leadOf, openLeadChat } from '../../lead'
+import { actions, go, useStore, type State } from '../../store'
+import { useRemembered } from '../../remember'
+import { Button, EmptyList, Icon, IconButton, Menu, MENU_SEPARATOR, Spinner, SplitButton, useBusy, type MenuEntry } from '../../ui'
+import { patchProjectSettings, useProjectSettings } from '../settings/useSettings'
+import { attempt } from './MessageActions'
+import { BottomResize } from './BottomResize'
+import { collapsedWord } from './bottomWord'
+import { bottomKindOf } from './bottomSplit'
+import { pickerNames, runAllNames, runningRuns } from './runScripts'
+import { ScriptView } from './ScriptView'
+import { TerminalView } from './terminal/Terminal'
+import { SHARED_NOTHING, sharedWhy } from './panel/ChangesTab'
+import { TabStrip } from './panel/TabStrip'
 
 /** Setup is running from its first line until it exits. A new start clears the exit, so the lines of its last run don't count as a stop. */
 function setupRunning(s: Pick<State, 'scripts' | 'scriptExit'>, workspaceId: string) {
@@ -113,14 +113,16 @@ function RunSplit({ label, commands, none, running, names, runningNames, busy, o
 }
 
 /**
- * The bottom pane: Setup, Run and Terminal under the files, a third of the panel until it is dragged (KERNEL-513). The chevron folds it to its tab bar, and
- * pressing a tab opens it again. Lead chats and teammates' workspaces each remember whether it is folded. Folded, the bar still says when something runs (Pen 9.18).
+ * The bottom drawer: Setup, Run and Terminal under the chat and its composer, the full width of the chat column (KERNEL-1212, amends KERNEL-512 and KERNEL-513). It is
+ * a third of the column until it is dragged. The chevron folds it to its tab bar, and pressing a tab opens it again. Lead chats and teammates' workspaces each remember
+ * whether it is folded. Folded, the bar still says when something runs (Pen 9.18). The space at the right of the strip after Run is left for terminal actions.
  */
-export function BottomPanel({ ws }: { ws: Workspace }) {
+export function BottomDrawer({ ws }: { ws: Workspace }) {
   const bottom = useStore((s) => s.ui.workspace.bottom)
   const kind = useStore((s) => bottomKindOf(s, ws))
   const collapsed = useStore((s) => s.ui.bottomCollapsed[kind])
   const panel = useRef<HTMLDivElement>(null)
+  const ratio = useStore((s) => s.ui.bottomRatio)
   const pick = (id: string) => {
     actions.ui.setWorkspaceView({ bottom: id as typeof bottom })
     if (collapsed) actions.ui.setBottomCollapsed(kind, false)
@@ -194,10 +196,10 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
     )
   const word = collapsedWord({ setupRunning: setupBusy, setupFailed: ws.status === 'failed', running: runningNames, scripts: names.length, noRun })
   return (
-    <div ref={panel} className="bottom-panel" data-collapsed={collapsed || undefined}>
+    <div ref={panel} className="bottom-panel" role="region" aria-label="Terminal drawer" data-collapsed={collapsed || undefined} style={{ '--bottom-ratio': ratio } as CSSProperties}>
       {!collapsed && <BottomResize panel={panel} />}
       <div className="bottom-tabs">
-        <IconButton icon="chevron" size={14} label={collapsed ? 'Expand bottom panel' : 'Collapse bottom panel'} aria-expanded={!collapsed} data-tip-kbd="⌘J" onClick={() => actions.ui.setBottomCollapsed(kind, !collapsed)} />
+        <IconButton icon="chevron" size={14} label={collapsed ? 'Expand drawer' : 'Collapse drawer'} aria-expanded={!collapsed} data-tip-kbd="⌘J" onClick={() => actions.ui.setBottomCollapsed(kind, !collapsed)} />
         <TabStrip label="Scripts" value={collapsed ? '' : bottom} onChange={pick} tabs={[{ id: 'setup', label: 'Setup', busy: setupBusy }, { id: 'run', label: 'Run', busy: bottom === 'run' && selectedRunning && !collapsed }, { id: 'terminal', label: 'Terminal' }]} />
         {/* Folded, the bar says what the scripts are doing, so you can tell the app is up without opening it (KERNEL-529). */}
         {collapsed && word && <span className="bottom-word" role="status">{word}</span>}

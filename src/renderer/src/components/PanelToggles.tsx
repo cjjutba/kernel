@@ -96,17 +96,17 @@ export function SidebarToggleSlot() {
 }
 
 /**
- * The title bar's view toggles of a workspace (Pen 9.1): the bottom pane, the Session rail and the right panel, in the header's right corner. The rail and the panel switch
- * places, and the one that is on turns off when it is pressed. `kind` says whose bottom pane it is.
+ * The title bar's view toggles of a workspace (Pen 9.1): the terminal drawer, the Session rail and the right panel, in the header's right corner. The rail and the panel switch
+ * places, and the one that is on turns off when it is pressed. `kind` says whose drawer it is.
  */
 export function ViewToggles({ kind }: { kind: BottomKind }) {
   const ui = useStore((s) => s.ui)
   const id = inView(ui.route)
   const panel = panelShownIn(ui, id)
-  const bottomOpen = panel && !ui.bottomCollapsed[kind]
+  const bottomOpen = !ui.bottomCollapsed[kind]
   return (
     <div className="view-toggles" role="group" aria-label="Views">
-      <IconButton icon="panelBottom" size={16} label={bottomOpen ? 'Hide bottom panel' : 'Show bottom panel'} aria-pressed={bottomOpen} data-tip-kbd="⌘J" onClick={toggleBottomPanel} />
+      <IconButton icon="panelBottom" size={16} label={bottomOpen ? 'Hide terminal' : 'Show terminal'} aria-pressed={bottomOpen} data-tip-kbd="⌘J" onClick={toggleBottomPanel} />
       <IconButton icon="railList" size={16} label={railShownIn(ui, id) ? 'Hide Session' : 'Show Session'} aria-pressed={railShownIn(ui, id)} onClick={toggleRail} />
       <IconButton icon="panelRight" size={16} label={panel ? 'Hide panels' : 'Show panels'} aria-pressed={panel} data-tip-kbd="⌘⇧B" onClick={toggleRightPanel} />
     </div>

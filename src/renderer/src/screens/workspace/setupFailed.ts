@@ -20,12 +20,11 @@ export function chatTitle(ws: Workspace, chatId: string | undefined): string | u
   return chat?.title ?? ws.title
 }
 
-/** Opens the Setup tab of the workspace's bottom pane, with the right panel open. Nothing is rerun. */
+/** Opens the Setup tab of the workspace's bottom drawer. Nothing is rerun. */
 export function openSetupLog(workspaceId: string) {
   const ws = getState().workspaces.find((w) => w.id === workspaceId)
   if (!ws) return
   go({ name: 'workspace', workspaceId })
-  actions.ui.setRightPanel(true)
   actions.ui.setWorkspaceView({ bottom: 'setup' })
   actions.ui.setBottomCollapsed(bottomKindOf(getState(), ws), false, false)
 }
