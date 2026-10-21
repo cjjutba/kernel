@@ -1,10 +1,6 @@
 /* A project's Agents page (Redesign 15): agent rows with the model they run on, the Kernel role row and a project with no team. Tokens only. */
 .rm-agent { padding-top: 11px; padding-bottom: 11px; }
 .rm-agent .set-text { flex: 1 1 200px; }
-/* The model and effort an agent's file pins, as the composer's control names them. It only shows them: Edit opens the field that changes them. */
-.rm-model { flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px; min-width: 0; font-size: var(--fs-code); color: var(--ink-2); }
-.rm-model-name { white-space: nowrap; }
-.rm-model-effort { color: var(--muted); white-space: nowrap; }
 .rm-pill { display: inline-flex; align-items: center; height: 22px; box-sizing: border-box; padding: 0 8px; border-radius: var(--r-xs); background: var(--tint-muted); font-size: var(--fs-meta); color: var(--ink-3); }
 .rm-kernel .set-text { flex-basis: 200px; }
 .rm-noteam { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 30px 24px 28px; text-align: center; }
