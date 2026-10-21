@@ -137,8 +137,13 @@ button.hc-pr:hover { color: var(--ink); }
 .section-label.sb-projects-label { position: relative; margin-top: 8px; flex-shrink: 0; }
 .row.project-actions { position: absolute; right: 4px; top: 3px; gap: 2px; }
 
-/* The Search field above New chat: the Search settings box (.set-search) as a button that opens the ⌘K palette (KERNEL-930). */
-.sb-search { display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; padding: 0 10px 0 9px; border-radius: var(--r-sm); border: 1px solid var(--panel-line); background: var(--panel); color: var(--muted); text-align: left; margin-top: 8px; flex-shrink: 0; transition: border-color var(--dur-fast); }
+/* The Search field, with New chat beside it: the Search settings box (.set-search) as a button that opens the ⌘K palette (KERNEL-930). */
+.sb-search-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-shrink: 0; }
+.sb-search { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; height: 30px; padding: 0 10px 0 9px; border-radius: var(--r-sm); border: 1px solid var(--panel-line); background: var(--panel); color: var(--muted); text-align: left; flex-shrink: 0; transition: border-color var(--dur-fast); }
+/* New chat, a 30px icon beside Search. It rests on --surface and takes --surface-3 while New chat is open, as a selected row does. */
+.sb-new { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--r-sm); background: var(--surface); color: var(--ink-3); transition: color var(--dur-fast) var(--ease-out); }
+.sb-new:hover { color: var(--ink); }
+.sb-new[aria-current='page'] { background: var(--surface-3); color: var(--ink-2); }
 .sb-search svg { color: var(--faint); flex-shrink: 0; }
 .sb-search:hover { border-color: var(--line-3); }
 

@@ -3,7 +3,7 @@ import type { ChatPart, IssueSummary, PrSummary, Workspace } from '@shared/types
 import { call, cleanError } from '../../../api'
 import { useStore } from '../../../store'
 import { oneOf, useRemembered } from '../../../remember'
-import { arrowRow, Button, Icon, Tabs } from '../../../ui'
+import { arrowRow, Button, Icon, Spinner, Tabs } from '../../../ui'
 import { useLayer } from '../../../ui/hooks'
 import { chooseTracker } from '../../issues/parts'
 import { useProjectTracker } from '../../issues/useProjectTracker'
@@ -87,7 +87,7 @@ export function IssuePicker({ projectId, anchorRef, onPick, onClose, style }: { 
             <span className="grow ellipsis">{r.title}</span>
           </button>
         ))}
-        {load.state === 'loading' && <p className="link-note">Loading</p>}
+        {load.state === 'loading' && <p className="link-note" data-loading><Spinner label={null} pattern="arrow-down" />Loading</p>}
         {load.state === 'error' && <p role="alert" className="link-note">{load.message}</p>}
         {none && (
           <div className="link-none">
@@ -133,7 +133,7 @@ export function PrPicker({ projectId, anchorRef, onPick, onClose, style }: { pro
             <span className="grow ellipsis">{p.title}</span>
           </button>
         ))}
-        {load.state === 'loading' && <p className="link-note">Loading</p>}
+        {load.state === 'loading' && <p className="link-note" data-loading><Spinner label={null} pattern="arrow-down" />Loading</p>}
         {load.state === 'error' && <p role="alert" className="link-note">{load.message}</p>}
         {load.state === 'ready' && !rows.length && <p className="link-note">{q.trim() ? 'No open pull requests match.' : 'No open pull requests.'}</p>}
       </div>

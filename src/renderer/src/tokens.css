@@ -54,6 +54,8 @@
   --chip-line: #353535;
   --pill-line: #262626;
   --track: #454545;
+  /* The ring of a step that has not started, in the Session rail: the dark theme's outline, and a step darker than --line-3 in light, where the outline is too faint to read as a ring (Pen 18.2). */
+  --pending: #333333;
   --scrim: rgba(0, 0, 0, 0.3);
   --focus: rgba(247, 247, 247, 0.55);
   --term-black: #7a7a7a;
@@ -112,6 +114,7 @@
   --chip-line: #d4d4d4;
   --pill-line: #e6e6e6;
   --track: #bebebe;
+  --pending: #c6c6c6;
   --scrim: rgba(20, 21, 24, 0.14);
   --focus: rgba(27, 27, 27, 0.55);
   --term-black: #18191b;
@@ -133,6 +136,7 @@
     --line-2: #737373;
     --line-3: #737373;
     --track: #949494;
+    --pending: #737373;
     --panel-line: #4f4f4f;
     --card-line: #737373;
     --chip-line: #737373;
@@ -149,6 +153,7 @@
     --line-2: #828282;
     --line-3: #828282;
     --track: #626262;
+    --pending: #828282;
     --panel-line: #b4b4b4;
     --card-line: #828282;
     --chip-line: #828282;

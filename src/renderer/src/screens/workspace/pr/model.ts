@@ -135,6 +135,8 @@ export const METHOD_WORD: Record<AppSettings['pr']['mergeMethod'], string> = { s
 
 /** The merge line and the chat row's wording for how a merge landed. Shared with the PR toast. */
 export const LANDED: Record<AppSettings['pr']['mergeMethod'], string> = { squash: 'Squashed into', merge: 'Merged into', rebase: 'Rebased onto' }
+/** The merged toast's line when the agent is known: "Noor squashed it into main." (Pen 18.1). */
+const LANDED_BY: Record<AppSettings['pr']['mergeMethod'], string> = { squash: 'squashed it into', merge: 'merged it into', rebase: 'rebased it onto' }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
@@ -311,7 +313,7 @@ export function prToast(before: PrState | undefined, ws: Workspace, o: { method?
   const base = stripRemote(ws.baseRef, o.remote ?? 'origin')
   if (before === 'creating' && ws.prState === 'none') return { title: 'Could not create the PR', sub: `${o.agent ?? 'The agent'} finished without opening one.` }
   if (before === 'creating') return { title: `${n} created`, sub: ws.prState === 'draft' ? 'Opened as a draft' : ws.prTitle || undefined, ...view }
-  if (ws.prState === 'merged') return { glyph: 'merged', title: `${n} merged`, sub: before === 'merging' && o.method ? `${LANDED[o.method]} ${base}` : 'Merged on GitHub', ...view }
+  if (ws.prState === 'merged') return { glyph: 'merged', title: `${n} merged`, sub: before === 'merging' && o.method ? (o.agent ? `${o.agent} ${LANDED_BY[o.method]} ${base}.` : `${LANDED[o.method]} ${base}`) : 'Merged on GitHub', ...view }
   return undefined
 }
 

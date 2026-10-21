@@ -291,6 +291,8 @@ describe('PR header and toasts', () => {
     expect(prToast('creating', { ...ws, prState: 'checks' })).toEqual({ title: 'PR #42 created', sub: 'feat: table', action: { label: 'View', href: 'u' } })
     expect(prToast('creating', { ...ws, prState: 'draft' })?.sub).toBe('Opened as a draft')
     expect(prToast('merging', { ...ws, prState: 'merged' }, { method: 'squash' })).toEqual({ glyph: 'merged', title: 'PR #42 merged', sub: 'Squashed into main', action: { label: 'View', href: 'u' } })
+    expect(prToast('merging', { ...ws, prState: 'merged' }, { method: 'squash', agent: 'Noor' })?.sub).toBe('Noor squashed it into main.')
+    expect(prToast('merging', { ...ws, prState: 'merged' }, { method: 'rebase', agent: 'Noor' })?.sub).toBe('Noor rebased it onto main.')
     expect(prToast('ready', { ...ws, prState: 'merged' })?.sub).toBe('Merged on GitHub')
     expect(prToast('creating', { ...ws, prNumber: undefined, prState: 'none' }, { agent: 'Christian' })).toEqual({ title: 'Could not create the PR', sub: 'Christian finished without opening one.' })
     expect(prToast('checks', { ...ws, prState: 'ready' })).toBeUndefined()

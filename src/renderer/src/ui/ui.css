@@ -98,7 +98,8 @@
 /* Each toast's slot opens before it slides in and closes after it slides out, so the toasts above glide instead of jumping. The -8px takes up the stack's gap. A flex item keeps its content height unless min-height is 0. */
 .toast-slot { min-height: 0; interpolate-size: allow-keywords; animation: toast-open var(--dur-base) ease-out, toast-clip var(--dur-base); }
 .toast-slot[data-leaving] { animation: toast-close var(--dur-base) ease-in var(--dur-slow) forwards, toast-clip var(--dur-base) var(--dur-slow) forwards; }
-.toast { display: flex; flex-direction: column; gap: 10px; padding: 12px 12px 12px 14px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); transition: transform var(--dur-slow) ease-out; animation: toast-in var(--dur-enter) ease-out var(--dur-base) backwards; }
+/* The Pen's 12 12 12 14 padding sits inside its 1px stroke, so the border takes one off each side: a toast is the frame's 400 wide, 102 tall with an action and 64 with two lines, and its text column 318 wide. */
+.toast { display: flex; flex-direction: column; gap: 10px; padding: 11px 11px 11px 13px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); transition: transform var(--dur-slow) ease-out; animation: toast-in var(--dur-enter) ease-out var(--dur-base) backwards; }
 .toast-top { display: flex; align-items: flex-start; gap: 10px; }
 .toast-glyph { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 16px; height: 20px; color: var(--ink); }
 .toast-glyph[data-glyph='merged'] { color: var(--merged); }
