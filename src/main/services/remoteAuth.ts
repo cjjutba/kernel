@@ -66,6 +66,18 @@ export class RemoteAuth {
     return { ok: true, token, device }
   }
 
+  /**
+   * Whether a token is paired and live, for `GET /session`. A wrong token counts as a failed attempt from the address, in the same
+   * budget as a wrong code, so the route can't be used to guess tokens. A live token is never counted.
+   */
+  checkSession(token: unknown, address: string): { ok: true } | { ok: false; status: 401 | 429; retryAfterSec?: number } {
+    const wait = this.waitFor(address)
+    if (wait) return { ok: false, status: 429, retryAfterSec: wait }
+    if (this.verify(token)) return { ok: true }
+    this.fail(address, 401, 'Unauthorized')
+    return { ok: false, status: 401 }
+  }
+
   /** The device a token belongs to, or undefined for no token, a wrong one, a revoked one and an expired one. */
   verify(token: unknown): RemoteDeviceRow | undefined {
     if (typeof token !== 'string' || !token || token.length > 200) return undefined

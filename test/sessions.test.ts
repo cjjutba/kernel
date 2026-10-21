@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { chmod, mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { CanUseTool, Options, Query, SDKControlGetUsageResponse } from '@anthropic-ai/claude-agent-sdk'
@@ -1667,6 +1667,20 @@ describe('one writer per folder (one-writer-per-folder)', () => {
     expect(await t.sessions.send('d', text('Elsewhere'))).toMatchObject({ queued: false })
     await flush()
     expect(t.sessions.isRunning('d')).toBe(true)
+  })
+
+  it('keeps the folder rule across repeated checks with real paths cached, and looks a path up again once its workspace is archived', async () => {
+    const t = await setup()
+    await t.sessions.send('a', text('First'))
+    await t.sessions.send('linked', text('Same folder'))
+    for (let i = 0; i < 3; i++) expect(t.sessions.folderBlocker('linked')).toBe('a')
+    // The link now points elsewhere. The cached path still stands until the workspace is archived.
+    const link = t.store.workspace('w2')!.path
+    await rm(link)
+    await symlink(t.store.workspace('w3')!.path, link)
+    expect(t.sessions.folderBlocker('linked')).toBe('a')
+    t.sessions.dropHeld('w2')
+    expect(t.sessions.folderBlocker('linked')).toBeUndefined()
   })
 
   it('serves the chats that waited in the order they waited', async () => {

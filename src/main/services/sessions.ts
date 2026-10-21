@@ -984,8 +984,21 @@ export class Sessions {
 
   /** A folder's real path, so two paths to the same folder (a symlink, a trailing slash) count as one. A folder that is gone keeps its own path. */
   private realFolder(path: string): string {
-    try { return realpathSync(path) } catch { return path }
+    const known = this.realFolders.get(path)
+    if (known) return known
+    try {
+      const real = realpathSync(path)
+      this.realFolders.set(path, real)
+      return real
+    } catch { return path }
   }
+
+  /**
+   * Real paths by workspace path. A folder's real path does not change for a workspace's life, and a turn end checks every
+   * chat against every other, so asking the disk each time was about n squared stat calls on the main thread. A path that
+   * can't be resolved is not kept, so a folder made later is looked up again. Archiving drops the entry (`dropHeld`).
+   */
+  private realFolders = new Map<string, string>()
 
   /**
    * The chat that makes this one wait for its folder (one-writer-per-folder), or nothing. Turns that can write take turns in a
@@ -1889,6 +1902,8 @@ export class Sessions {
 
   /** The workspace is archived. Chats held for its setup let go of what they held, so a restore doesn't find them still waiting. */
   dropHeld(workspaceId: string) {
+    const path = this.d.store.workspace(workspaceId)?.path
+    if (path) this.realFolders.delete(path)
     for (const c of this.d.store.chats(workspaceId)) if (this.waiting.delete(c.id)) { this.setQueue(c.id, []); this.saveHeld() }
   }
   stopAll() { for (const id of [...this.live.keys()]) this.stop(id) }

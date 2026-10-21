@@ -12,7 +12,7 @@ import { refusal } from './remoteChannels'
  *
  *   GET  /          a page for a browser. `assets` serves the web client when there is one, else a placeholder.
  *   POST /pair      { code, name? } -> 200 { token, deviceId, name, expiresAt } | 400 | 401 | 429. One request per code.
- *   GET  /session   `Authorization: Bearer <token>` -> 204 when the token is paired and live, else 401. The web client asks it when
+ *   GET  /session   `Authorization: Bearer <token>` -> 204 when the token is paired and live, else 401, or 429 after too many wrong tokens from one address. The web client asks it when
  *                   its socket fails before it opens, since a browser can't see the status of a refused upgrade.
  *   GET  /ws        WebSocket upgrade. The token is, in the order the server looks, `Authorization: Bearer <token>`, the subprotocol
  *                   `kernel.token.<token>` next to `kernel.v1` in `Sec-WebSocket-Protocol` (a browser sets it with
@@ -197,7 +197,11 @@ export class RemoteServer {
     if (path === '/session') {
       if (req.method !== 'GET') return text(res, 405, 'Use GET')
       const bearer = /^Bearer (\S+)$/.exec(req.headers.authorization ?? '')?.[1]
-      if (!this.o.auth.verify(bearer ?? null)) return text(res, 401, 'Unauthorized')
+      const r = this.o.auth.checkSession(bearer ?? null, req.socket.remoteAddress ?? 'unknown')
+      if (!r.ok) {
+        if (r.retryAfterSec) res.setHeader('Retry-After', String(r.retryAfterSec))
+        return text(res, r.status, r.status === 429 ? 'Too many attempts. Try again in a minute.' : 'Unauthorized')
+      }
       res.writeHead(204)
       return res.end()
     }

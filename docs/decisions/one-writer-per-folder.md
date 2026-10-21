@@ -9,3 +9,5 @@
 **Send now does not go past the folder hold.** It can start a chat over the agent limit, but never into a folder another chat is writing in, so the button is not offered for `folder`. A chat held for the folder takes no agent slot, since slots count running turns. When both hold, the reason says `capacity`, and the folder still holds once a slot frees.
 
 **Left out, the sidebar.** Other holds (agent limit, offline, paused) show only in the composer, so the folder hold does too. The sidebar row keeps the chat's real status.
+
+**A turn waiting on you keeps its folder.** A turn that has asked for an approval or put a question is still running, so it holds the folder until it ends, and the other chat in that folder waits that long, however long you take to answer. The composer says which chat it is waiting for, and that chat's own approval or question is where it is cleared.

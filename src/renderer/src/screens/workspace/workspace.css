@@ -368,6 +368,7 @@ button.fold-head:hover { color: var(--ink-2); }
 .rail-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 44px; padding: 0 16px; }
 .rail-head h2 { margin: 0; color: var(--muted); font-size: var(--fs-meta); font-weight: var(--fw-medium); }
 .rail-id { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font: var(--fs-chip) var(--mono); }
+.rail-id.rail-title { font: var(--fs-chip) var(--font); }
 .rail-stages { margin: 0; padding: 0 10px 8px; list-style: none; }
 .stage { display: flex; gap: 12px; min-height: 54px; padding: 6px 6px 0; }
 .stage:last-child { min-height: 44px; }

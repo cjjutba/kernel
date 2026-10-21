@@ -41,6 +41,11 @@ export function assetPath(urlPath: string): string | undefined {
   return name
 }
 
+/**
+ * A packaged app serves the renderer from inside app.asar. Electron patches `fs`, `fs/promises` and symlink resolution for asar
+ * paths, and `readFile`, `stat` and `realpath` were run against a real asar under Electron's Node (a file, a folder, the archive
+ * itself and a link inside it), so no fallback is needed here. A failure of any of them still ends in `undefined`, a 404.
+ */
 export function staticAssets(root: string): (path: string) => Promise<Asset | undefined> {
   const base = resolve(root)
   let realBase: Promise<string | undefined> | undefined
