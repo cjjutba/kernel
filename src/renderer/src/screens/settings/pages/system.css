@@ -68,3 +68,14 @@
 .sys-skel-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 
 .set-section-note svg { margin-left: 4px; vertical-align: -2px; }
+
+/* Remote access: the address with its copy button, and the pairing code with its QR code over the device list */
+.rem-url { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.rem-address { font: var(--fs-code) var(--mono); color: var(--ink-2); }
+.rem-pair { display: flex; align-items: flex-start; gap: 16px; padding: 16px; border-bottom: 1px solid var(--line-2); }
+.rem-pair:last-child { border-bottom: 0; }
+/* A QR code needs a light ground in both themes to scan. */
+.rem-qr { flex-shrink: 0; border-radius: var(--r-sm); background: var(--on-solid); }
+.rem-pair-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.rem-link { display: flex; align-items: flex-start; gap: 6px; }
+.rem-code { flex: 1; min-width: 0; overflow-wrap: anywhere; font: var(--fs-code) var(--mono); color: var(--ink-2); user-select: text; }

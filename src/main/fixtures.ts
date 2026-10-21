@@ -6,6 +6,7 @@ import { localUrlIn } from '@shared/previewUrl'
 import { isLeadWorkspace } from '@shared/leadWorkspace'
 import { KERNEL_FILE } from '@shared/team'
 import { join, matchesGlob } from 'node:path'
+import QRCode from 'qrcode'
 import type { Handlers } from './kernel'
 import { bus } from './bus'
 import { applySettingsPatch, DEFAULT_SETTINGS, previewUrlsOf, reviewOf } from './services/settings'
@@ -510,7 +511,14 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'app.openIn': async ({ path }) => { mustBeInside(path, [...f.projects, ...f.workspaces].map((x) => x.path)); return ok },
     'app.checkOnline': async () => ({ online: !f.push.some((e) => e.type === 'online' && !e.online) }),
     'telemetry.recent': async () => f.telemetry?.recent ?? [],
-    'telemetry.track': async () => ok
+    'telemetry.track': async () => ok,
+    'remote.status': async () => f.remote?.status ?? { enabled: false, running: false },
+    'remote.pair': async () => {
+      const url = `${f.remote?.status?.url ?? 'http://127.0.0.1:47100'}/#pair=Zk3vQ9mT2xL8aRb6Yp1NcWd4HsE`
+      return { url, qr: await QRCode.toString(url, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' }), expiresAt: Date.now() + 5 * 60_000 }
+    },
+    'remote.devices': async () => f.remote?.devices ?? [],
+    'remote.revoke': async () => ok
   }
   for (const channel of f.hold ?? []) (handlers as Record<string, unknown>)[channel] = () => new Promise<never>(() => undefined)
   // A fixture can make a call fail or answer late, to draw a failed load or catch a call in flight (KERNEL-869).

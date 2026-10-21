@@ -115,7 +115,7 @@ describe('kernel.db versions', () => {
     writeFileSync(join(d, 'seats', 'c1', 'mcp.json'), '{}')
 
     const store = new Store(file)
-    expect(store.db.pragma('user_version', { simple: true })).toBe(9)
+    expect(store.db.pragma('user_version', { simple: true })).toBe(LATEST)
     expect(store.chat('c1')).toEqual({ id: 'c1', workspaceId: 'w1', kind: 'terminal', title: 'Terminal (claude)', terminal: { preset: 'claude', command: 'claude' } })
     expect(store.chat('c2')).toEqual(plain)
     expect(store.items('c1')).toEqual([])

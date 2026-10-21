@@ -60,6 +60,7 @@ import { Permissions } from './features/permissions'
 import { OpenItems } from './features/openItems'
 import { Placement } from './features/placement'
 import { Moves } from './features/moves'
+import { Remote } from './features/remote'
 
 type CoreChannel = Exclude<Channel, `system.${string}`>
 export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promise<KernelApi[C]['res']> }
@@ -124,6 +125,7 @@ export class Kernel {
   readonly openItems = new OpenItems(this)
   readonly placement = new Placement(this)
   readonly moves = new Moves(this)
+  readonly remote = new Remote(this)
 
   // ---------- test seams
   // Tests swap these on the instance, so code reads them through the Kernel when it calls them and never keeps a copy
@@ -228,6 +230,7 @@ export class Kernel {
     void this.waits.sweepWaits().catch(() => undefined).then(() => this.autoArchive.sweepMerged()).catch(() => undefined)
     this.archive.start()
     this.reviews.start()
+    await this.remote.start()
     // A reset on claude.ai while Kernel was closed shows only in the real numbers, so ask at once.
     if (this.store.projects().some((r) => r.pausedBy === 'limit')) void this.account.checkLimits()
   }
@@ -259,6 +262,7 @@ export class Kernel {
     this.team.stop()
     this.telemetry.stop()
     this.archive.stop()
+    await this.remote.stop()
     await this.sessions.shutdown(o.budgetMs)
     await this.workspaces.dropSpares()
     this.ptys.killAll()
@@ -285,7 +289,7 @@ export class Kernel {
       this.setup.handlers(), this.env.handlers(), this.workspaces.handlers(), this.archive.handlers(),
       this.history.handlers(), this.chats.handlers(), this.lead.handlers(), this.sharing.handlers(), this.prs.handlers(), this.telemetry.handlers(), this.providers.handlers(),
       this.permissions.handlers(), this.mcp.handlers(), this.reviews.handlers(), this.openItems.handlers(),
-      this.placement.handlers(), this.moves.handlers())
+      this.placement.handlers(), this.moves.handlers(), this.remote.handlers())
   }
 
   // ---------- what tests and the app shell call on a Kernel (KERNEL-331)
