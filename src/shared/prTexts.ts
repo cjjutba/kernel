@@ -46,9 +46,9 @@ export function prText(heading: string, steps: string[], c: RepoConventions, ctx
  * them, and otherwise for titles like the repo's own. With a workspace it names the remote to push to and the base to open on.
  */
 export function createPrText(c: RepoConventions = {}, ctx?: PrContext): string {
-  const body = !c.template ? 'Fill in summary, scope and risk.'
-    : c.template.endsWith('/') ? `Write the body from the template in \`${c.template}\` that fits the change, filling in each of its sections.`
-    : `Write the body from the repo's PR template, \`${c.template}\`, filling in each of its sections.`
+  const body = !c.template ? PR_BODY_SHAPE
+    : c.template.endsWith('/') ? `Write the body from the template in \`${c.template}\` that fits the change, filling in each of its sections. ${PR_BODY_SHAPE}`
+    : `Write the body from the repo's PR template, \`${c.template}\`, filling in each of its sections. ${PR_BODY_SHAPE}`
   const create = ctx ? `gh pr create --base ${ctx.base}${ctx.draft ? ' --draft' : ''}` : 'gh pr create'
   return prText('# Create a pull request', [
     ...(c.contributing ? [`Read \`${c.contributing}\` and follow what it says about pull requests.`] : []),
