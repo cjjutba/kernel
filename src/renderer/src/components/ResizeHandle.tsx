@@ -76,8 +76,11 @@ export function ResizeHandle({ targetRef, edge, label, size, min, limit, default
   const drag = useRef<Drag | null>(null)
   const vertical = edge === 'top'
   const clamp = (w: number) => Math.round(Math.min(Math.max(min, limit()), Math.max(min, w)))
-  const sizeNow = () => { const r = targetRef.current?.getBoundingClientRect(); return r ? (vertical ? r.height : r.width) : size }
-  const at = (e: { clientX: number; clientY: number }) => (vertical ? e.clientY : e.clientX)
+  // Sizes and pointer moves are in the target's CSS px. Settings, Appearance, Font size zooms the root (settings.css), and a rect and a pointer's position
+  // are in screen px, so a click that read the rect saved a width 8% off at Small or Large and the sidebar jumped.
+  const zoom = () => targetRef.current?.currentCSSZoom || 1
+  const sizeNow = () => { const t = targetRef.current; return t ? (vertical ? t.offsetHeight : t.offsetWidth) : size }
+  const at = (e: { clientX: number; clientY: number }) => (vertical ? e.clientY : e.clientX) / zoom()
 
   const show = (w: number) => {
     if (targetRef.current) targetRef.current.style[vertical ? 'height' : 'width'] = `${w}px`
