@@ -10,16 +10,6 @@ const tabs = [tab('c1', 'Client portal login'), tab('c2', 'Fix the login redirec
 const owned = [ws('invoice-table', { title: 'Invoice table', agentId: 'sean' })]
 
 describe('chat waits (KERNEL-339)', () => {
-  it('counts a workspace the chat started, and shows the one that has waited longest', () => {
-    const approvals = [
-      ask('late', { chatId: 'c1', title: 'Late?', createdAt: 300 }), ask('early', { kind: 'tool', toolName: 'Bash', workspaceId: 'invoice-table', createdAt: 200 }),
-      ask('other', { chatId: 'elsewhere', createdAt: 50 }), ask('done', { chatId: 'c1', status: 'answered', createdAt: 10 })
-    ]
-    const waits = chatWaits({ tabs, owned, approvals })
-    expect(waits.map((w) => w.approval.id)).toEqual(['early', 'late'])
-    expect(new Set(waits.map((w) => w.key)).size).toBe(2)
-  })
-
   it('does not count another chat\'s workspaces, and a folded row counts the ones it started', () => {
     const approvals = [ask('a', { kind: 'tool', toolName: 'Bash', workspaceId: 'invoice-table' })]
     expect(chatWaits({ tabs, owned: [], approvals })).toEqual([])

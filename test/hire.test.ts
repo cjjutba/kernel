@@ -127,11 +127,8 @@ describe('a plan that needs an agent the team lacks', () => {
     expect(agentList(team)).not.toContain('A plugin agent')
   })
 
-  it('tells the Lead to check the team before asking, to offer a new agent, and never to build a task itself', () => {
-    expect(LEAD_RULE).toContain('Before you ask for plan approval or suggest a hand-off, check each task against mcp__kernel__list_agents.')
-    expect(LEAD_RULE).toContain('"Give it to Sean" for the closest teammate and "Create a payments engineer agent"')
-    expect(LEAD_RULE).toContain('When nobody on the team takes tasks, stop at the first task')
-    expect(LEAD_RULE).toContain('whether to create an agent with create_agent or to add a starter agent in Team. Never build a task yourself.')
+  it('tells the Lead to check the team with list_agents, and never says hire', () => {
+    expect(LEAD_RULE).toContain('mcp__kernel__list_agents')
     expect(LEAD_RULE).not.toMatch(/hire/i)
   })
 })

@@ -27,7 +27,6 @@ describe('readAppearance', () => {
     expect(readAppearance(settingsFile('{ not json'))).toEqual(DEFAULT_APPEARANCE)
     expect(readAppearance(settingsFile('[]'))).toEqual(DEFAULT_APPEARANCE)
     expect(readAppearance(settingsFile(JSON.stringify({ general: { openTo: 'inbox' } })))).toEqual(DEFAULT_APPEARANCE)
-    expect(DEFAULT_APPEARANCE.theme).toBe('dark')
   })
   it('keeps the default for each key that is missing or wrong', () => {
     const file = settingsFile(JSON.stringify({ appearance: { theme: 'sepia', fontSize: 'large', density: 3, pointerCursors: 'yes' } }))

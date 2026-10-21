@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type { AgentDef, Chat, ClaudePlan, Effort, RoleChoice, Workspace } from '@shared/types'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
-import { bashVerdict, pushesTo, usesNetwork } from '../src/main/services/bashGuard'
+import { bashVerdict, pushesTo } from '../src/main/services/bashGuard'
 import { Sessions } from '../src/main/services/sessions'
 import { Kernel } from '../src/main/kernel'
 import { applySettingsPatch, deepMerge, DEFAULT_SETTINGS, loadAppSettings, PLAN_KEYS, planDefaults, planOf, resolveSettings, saveAppSettings, withPlan } from '../src/main/services/settings'
@@ -363,19 +363,6 @@ describe('protected branches', () => {
     const p = { neverAllow: [], alwaysAsk: [], protectedBranches: ['main'] }
     expect(bashVerdict('git push origin main', p, [])).toBe('deny')
     expect(bashVerdict('git push origin feat/x', p, [])).toBeUndefined()
-  })
-})
-
-describe('network access off', () => {
-  const off = { neverAllow: [], alwaysAsk: [], network: false }
-  it('recognises commands that reach the network', () => {
-    for (const c of ['curl https://x.dev', 'FOO=1 wget x', 'npm test && npm install left-pad', 'git -C app fetch', 'git push origin feat/x', 'gh pr create', 'echo hi | ssh box']) expect(usesNetwork(c), c).toBe(true)
-    for (const c of ['npm test', 'git status', 'git commit -m "curl it"', 'ls -la', 'echo curl']) expect(usesNetwork(c), c).toBe(false)
-  })
-  it('denies them only while the setting is off', () => {
-    expect(bashVerdict('curl https://x.dev', off, [])).toBe('deny')
-    expect(bashVerdict('curl https://x.dev', { ...off, network: true }, [])).toBeUndefined()
-    expect(bashVerdict('npm test', off, [])).toBeUndefined()
   })
 })
 

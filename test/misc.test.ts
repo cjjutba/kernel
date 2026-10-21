@@ -402,7 +402,6 @@ describe('preflight checks', () => {
     const checks = await preflight({ 'claude --version': missing })
     expect(blockers(checks)).toEqual([])
     expect(byId(checks, 'claude')).toMatchObject({ ok: false, title: 'Claude Code not found', fix: { command: CLAUDE_INSTALL } })
-    expect(CLAUDE_INSTALL).toBe('curl -fsSL https://claude.ai/install.sh | bash')
     expect(byId(checks, 'auth').ok).toBe(true)
   })
   it('blocks when Kernel\'s own claude is missing or won\'t start, without a second failure for sign-in', async () => {

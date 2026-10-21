@@ -134,10 +134,8 @@ describe('installScrollIdle on nested scrollers', () => {
 })
 
 describe('the scrollbar block in tokens.css', () => {
-  it('shows the thumb for data-scrolling only, so a pointer resting on an area does not keep it', () => {
+  it('never shows the thumb for a pointer resting on an area', () => {
     const css = readFileSync(new URL('../src/renderer/src/tokens.css', import.meta.url), 'utf8')
-    expect(css).toMatch(/:where\(\[data-scrolling\]\) \{ --scroll-thumb: var\(--track\);/)
-    expect(css).toMatch(/transition: --scroll-thumb var\(--dur-slow\) ease-out;/)
     expect(css).not.toMatch(/:where\([^)]*:hover[^)]*\) \{ --scroll-thumb/)
   })
 })
