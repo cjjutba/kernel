@@ -879,21 +879,30 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-661: the notice or Providers opens the page on Personal: sign-ins, a failure, connectors not set up and one ignored.
   SettingsMcpServers: mcpPage({}),
   // KERNEL-937: saved results on screen while both Claude Code accounts are checked again, Personal for the first time in 3 minutes.
-  McpServersChecking: mcpPage({ mcpAccounts: mcpAcrossAccounts.map((a) => ({ ...a, checking: true, checkedAt: Date.now() - 3 * 60_000 })) }),
+  McpServersChecking: mcpPage({ mcpAccounts: [mcpAcrossAccounts[0], counted({ ...mcpAcrossAccounts[1], checking: true, checkedAt: undefined, servers: mcpAcrossAccounts[1].servers.map((s) => ({ ...s, state: 'checking' as const, error: undefined, note: undefined })) }), mcpAcrossAccounts[2]] }),
+  // The check ran again while the saved results stayed on screen (KERNEL-937).
+  McpServersCheckingSaved: mcpPage({ mcpAccounts: mcpAcrossAccounts.map((a) => ({ ...a, checking: true, checkedAt: Date.now() - 3 * 60_000 })) }),
   // KERNEL-937: Linear was just signed in by copying a login, and Claude Code hasn't said yet.
   McpServersCopiedSignIn: mcpPage({ mcpAccounts: [mcpAcrossAccounts[0], counted({ ...mcpAcrossAccounts[1], checking: true, servers: mcpAcrossAccounts[1].servers.map((s) => (s.name === 'Linear' ? { ...s, state: 'checking' as const } : s)) }), mcpAcrossAccounts[2]] }),
-  // KERNEL-937: the check failed, so Personal keeps the servers from 3 hours ago.
-  McpServersOffline: mcpPage({ mcpAccounts: [mcpAcrossAccounts[0], { ...mcpAcrossAccounts[1], checkedAt: Date.now() - 3 * 3600_000, error: 'Claude Code did not answer' }, mcpAcrossAccounts[2]] }),
+  // The Mac is offline, so what was ready reads Offline and the checks wait until it is back (Pen 15.35).
+  McpServersOffline: mcpPage({ mcpAccounts: [{ ...mcpAcrossAccounts[0], checkedAt: Date.now() - 3 * 3600_000 }, mcpAcrossAccounts[1], mcpAcrossAccounts[2]], push: [{ type: 'online', online: false }] }, { account: 'cli' }),
+  // KERNEL-937: the check failed, so Personal keeps the servers from 3 hours ago and a toast says why.
+  McpServersCheckFailed: mcpPage({ mcpAccounts: [mcpAcrossAccounts[0], { ...mcpAcrossAccounts[1], checkedAt: Date.now() - 3 * 3600_000, error: 'Claude Code did not answer' }, mcpAcrossAccounts[2]] }),
   // KERNEL-661: Codex accounts that read the same show as one Codex tab, with a sign-in and two servers that are off on purpose.
   SettingsMcpServersCodex: mcpPage({ mcpAccounts: sharedCodex(), accounts: [workClaude, personalClaude, ownCodex, personalCodex] }, { tab: 'codex', account: 'cli' }),
   // KERNEL-661: twenty-seven servers on Personal at 1440x900.
   SettingsMcpServersMany: mcpPage({ mcpAccounts: manyServers() }),
   // KERNEL-661: Set up this account over Settings, MCP servers, with everything that needs Personal ticked.
-  SettingsMcpSetUp: mcpPage({ ui: { route: { name: 'settings', page: 'mcp', account: 'personal' }, modal: setUpModal } }),
+  SettingsMcpSetUp: mcpPage({}),
+  // KERNEL-661: Set up this account over Settings, MCP servers, with everything that needs Personal ticked.
+  SettingsMcpSetUpAccount: mcpPage({ ui: { route: { name: 'settings', page: 'mcp', account: 'personal' }, modal: setUpModal } }),
   // KERNEL-661: signing in to Vercel, the second of five, with the claude.ai step waiting for the connectors.
-  SettingsMcpSetUpRunning: mcpPage({ ui: { route: { name: 'settings', page: 'mcp', account: 'personal' }, modal: setUpModal }, push: [{ type: 'account.mcpSignInAll', run: { ...setUpRun, connect: setUpConnect } }, { type: 'account.mcpConnect', connect: setUpConnect }] }),
+  SettingsMcpSetUpAccountRunning: mcpPage({ ui: { route: { name: 'settings', page: 'mcp', account: 'personal' }, modal: setUpModal }, push: [{ type: 'account.mcpSignInAll', run: { ...setUpRun, connect: setUpConnect } }, { type: 'account.mcpConnect', connect: setUpConnect }] }),
+  // Pen 15.35: one server is being added while the rest wait, so its row reads Setting up.
+  SettingsMcpSetUpRunning: mcpPage({ mcpAccounts: [mcpAcrossAccounts[0], counted({ ...mcpAcrossAccounts[1], servers: mcpAcrossAccounts[1].servers.map((s) => (s.name === 'Linear' ? { ...s, state: 'checking' as const } : s)) }), mcpAcrossAccounts[2]], push: [{ type: 'account.mcpSignInAll', run: { accountId: 'personal', servers: ['Linear', 'claude.ai Google Drive'], current: 'claude.ai Google Drive', done: ['Linear'], failed: [] } }] }),
   // KERNEL-661: it ended with Vercel failed, the connectors left for claude.ai and one server ignored.
-  SettingsMcpSetUpDone: mcpPage({ ui: { route: { name: 'settings', page: 'mcp', account: 'personal' }, modal: setUpModal }, push: [{ type: 'account.mcpSignInAll', run: { ...setUpRun, current: undefined, done: ['Linear'], failed: [{ server: 'Vercel', error: 'The sign-in was not finished in the browser.' }], finished: true, connect: setUpConnect } }] }),
+  SettingsMcpSetUpDone: mcpPage({ mcpAccounts: [mcpAcrossAccounts[0], counted({ ...mcpAcrossAccounts[1], servers: mcpAcrossAccounts[1].servers.map((s) => (s.name === 'Linear' ? { ...s, state: 'ready' as const } : s)) }), mcpAcrossAccounts[2]], push: [{ type: 'account.mcpSignInAll', run: { accountId: 'personal', servers: ['Linear'], done: ['Linear'], failed: [], finished: true } }] }),
+  SettingsMcpSetUpAccountDone: mcpPage({ ui: { route: { name: 'settings', page: 'mcp', account: 'personal' }, modal: setUpModal }, push: [{ type: 'account.mcpSignInAll', run: { ...setUpRun, current: undefined, done: ['Linear'], failed: [{ server: 'Vercel', error: 'The sign-in was not finished in the browser.' }], finished: true, connect: setUpConnect } }] }),
   SettingsIntegrations: settingsPage('integrations', { integrations: integrationRows }),
   // KERNEL-893: the integrations read is slow, so each row shows its name and a skeleton, with no Connect.
   SettingsIntegrationsLoading: settingsPage('integrations', { integrations: integrationRows, lag: { 'integrations.list': 60000 } }),

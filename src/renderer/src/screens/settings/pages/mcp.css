@@ -1,0 +1,33 @@
+/* Settings, MCP servers (Redesign 15). Tokens only. One line per server: its name in mono, what it is, then its state and the one action it offers. */
+.mcp-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.mcp-bar:empty { display: none; }
+.mcp-bar-gap { flex: 1; }
+.mcp-checked { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-code); color: var(--muted); }
+.mcp-filter { position: relative; display: flex; align-items: center; width: 280px; max-width: 100%; }
+.mcp-filter svg { position: absolute; left: 10px; color: var(--faint); pointer-events: none; }
+.mcp-filter input { width: 100%; height: 32px; box-sizing: border-box; padding: 0 10px 0 31px; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--canvas); color: var(--ink); font-size: var(--fs-code); outline: none; user-select: text; }
+.mcp-filter input::placeholder { color: var(--muted); }
+.mcp-filter input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.mcp-empty { margin: 0; padding: 24px 0; text-align: center; font-size: var(--fs-ui); color: var(--muted); }
+.mcp-name { font-family: var(--mono); font-size: var(--fs-row); color: var(--ink); overflow-wrap: anywhere; }
+.mcp-row { flex-wrap: nowrap; min-height: 64px; }
+.mcp-status { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; max-width: 280px; font-size: var(--fs-code); color: var(--muted); }
+.mcp-status > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mcp-status svg { flex-shrink: 0; }
+.mcp-status[data-tone='warn'] { color: var(--needs); }
+.mcp-status[data-tone='failed'] { color: var(--del); }
+.mcp-status[data-tone='quiet'] svg { color: var(--faint); }
+.mcp-acts { flex-shrink: 0; display: inline-flex; align-items: center; gap: 8px; }
+
+/* Set up one server: three steps, the first done, the second now. */
+.mcp-one { display: flex; flex-direction: column; gap: 18px; padding: 4px 22px 22px; }
+.mcp-one-lead { margin: 0; font-size: var(--fs-ui); line-height: var(--lh); color: var(--ink-2); }
+.mcp-steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 20px; }
+.mcp-step { display: flex; align-items: flex-start; gap: 14px; }
+.mcp-step-mark { width: 22px; height: 22px; flex-shrink: 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-pill); border: 1px solid var(--line-3); font-size: var(--fs-meta); color: var(--muted); }
+.mcp-step[data-state='now'] .mcp-step-mark { border-color: var(--ink); background: var(--ink); color: var(--on-ink); font-weight: var(--fw-semibold); }
+.mcp-step[data-state='done'] .mcp-step-mark { border-color: transparent; }
+.mcp-step[data-state='done'] .mcp-step-mark svg { color: var(--add); }
+.mcp-step-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.mcp-step-text .set-label { color: var(--ink); }
+.mcp-step[data-state='next'] .set-label { color: var(--ink-3); }

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { McpAccount, McpSignInAll, Provider } from '@shared/types'
 import { call, cleanError, onPush } from '../../../api'
 import { actions, mcpNeedYou, mcpRunKey, useStore } from '../../../store'
 import { LinkButton, Icon, useBusy } from '../../../ui'
+import { failToast, useRetryKey } from '../../../retry'
 
 // Every account's MCP servers (KERNEL-627): the pieces the MCP servers page, Set up this account, the Providers row and a project's
 // Skills and MCP share (KERNEL-661).
@@ -26,14 +27,25 @@ function mergeAccounts(had: McpAccount[] | null, pushed: McpAccount[]): McpAccou
 /** Every signed-in account's servers, read when the page opens, kept live and checked again whenever the window gets focus (KERNEL-661). `refresh` checks again. */
 export function useMcpAccounts() {
   const [accounts, setAccounts] = useState<McpAccount[] | null>(null)
+  const [failed, setFailed] = useState(false)
   const [busy, run] = useBusy<string>()
+  const alive = useRef(true)
+  const read = useCallback(() => {
+    void call('mcp.accounts', undefined).then((a) => { if (alive.current) { setAccounts(a); setFailed(false) } }).catch((e) => {
+      if (!alive.current) return
+      setAccounts((had) => had ?? [])
+      setFailed(true)
+      failToast('Could not read the MCP servers', cleanError(e), 'mcpServers')
+    })
+  }, [])
   useEffect(() => {
     let stopped = false
-    void call('mcp.accounts', undefined).then((a) => { if (!stopped) setAccounts(a) }).catch(() => { if (!stopped) setAccounts([]) })
+    alive.current = true
+    read()
     const off = onPush((e) => { if (e.type === 'mcp.accounts') setAccounts((had) => mergeAccounts(had, e.accounts)) })
     const onFocus = () => { void call('mcp.recheck', undefined).then((a) => { if (!stopped) setAccounts(a) }).catch(() => undefined) }
     window.addEventListener('focus', onFocus)
-    return () => { stopped = true; off(); window.removeEventListener('focus', onFocus) }
+    return () => { stopped = true; alive.current = false; off(); window.removeEventListener('focus', onFocus) }
   }, [])
   /** Checks every account again, or only `of`'s. */
   const refresh = useCallback((of?: { provider: Provider; accountId: string }) => run(of ? `${of.provider}:${of.accountId}` : 'refresh', async () => {
@@ -43,7 +55,8 @@ export function useMcpAccounts() {
   const ignore = useCallback((provider: Provider, accountId: string, server: string, ignored: boolean) => run(`ignore:${provider}:${accountId}:${server}`, async () => {
     try { setAccounts(await call('accounts.mcpIgnore', { provider, accountId, server, ignored })) } catch (e) { actions.ui.toast({ title: `Could not ${ignored ? 'ignore' : 'restore'} ${serverName(server)}`, sub: cleanError(e) }) }
   }), [run])
-  return { accounts, busy, refresh, ignore }
+  useRetryKey('mcpServers', read)
+  return { accounts, busy, refresh, ignore, failed, read }
 }
 
 /** Where Set up this account is on each account: the run in the store, from the engine's pushes and the call's own result. */
