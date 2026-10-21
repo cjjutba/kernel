@@ -153,6 +153,15 @@ export const migrations: Migration[] = [
       `)
       if (db.name && db.name !== ':memory:') rmSync(join(dirname(db.name), 'seats'), { recursive: true, force: true })
     }
+  },
+  {
+    // Receipts for Kernel's own tool calls (docs/decisions/durable-tool-calls.md). One row per chat and provider call id, with
+    // the result the call returned, so a repeat of the same call answers from it and does its work once.
+    version: 10,
+    up: (db) => db.exec(`
+      create table if not exists tool_receipts (chat_id text not null, call_id text not null, tool text not null, result text not null, created_at integer not null, primary key (chat_id, call_id));
+      create index if not exists tool_receipts_by_time on tool_receipts (created_at);
+    `)
   }
 ]
 

@@ -583,7 +583,7 @@ export class CodexRunner implements Runner {
       case 'item/tool/requestUserInput': return this.question(params as ToolRequestUserInputParams, signal)
       case 'item/tool/call': {
         const p = params as DynamicToolCallParams
-        const res = await callTool(this.o.tools, p.tool, p.arguments, { signal })
+        const res = await callTool(this.o.tools, p.tool, p.arguments, { signal, callId: p.callId })
         const note = this.host.setupNote()
         return note ? { ...res, contentItems: [...res.contentItems, { type: 'inputText' as const, text: note }] } : res
       }
