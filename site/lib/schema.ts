@@ -174,7 +174,3 @@ export function compareVersions(a: string, b: string): number {
   return 0
 }
 
-/** True for x.y.z with z above 0. A patch is titled "Kernel x.y.z" and needs no intro. */
-export function isPatch(version: string): boolean {
-  return Number(version.split('.')[2]) > 0
-}

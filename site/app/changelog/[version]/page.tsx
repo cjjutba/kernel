@@ -21,6 +21,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!release) return {}
   const { version, title, intro } = release
   const base = pageMetadata({
+    // Old patch files (0.1.1, 0.4.1) are still titled "Kernel x.y.z".
     title: title === `Kernel ${version}` ? `${title} · Changelog` : `${title} · Kernel ${version}`,
     description: intro ?? `New features, improvements and fixes in Kernel ${version}.`,
     path: releaseHref(version)

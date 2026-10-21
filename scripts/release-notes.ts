@@ -47,7 +47,7 @@ function release(version: string) {
   if (collected.internal.length) console.log(`Internal, not published:\n${collected.internal.map(line).join('\n')}`)
   const noPr = SECTIONS.flatMap((s) => collected.byType[s.type]).filter((n) => !n.pr)
   if (noPr.length) console.log(`No PR found for:\n${noPr.map((n) => `  ${n.file}`).join('\n')}`)
-  if (release.title.startsWith('TITLE')) console.log(`\nNext: write the title (and an intro if you like) in ${file}. The site and the release refuse the placeholder.`)
+  if (release.title.startsWith('TITLE')) console.log(`\nNext: write the title (and, for a minor, an intro) in ${file}. The site and the release refuse the placeholder.`)
 }
 
 try {

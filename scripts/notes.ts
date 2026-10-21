@@ -11,7 +11,6 @@ import {
   compareVersions,
   describeIssues,
   formatReleaseFile,
-  isPatch,
   parseFrontmatter,
   parseReleaseFile,
   PLACEHOLDER_TITLE,
@@ -148,12 +147,12 @@ export function packageVersion(root: string): string {
   return (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version: string }).version
 }
 
-/** The release a compile writes. A minor gets the placeholder title, which the schema refuses until someone edits it. */
+/** The release a compile writes. Every version gets the placeholder title, which the schema refuses until someone writes one. */
 export function buildRelease(version: string, date: string, c: Collected): Release {
   return {
     version,
     date,
-    title: isPatch(version) ? `Kernel ${version}` : PLACEHOLDER_TITLE,
+    title: PLACEHOLDER_TITLE,
     sections: SECTIONS.filter((s) => c.byType[s.type].length).map((s) => ({
       title: s.title,
       items: byArea(c.byType[s.type]).map((n): ChangeItem => ({
