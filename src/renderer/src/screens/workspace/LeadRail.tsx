@@ -29,12 +29,16 @@ function HandedRowButton({ row }: { row: HandedRow }) {
 
 /**
  * The Session rail of a chat with Kernel (docs/decisions/lead-session-rail.md). "This chat" lists the chat's own stages once it has work of its own, with the first one
- * reading as started by your message. "Handed off" lists one row per workspace the chat created, the ones waiting on you first and then the newest.
+ * reading as started by your message. Whether a turn runs or waits follows the current thread; the changed files, pull request and setup belong to the workspace's folder, so a legacy workspace that holds several threads shares them. "Handed off" lists one row per workspace the chat created, the ones waiting on you first and then the newest.
  */
 export function LeadRail({ ws, threadId }: { ws: Workspace; threadId: string | undefined }) {
-  const running = useStore((s) => (s.chats[ws.id] ?? []).some((c) => !!s.running[c.id]))
+  // Running and waiting follow the current thread, so a legacy workspace holding several threads does not show one's turn on another's rail.
+  const inThread = (c: { id: string; threadId?: string }) => !threadId || (c.threadId ?? c.id) === threadId
+  const running = useStore((s) => (s.chats[ws.id] ?? []).some((c) => inThread(c) && !!s.running[c.id]))
+  const title = useStore((s) => (s.chats[ws.id] ?? []).find((c) => c.kind === 'chat' && inThread(c))?.title)
   const waiting = useStore((s) => {
-    const pending = s.approvals.filter((a) => a.status === 'pending' && a.workspaceId === ws.id)
+    const mine = new Set((s.chats[ws.id] ?? []).filter(inThread).map((c) => c.id))
+    const pending = s.approvals.filter((a) => a.status === 'pending' && a.workspaceId === ws.id && (!a.chatId || mine.has(a.chatId)))
     return pending.length ? (pending.some((a) => a.kind === 'question') ? 'answer' : 'approval') : undefined
   })
   const doing = useDoing(ws.id)
@@ -53,7 +57,7 @@ export function LeadRail({ ws, threadId }: { ws: Workspace; threadId: string | u
     <aside className="ws-rail" aria-label="Session">
       {own && (
         <section className="rail-card" aria-label="This chat">
-          <header className="rail-head"><h2>This chat</h2><span className="rail-id">{ws.name}</span></header>
+          <header className="rail-head"><h2>This chat</h2>{title && <span className="rail-id rail-title">{title}</span>}</header>
           <ol className="rail-stages">{stages.map((s, i) => <StageRow key={s.id} stage={s} last={i === stages.length - 1} ws={ws} run={run} />)}</ol>
           {!ws.shared && <div className="rail-rows"><WorkspaceRows ws={ws} /></div>}
         </section>

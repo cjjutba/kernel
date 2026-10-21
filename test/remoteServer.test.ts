@@ -484,6 +484,15 @@ describe('remote access server (remote-access-server)', () => {
       await b.h['remote.revoke']({ id: device.id })
       expect((await raw(b, '/session', { authorization: `Bearer ${token}` })).status).toBe(401)
     })
+    it('limits wrong tokens on /session from one address like wrong codes on /pair', async () => {
+      const b = await boot()
+      const { token } = await pairDevice(b)
+      for (let i = 0; i < 5; i++) expect((await raw(b, '/session', { authorization: `Bearer wrong-${i}` })).status).toBe(401)
+      const blocked = await raw(b, '/session', { authorization: `Bearer ${token}` })
+      expect(blocked.status).toBe(429)
+      expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0)
+    })
+
   })
 
   describe('start and stop', () => {
