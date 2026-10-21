@@ -917,6 +917,20 @@ describe('where a new chat works', () => {
     expect(k.store.workspace(shared.workspaceId)).toMatchObject({ mode: 'current', path: repo })
   })
 
+  it('gives the checkout to one of two chats started at once, and refuses the other naming the first', async () => {
+    const { repo } = await withOrigin()
+    const k = await boot(await dirs({ mode: 'worktree' }))
+    const project = await k.addProject(repo)
+    const start = (prompt: string) => k.handlers()['lead.start']({ projectId: project.id, prompt, where: { kind: 'current' } })
+    const [a, b] = await Promise.allSettled([start('First here'), start('Second here')])
+    expect([a.status, b.status].sort()).toEqual(['fulfilled', 'rejected'])
+    const lost = (a.status === 'rejected' ? a : b) as PromiseRejectedResult
+    const won = a.status === 'fulfilled' ? a.value : (b as PromiseFulfilledResult<Awaited<ReturnType<typeof start>>>).value
+    expect(String(lost.reason)).toMatch(/already working on the current branch in this project: .*(First|Second) here/)
+    expect(k.store.workspaces(project.id).filter((w) => w.mode === 'current' && w.status !== 'archived')).toHaveLength(1)
+    expect(k.store.workspace(won.workspaceId)).toMatchObject({ mode: 'current', path: repo })
+  })
+
   it('adds a tab to a previous worktree, keeping its one workspace, and refuses one that is archived or missing', async () => {
     const { repo } = await withOrigin()
     const k = await boot(await dirs())

@@ -180,9 +180,12 @@ export class Workspaces extends Feature {
       }
       // A project with no commit to start from keeps the Lead on the checkout, with no baseline, as before KERNEL-355.
       if (o.lead && !main) return save(project.path, await currentBranch(project.path).catch(() => project.defaultBranch))
-      const held = s.workspace.oneCurrentBranchPerProject ? this.onCheckout(projectId, { agentId: agent.id, lead: !!o.lead }) : undefined
-      if (held) throw new Error(this.checkoutTaken(held))
-      return save(project.path, await currentBranch(project.path).catch(() => project.defaultBranch), s.workspace.baselineCurrentBranch ? (await snapshotBaseline(project.path)).ref : undefined)
+      // Check, snapshot and save sit in the project's lock, so two chats picked at once can't both take the checkout.
+      return this.withBranchLock(project.id, async () => {
+        const held = s.workspace.oneCurrentBranchPerProject ? this.onCheckout(projectId, { agentId: agent.id, lead: !!o.lead }) : undefined
+        if (held) throw new Error(this.checkoutTaken(held))
+        return save(project.path, await currentBranch(project.path).catch(() => project.defaultBranch), s.workspace.baselineCurrentBranch ? (await snapshotBaseline(project.path)).ref : undefined)
+      })
     })
     // Until its brief has gone out, the Lead's messages to it wait here (KERNEL-118). Nobody messages the Lead's own workspace.
     if (!o.lead) this.k.setup.setSetup(ws.id, { later: [] })

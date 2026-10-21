@@ -23,12 +23,14 @@ export function useWorkspaceChoices(projectId: string): { taken?: string; previo
   const workspaces = useStore((s) => s.workspaces)
   const threads = useStore((s) => s.threads)
   const leadId = useStore((s) => leadOf(s.agents, projectId)?.id)
+  const chats = useStore((s) => s.chats)
+  const running = useStore((s) => s.running)
   const one = useStore((s) => s.settings?.workspace.oneCurrentBranchPerProject ?? true)
   return useMemo(() => {
     const held = one ? checkoutHolder(workspaces, projectId, { agentId: leadId ?? '', lead: true }) : undefined
-    const previous = reusableWorktrees(workspaces, threads, projectId).map((w) => ({ id: w.id, title: chatTitle(w, threads), branch: w.branch, at: threads[w.threadId!]?.lastSentAt ?? threads[w.threadId!]?.createdAt ?? w.createdAt }))
+    const previous = reusableWorktrees(workspaces, threads, projectId).map((w) => ({ id: w.id, title: chatTitle(w, threads), branch: w.branch, at: threads[w.threadId!]?.lastSentAt ?? threads[w.threadId!]?.createdAt ?? w.createdAt, busy: (chats[w.id] ?? []).some((c) => running[c.id]) }))
     return { taken: held ? chatTitle(held, threads) : undefined, previous }
-  }, [workspaces, threads, projectId, leadId, one])
+  }, [workspaces, threads, chats, running, projectId, leadId, one])
 }
 
 /**

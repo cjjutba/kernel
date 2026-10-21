@@ -4,8 +4,12 @@ import { Icon, Menu, MENU_SEPARATOR, type MenuEntry } from '../../../ui'
 import type { IconName } from '../../../icons'
 import { ageOf } from './branchRows'
 
-/** A worktree an earlier chat holds open, which a new chat can join: its chat's title, its branch and when the chat started. */
-export interface PreviousWorktree { id: string; title: string; branch: string; at: number }
+/** A worktree an earlier chat holds open, which a new chat can join: its chat's title, its branch, when the chat started, and whether a turn runs in it now. */
+export interface PreviousWorktree { id: string; title: string; branch: string; at: number; busy: boolean }
+
+/** What joining does, under the row: a new tab in that chat's folder, with a warning first when the folder is busy. */
+export const joinLine = (p: PreviousWorktree) => `${p.busy ? 'Working now · ' : ''}${p.busy ? 'new' : 'New'} tab beside ${p.title}`
+const joinAria = (p: PreviousWorktree) => `Previous worktree: opens as a new tab beside ${p.title}, in the same folder.${p.busy ? ' That chat is working now.' : ''}`
 
 /** The icon each choice has, in the menu and on the chip. */
 export const WHERE_ICON: Record<LeadWhere['kind'], IconName> = { current: 'folder', worktree: 'fork', previous: 'history' }
@@ -60,17 +64,17 @@ export function WorkspaceMenu({ anchorRef, style, pick, taken, previous, base, o
       }
       : previous.length === 1
         ? {
-          id: 'previous', checked: pick.kind === 'previous', ariaLabel: `Previous worktree: ${previous[0].title}`, label: 'Previous worktree',
-          content: <Row icon={WHERE_ICON.previous} title="Previous worktree" sub={previous[0].title} end={pick.kind === 'previous' ? 'check' : undefined} />,
+          id: 'previous', checked: pick.kind === 'previous', ariaLabel: joinAria(previous[0]), label: 'Previous worktree',
+          content: <Row icon={WHERE_ICON.previous} title="Previous worktree" sub={joinLine(previous[0])} end={pick.kind === 'previous' ? 'check' : undefined} />,
           onSelect: () => onPick({ kind: 'previous', workspaceId: previous[0].id })
         }
         : {
-          id: 'previous', ariaLabel: `Previous worktree: ${(chosen ?? previous[0]).title}, ${previous.length} to pick from`, label: 'Previous worktree',
-          content: <Row icon={WHERE_ICON.previous} title="Previous worktree" sub={(chosen ?? previous[0]).title} end="more" />,
+          id: 'previous', ariaLabel: `${joinAria(chosen ?? previous[0])} ${previous.length} to pick from`, label: 'Previous worktree',
+          content: <Row icon={WHERE_ICON.previous} title="Previous worktree" sub={joinLine(chosen ?? previous[0])} end="more" />,
           children: previous.map((p): MenuEntry => ({
             id: p.id, checked: pick.kind === 'previous' && pick.workspaceId === p.id, label: p.title,
-            ariaLabel: `${p.title}, ${p.branch}, ${ageOf(p.at)}`,
-            content: <Row icon="branch" title={p.title} sub={`${p.branch} · ${ageOf(p.at)}`} end={pick.kind === 'previous' && pick.workspaceId === p.id ? 'check' : undefined} />,
+            ariaLabel: `${p.title}, ${p.branch}, ${ageOf(p.at)}. Opens as a new tab in the same folder.${p.busy ? ' Working now.' : ''}`,
+            content: <Row icon="branch" title={p.title} sub={`${p.busy ? 'Working now · ' : ''}${p.branch} · ${ageOf(p.at)}`} end={pick.kind === 'previous' && pick.workspaceId === p.id ? 'check' : undefined} />,
             onSelect: () => onPick({ kind: 'previous', workspaceId: p.id })
           }))
         }
