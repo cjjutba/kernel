@@ -6,7 +6,7 @@ import { PopSearch, WherePop } from './WherePop'
 
 /**
  * The project New chat starts in, opened from the title: the project's name, underlined, in "What's next for Kernel?", or a Pick a project button
- * when the page has no project. Search, the projects with a check on the current one, then New project. There is no "No project" row.
+ * when the page has no project. It opens below the title, never over it. Search, the projects with a check on the current one, then New project. There is no "No project" row.
  */
 export function ProjectPicker({ variant, projects, project, open, disabled, onToggle, onClose, onPick, onNewProject }: {
   variant: 'title' | 'button'; projects: Project[]; project: Project | undefined; open: boolean; disabled?: boolean
@@ -24,7 +24,7 @@ export function ProjectPicker({ variant, projects, project, open, disabled, onTo
         ? <button type="button" className="lead-project" disabled={disabled} aria-label={`Project: ${project?.name ?? 'none'}, change project`} aria-haspopup="menu" aria-expanded={open} data-tip={(project?.name.length ?? 0) > 24 ? project?.name : undefined} onClick={onToggle}><span className="ellipsis">{project?.name}</span></button>
         : <Button disabled={disabled} aria-haspopup="menu" aria-expanded={open} onClick={onToggle}>Pick a project<Icon name="chevron" size={12} /></Button>}
       {open && (
-        <WherePop anchorRef={anchor} label="Project" width={248} onClose={close} focusFirst={false}
+        <WherePop anchorRef={anchor} label="Project" width={248} drop="down" onClose={close} focusFirst={false}
           onKey={(e) => { if (e.key === 'Enter' && e.target instanceof HTMLInputElement && shown[0]) { e.preventDefault(); pick(shown[0].id) } }}>
           <PopSearch label="Search projects…" value={text} onChange={setText} />
           <div className="where-list" role="group" aria-label="Projects">
