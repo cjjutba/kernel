@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PushEvent } from '../src/shared/ipc'
 import { Bridge, type LinkState, type SocketLike } from '../src/renderer/src/remote/bridge'
 import { deviceName, pairCode } from '../src/renderer/src/remote/pairing'
+import { newId, whenIdle } from '../src/renderer/src/compat'
 
 // remote-web-client: the browser's window.kernel over the WebSocket, with a fake socket standing in for the browser's.
 
@@ -220,5 +221,29 @@ describe('pairing helpers', () => {
   it('names a device from its browser', () => {
     expect(deviceName('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1')).toBe('iPhone Safari')
     expect(deviceName('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0 Safari/537.36')).toBe('Mac Chrome')
+  })
+})
+
+describe('a phone browser over plain HTTP', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
+
+  it('makes ids without crypto.randomUUID, which an insecure page lacks', () => {
+    const real = globalThis.crypto
+    vi.stubGlobal('crypto', { getRandomValues: (b: Uint8Array) => real.getRandomValues(b) })
+    const ids = new Set(Array.from({ length: 50 }, () => newId()))
+    expect(ids.size).toBe(50)
+    for (const id of ids) expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+  })
+
+  it('runs idle work without requestIdleCallback, which Safari lacks, and can cancel it', () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('requestIdleCallback', undefined)
+    const ran = vi.fn()
+    whenIdle(ran)
+    const cancelled = vi.fn()
+    whenIdle(cancelled)()
+    vi.runAllTimers()
+    expect(ran).toHaveBeenCalledOnce()
+    expect(cancelled).not.toHaveBeenCalled()
   })
 })

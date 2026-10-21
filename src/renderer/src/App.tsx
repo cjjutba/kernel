@@ -55,6 +55,7 @@ import { useArchiveLanding } from './screens/workspace/archiveLanding'
 import { useArchiveStage } from './screens/workspace/archiveMotion'
 import { toggleBottomPanel } from './screens/workspace/bottomSplit'
 import { DevUi } from './ui/DevUi'
+import { whenIdle } from './compat'
 
 /**
  * React.lazy, plus a warm path. Route changes here are synchronous (the store is a useSyncExternalStore), and a lazy component
@@ -179,8 +180,7 @@ export function App() {
   // Settings is one ⌘, away, so fetch it once the app is idle. Without that, the first ⌘, swaps the window for the loading shell until the chunk lands.
   useEffect(() => {
     if (!booted) return
-    const id = requestIdleCallback(() => { settings.warm(); settingsNav.warm() })
-    return () => cancelIdleCallback(id)
+    return whenIdle(() => { settings.warm(); settingsNav.warm() })
   }, [booted])
   // Usage data is asked about once, after the first project, in a build that can send it (KERNEL-397).
   const projects = useStore((s) => s.projects.length)
