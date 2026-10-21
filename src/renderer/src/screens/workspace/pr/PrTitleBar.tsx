@@ -1,6 +1,5 @@
 import type { Workspace } from '@shared/types'
-import { isLeadChatWorkspace, onSharedFolder } from '@shared/leadWorkspace'
-import { leadModeOf } from '@shared/leadMode'
+import { onSharedFolder, ownsFolder } from '@shared/leadWorkspace'
 import { call } from '../../../api'
 import { Button, Icon, Spinner } from '../../../ui'
 import { attempt } from '../MessageActions'
@@ -30,11 +29,11 @@ export function PrTitleBar({ ws }: { ws: Workspace }) {
   const run = usePrActions(ws, { key: title?.button?.id, archivable: ws.prState === 'merged' || ws.prState === 'closed' })
   // A Lead chat on the shared folder has no working copy to open a pull request from yet, and says when it will (KERNEL-405).
   if (onSharedFolder(ws)) {
-    const reason = ws.leadMode === 'build' ? 'Create PR is off until this chat has its working copy, made when you send your next message.' : 'Create PR is off until this chat switches to Build here and has a working copy of its own.'
+    const reason = 'Create PR is off until this chat has its working copy, made when you send your next message.'
     return <span className="pr-t" data-tone="idle" role="group" aria-label="Pull request"><span className="pr-t-words">No pull request yet</span><Button variant="secondary" disabled data-tip={reason}>Create PR</Button></span>
   }
-  // A chat with Kernel in Build here stays open after its pull request merges, and its next change starts a new branch from main (KERNEL-780).
-  if (ws.prState === 'merged' && isLeadChatWorkspace(ws) && leadModeOf(ws) === 'build') {
+  // A chat with Kernel stays open after its pull request merges, and its next change starts a new branch from main (KERNEL-780).
+  if (ws.prState === 'merged' && ownsFolder(ws)) {
     return <span className="pr-t" data-tone="merged" role="group" aria-label="Pull request"><span className="pr-t-ico"><Icon name="merged" size={14} /></span><span className="pr-t-words">PR #{ws.prNumber} merged</span><span className="pr-t-num">The next change starts a new branch from main.</span></span>
   }
   if (!title) return null

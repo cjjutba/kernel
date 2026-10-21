@@ -1,7 +1,7 @@
 import { useRef, type ComponentProps, type JSXElementConstructor, type ReactNode } from 'react'
 import type { Provider } from '@shared/types'
 import { Button, Icon, IconButton, ProviderMark, Spinner } from '../../../ui'
-import { LeadModeSwitch, ModeButton } from './ModeMenu'
+import { ModeButton } from './ModeMenu'
 import { ModelPicker } from './ModelPicker'
 import { effortLabel } from './modelPrefs'
 import { PlusMenu } from './PlusMenu'
@@ -12,13 +12,12 @@ type Anchored<C extends JSXElementConstructor<any>> = Omit<ComponentProps<C>, 'a
 export interface SendState { label: string; ready: boolean; disabled?: boolean; busy?: boolean; busyLabel?: string; stop?: boolean; stopping?: boolean; onSend: () => void; onStop?: () => void }
 
 /**
- * The toolbar of the message box, for a chat's composer and New chat's (KERNEL-805): the Hand off | Build here switch when the chat is with Kernel,
+ * The toolbar of the message box, for a chat's composer and New chat's (KERNEL-805): a teammate's name when the chat is a teammate's,
  * then one group of run settings split by a hairline (the model with its effort beside it, and the permission mode), a spacer, the context meter, +, attach and send.
  * Both render this, so a change to it shows in both. Each menu opens upward from its own button.
  */
-export function ComposerToolbar({ lead, agent, model, mode, context, plus, send, disabled, compact }: {
-  lead?: ComponentProps<typeof LeadModeSwitch>
-  /** A teammate's name and role, in place of the Lead's chip. */
+export function ComposerToolbar({ agent, model, mode, context, plus, send, disabled, compact }: {
+  /** A teammate's name and role. A chat with Kernel passes none. */
   agent?: ReactNode
   model: { label: string; provider: Provider; open: boolean; onOpen: (open: boolean) => void; picker: Anchored<typeof ModelPicker> }
   mode: ComponentProps<typeof ModeButton>
@@ -33,7 +32,6 @@ export function ComposerToolbar({ lead, agent, model, mode, context, plus, send,
   const plusAnchor = useRef<HTMLSpanElement>(null)
   return (
     <>
-      {!compact && lead && <LeadModeSwitch {...lead} />}
       {!compact && agent}
       {!compact && <div className="cmp-run">
         <span ref={modelAnchor} style={{ position: 'relative' }}>

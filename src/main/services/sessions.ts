@@ -3,18 +3,17 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ModelInfo, Options, SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
-import type { AccountAuth, Approval, LeadMode, UnlistedTools, AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, ChatRunMode, CodexPersonality, CompactWindow, Decision, LastTurn, Provider, MessageFrom, QueuedMessage, QueueReason, RateLimit, Role, TeamUpdate, Workspace } from '@shared/types'
+import type { AccountAuth, Approval, UnlistedTools, AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, ChatRunMode, CodexPersonality, CompactWindow, Decision, LastTurn, Provider, MessageFrom, QueuedMessage, QueueReason, RateLimit, Role, TeamUpdate, Workspace } from '@shared/types'
 import type { Retry } from '@shared/ipc'
 import { linkText } from '@shared/links'
 import { nearLimit } from '@shared/usage'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import { answerItemId, answerParts, isSentItem } from '@shared/approvalAnswer'
-import { leadModeName, leadModeOf } from '@shared/leadMode'
 import type { Store } from '../db'
 import { bus } from '../bus'
 import type { Approvals } from './approvals'
 import { blockingLimit, isRejected, limitedModels, WINDOW_MODEL, type Failure } from './health'
-import { forProvider, Handoffs, leadRule, planApproval } from './handoff'
+import { forProvider, LEAD_RULE, planApproval } from './handoff'
 import { mentionNote, mentionsOf } from './mentions'
 import { missingServers, type MissingServer } from './agentTools'
 import type { McpReport } from './mcp'
@@ -40,7 +39,6 @@ interface Live {
   runner: Runner
   running: boolean; interrupted: boolean
   /** The Lead mode the process started in, which its prompt and Kernel's tools follow (KERNEL-994). */
-  leadMode?: LeadMode
   /** Background tasks (shells, subagents, monitors) the process is running, from its latest background_tasks_changed. */
   tasks: Set<string>
   /** Cards this process put up (`placeApproval`). A Stop or Send now, or the process ending, ends those still waiting (KERNEL-563). */
@@ -258,10 +256,9 @@ export interface SessionDeps {
    * to carry on (KERNEL-777). `refused`: it was a carry-on that a limit refused again within seconds, which is no news unless
    * `stuck`: the third strike, after which `carryOn` stops (KERNEL-1031).
    */
-  /** Whether a Build here chat may change files now, read at each step (`Lead.buildOpen`, KERNEL-992). Left out, it always may. */
+  /** Whether a chat with Kernel may change files now, read at each step (`Lead.buildOpen`, KERNEL-992). Left out, it always may. */
   buildOpen?: (chatId: string) => boolean
-  /** The user approved a plan in a Build here chat, which counts as the go-ahead (KERNEL-992). */
-  onBuildPlanApproved?: (chatId: string) => void
+  /** The user approved a plan in a chat with Kernel, which counts as the go-ahead (KERNEL-992). */
   onTurnDone?: (ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy; account?: string; limit?: true; refused?: true; stuck?: true }) => void
   /**
    * A chat a usage limit or a quit cut off answered its carry-on cleanly: its queue went, or Kernel's nudge did, and the
@@ -356,7 +353,7 @@ export function mcpNote(m: MissingServer): string {
 }
 
 /** Why a chat's process needs replacing: its mode, Bypass, agent or account changed, or the compact window did (KERNEL-994). */
-export type StaleReason = 'mode' | 'bypass' | 'agent' | 'account' | 'compact'
+export type StaleReason = 'bypass' | 'agent' | 'account' | 'compact'
 
 export class Sessions {
   private live = new Map<string, Live>()
@@ -369,7 +366,6 @@ export class Sessions {
   /** Each chat's mode as the renderer last got it, from `runMode` or a `chat.runMode` push, so a change goes out once (KERNEL-572). */
   private shownModes = new Map<string, string>()
   /** Lead chats with an approved plan and nothing handed off yet (KERNEL-67). The Lead tools end one when they create a workspace. */
-  readonly handoffs = new Handoffs()
   private queues = new Map<string, QueuedMessage[]>()
   /** What each held queue last told the renderer it waits for. Computed, never saved with a held brief (KERNEL-271). */
   private reasons = new Map<string, QueueReason | undefined>()
@@ -880,7 +876,7 @@ export class Sessions {
     const known = this.known(chatId, o.clientId)
     if (known) return known
     // The user is redirecting the Lead, even when the message waits in the queue, so no hand-off reminder follows.
-    if (o.from !== 'kernel') { this.handoffs.done(chatId); this.d.openItems?.userSent(chatId) }
+    if (o.from !== 'kernel') this.d.openItems?.userSent(chatId)
     // Kernel is quitting, as when an interrupted Lead turn messages a teammate: the message is saved and goes at the next launch.
     if (this.closing) {
       this.setQueue(chatId, [...this.queued(chatId), queuedOf(chatId, parts, o)])
@@ -915,7 +911,7 @@ export class Sessions {
     this.mustHaveFolder(this.mustChat(chatId))
     // One message with nothing ahead of it is an ordinary send.
     if (messages.length === 1 && !this.queued(chatId).length) return this.send(chatId, messages[0].parts, sender(messages[0]))
-    if (messages.some((m) => m.from !== 'kernel')) { this.handoffs.done(chatId); this.d.openItems?.userSent(chatId) }
+    if (messages.some((m) => m.from !== 'kernel')) this.d.openItems?.userSent(chatId)
     this.setQueue(chatId, [...this.queued(chatId), ...messages.filter((m) => !this.known(chatId, m.clientId)).map((m) => queuedOf(chatId, m.parts, m))])
     if (this.closing) return { queued: true }
     const why = this.waitsFor(chatId)
@@ -1055,7 +1051,7 @@ export class Sessions {
     // The move's decision can have used up the chat's choice (KERNEL-844).
     chat = this.d.store.chat(chat.id) ?? chat
     // A held message going out counts as the user taking over too. Kernel's own updates don't.
-    if ([o, ...more].some((m) => m.from !== 'kernel')) { this.handoffs.done(chat.id); this.d.openItems?.userSent(chat.id); this.crashed.delete(chat.id) }
+    if ([o, ...more].some((m) => m.from !== 'kernel')) { this.d.openItems?.userSent(chat.id); this.crashed.delete(chat.id) }
     // The user writing instead of answering ends a Codex plan still waiting after its turn (KERNEL-563).
     if ([o, ...more].some((m) => !m.from)) this.expireCards(this.turns.get(chat.id)?.plans)
     // A nudge picks up a turn a limit or a crash cut short, so the turn is still the one whoever started it started.
@@ -1073,7 +1069,7 @@ export class Sessions {
     if (kept && !kept.running && (why || kept.account !== this.d.accountFor?.(chatProvider(chat), chat))) {
       this.end(chat.id, kept)
       // A move to another account says so on its own (`noteMove`).
-      if (kept.tasks.size && (why ? [...why].some((r) => r !== 'account') : false)) this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: this.restartedNote(chat, ws, why) })
+      if (kept.tasks.size && (why ? [...why].some((r) => r !== 'account') : false)) this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: this.restartedNote() })
     }
     // Read before the chat's account moves, which `coldSize` compares against (KERNEL-844).
     const cold = this.d.coldSize?.(chat) !== undefined
@@ -1100,20 +1096,12 @@ export class Sessions {
   }
 
   /** The line a restart that stopped background tasks leaves in the chat (KERNEL-994). */
-  private restartedNote(chat: Chat, ws: Workspace, why: Set<StaleReason> | undefined): string {
-    const mode = why?.has('mode') && this.isLeadChat(chat.id) ? leadModeOf(this.d.store.workspace(ws.id) ?? ws) : undefined
-    return `Restarted${mode ? ` in ${leadModeName(mode)}` : ''}. Background tasks started before the ${mode ? 'switch' : 'change'} stopped.`
+  private restartedNote(): string {
+    return 'Restarted. Background tasks started before the change stopped.'
   }
 
   private markStale(chatId: string, reason: StaleReason) {
     this.stale.set(chatId, new Set([...(this.stale.get(chatId) ?? []), reason]))
-  }
-
-  /** A change that marked the chat's process stale was undone, such as a mode switched back. The process stays while another reason holds. */
-  clearStale(chatId: string, reason: StaleReason) {
-    const reasons = this.stale.get(chatId)
-    if (!reasons?.delete(reason)) return
-    if (!reasons.size) this.stale.delete(chatId)
   }
 
   /**
@@ -1583,7 +1571,7 @@ export class Sessions {
     if (!live?.running) return
     // Stop is the user taking over. Send now isn't on its own: the message it sends first decides, so a Kernel update
     // sent again with Retry now leaves a pending hand-off reminder alone (KERNEL-116).
-    if (!sendNext) { this.handoffs.done(chatId); this.d.openItems?.userSent(chatId) }
+    if (!sendNext) this.d.openItems?.userSent(chatId)
     // A Stop while Send now is already interrupting wins: the queue is dropped.
     if (live.interrupted) { if (!sendNext) live.sendNext = false; return }
     live.interrupted = true
@@ -1612,22 +1600,14 @@ export class Sessions {
 
   /**
    * The user approved this chat's plan, from ExitPlanMode or the Lead's request_plan_approval. The chat leaves plan mode, so a
-   * restart does not put it back (D-074), and a Lead chat in Hand off owes the hand-off (KERNEL-67). One in Build here builds
-   * the plan itself, as a teammate does (KERNEL-770). The settled card says the plan was
-   * approved, so the chat gets no note. A message Kernel sends carries `approvalId`, so the chat can show the user's answer.
+   * restart does not put it back (D-074). A Lead carries the plan out as its rule says, doing or handing off each step
+   * (one-lead-chat), and a teammate builds it. The settled card says the plan was approved, so the chat gets no note. A message
+   * Kernel sends carries `approvalId`, so the chat can show the user's answer.
    */
   async planApproved(chatId: string, o: { queue?: boolean; restarted?: boolean; approvalId?: string } = {}): Promise<string> {
     await this.configure(chatId, { plan: false }).catch(() => undefined)
     const chat = this.mustChat(chatId)
-    const lead = this.isLeadChat(chatId) && leadModeOf(this.d.store.workspace(chat.workspaceId)) === 'handoff'
-    if (lead) this.handoffs.approved(chatId)
-    else if (this.isLeadChat(chatId)) this.d.onBuildPlanApproved?.(chatId)
-    // The waiting turn's process has the tools of the mode it started in, so after a switch its turn ends and the approval
-    // goes to a fresh process, as it does after a restart (KERNEL-994).
-    const live = this.live.get(chatId)
-    const now = this.isLeadChat(chatId) ? leadModeOf(this.d.store.workspace(chat.workspaceId)) : undefined
-    const switched = !!live && !o.restarted && !!live.leadMode && !!now && live.leadMode !== now
-    if (switched) o = { ...o, restarted: true, queue: true }
+    const lead = this.isLeadChat(chatId)
     // The agent has its plan in context, so the note is short. After a restart it names the plan's file, or carries its
     // text when the file is gone (plan-cards-survive-restart).
     const ws = o.restarted ? this.d.store.workspace(chat.workspaceId) : undefined
@@ -1635,11 +1615,8 @@ export class Sessions {
     const planFile = ws && plan?.planFile && existsSync(join(ws.path, plan.planFile)) ? plan.planFile : undefined
     const note = planApproval({ lead, planFile, plan: plan?.detail, restarted: o.restarted, queued: o.queue })
     const text = forProvider(note.text, chatProvider(chat))
-    if (switched) this.markStale(chatId, 'mode')
     // A message is a turn of its own, so it goes only where no turn is waiting on the answer: Codex, and after a restart.
     if (o.queue) await this.send(chatId, [{ type: 'text', text }], { from: 'kernel', approvalId: o.approvalId })
-    // The tool that is waiting on the answer is in the turn being ended, so nothing here waits for the interrupt.
-    if (switched && live.running) { live.sendNext = true; void this.interrupt(chatId, true).catch(() => undefined) }
     return text
   }
 
@@ -1747,8 +1724,6 @@ export class Sessions {
       for (const c of this.d.store.chats(id)) {
         const live = this.live.get(c.id)
         if (!live) continue
-        // A switch back to the mode the process started in needs no new one.
-        if (reason === 'mode' && live.leadMode === leadModeOf(this.d.store.workspace(id))) { this.clearStale(c.id, 'mode'); continue }
         if (live.running || live.tasks.size) this.markStale(c.id, reason)
         else this.end(c.id, live)
       }
@@ -1867,7 +1842,7 @@ export class Sessions {
     const root = this.d.store.project(ws.projectId)?.path
     const account = 'account' in o ? o.account : this.d.accountFor?.(chatProvider(chat), chat)
     const { mode, bypass } = this.modes(chat, ws)
-    const live = { running: false, interrupted: false, tasks: new Set<string>(), cards: new Set<string>(), groups: new Set<number>(), account, onKey: this.d.authOf?.(chatProvider(chat), account) === 'apiKey', mode, leadMode: agent?.lead ? leadModeOf(this.d.store.workspace(ws.id) ?? ws) : undefined } as Live
+    const live = { running: false, interrupted: false, tasks: new Set<string>(), cards: new Set<string>(), groups: new Set<number>(), account, onKey: this.d.authOf?.(chatProvider(chat), account) === 'apiKey', mode } as Live
     const host = this.hostFor(chat.id, ws, agent, live)
     const env = this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.project(ws.projectId)) })
     const prompt = agentPrompt(agent, ws, this.d.rulesFor?.(ws, agent, chat))
@@ -1892,7 +1867,6 @@ export class Sessions {
       chat: () => this.mustChat(chatId),
       settings: () => this.d.settings(),
       mode: () => this.modes(this.mustChat(chatId), ws).mode,
-      leadMode: () => (agent?.lead ? leadModeOf(this.d.store.workspace(ws.id) ?? ws) : undefined),
       ...(agent?.lead && this.d.buildOpen ? { buildOpen: () => this.d.buildOpen!(chatId) } : {}),
       projectAllow: () => this.d.projectAllow(ws.projectId),
       allowInProject: (rule) => this.d.allowInProject(ws.projectId, rule),
@@ -1977,12 +1951,10 @@ export class Sessions {
       requestPlan: (plan, o) => this.requestPlan(chatId, ws, agent, plan, o),
       afterPlan: () => { const t = this.approvedPlans.get(chatId); this.approvedPlans.delete(chatId); return t },
       setupNote: () => { const t = this.setupNotes.get(chatId); this.setupNotes.delete(chatId); return t },
-      // A plan approved and not handed off reminds once, and so does what the chat owes, until a new item opens (KERNEL-745, KERNEL-749).
+      // What the chat owes reminds once, until a new item opens (KERNEL-749).
       handoffAtStop: () => {
-        const t = this.handoffs.reminder(chatId)
-        if (t) bus.track({ name: 'handoff.reminder' })
-        const both = [t, this.d.openItems?.atStop(chatId)].filter(Boolean).join('\n\n')
-        return both ? forProvider(both, chatProvider(this.mustChat(chatId))) : undefined
+        const t = this.d.openItems?.atStop(chatId)
+        return t ? forProvider(t, chatProvider(this.mustChat(chatId))) : undefined
       },
       followUp: (text) => { void this.send(chatId, [{ type: 'text', text }], { from: 'kernel' }).catch(() => undefined) }
     }
@@ -2392,8 +2364,7 @@ export function agentPrompt(agent: AgentDef | undefined, ws: Workspace, rule?: s
     ? `You are working in a git worktree at ${ws.path} on branch ${ws.branch}, created from ${ws.baseRef}.${ws.lead ? ' It is not the main checkout, which the user may be running.' : ''} Stay inside it. Push with \`git push -u origin ${ws.branch}\` (or \`HEAD\`), never a bare \`git push\`.`
     : `You are working directly in the main checkout at ${ws.path} on ${ws.branch}. Some files already had changes before you started; never commit those unless asked.`
   const port = ws.shared ? undefined : `If you start a dev server, use port ${ws.port} ($KERNEL_PORT).`
-  // The chat's mode picks the Lead's rule: Hand off plans and hands off, Build here builds in this worktree (KERNEL-770).
-  return [agent?.prompt, agent?.lead && leadRule(leadModeOf(ws)), rule, where, port].filter(Boolean).join('\n\n')
+  return [agent?.prompt, agent?.lead && LEAD_RULE, rule, where, port].filter(Boolean).join('\n\n')
 }
 
 /** What Restart session sends, after any messages held for the chat. */

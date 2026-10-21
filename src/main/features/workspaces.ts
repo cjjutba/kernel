@@ -1,9 +1,8 @@
 import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { PORT_BLOCK, type AgentDef, type Chat, type ChatPart, type CompareTarget, type Effort, type LeadMode, type Provider, type Project, type ResolvedPath, type Workspace, type WorkspaceMode, type WorkspaceSource } from '@shared/types'
+import { PORT_BLOCK, type AgentDef, type Chat, type ChatPart, type CompareTarget, type Effort, type Provider, type Project, type ResolvedPath, type Workspace, type WorkspaceMode, type WorkspaceSource } from '@shared/types'
 import { chatProvider, providerOf } from '@shared/providers'
-import { buildsHere } from '@shared/leadMode'
-import { isLeadChatWorkspace } from '@shared/leadWorkspace'
+import { isLeadChatWorkspace, ownsFolder } from '@shared/leadWorkspace'
 import { newId } from '../db'
 import { bus } from '../bus'
 import { DEFAULT_BASE_REF, loadRepoSettings, referencesInProject, type RepoSettings } from '../services/settings'
@@ -31,8 +30,6 @@ export interface CutWorkspace {
   prompt: string; parts?: ChatPart[]; source?: WorkspaceSource; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string
   provider?: Provider; model?: string; effort?: Effort; plan?: boolean; taskFor?: (ws: Workspace) => string | undefined; leadChatId?: string; reviewOf?: string; linkReviewOf?: string
   labels?: string[]; waitFor?: string[]; lead?: { threadId: string }
-  /** A Lead chat that starts in Build here follows Workspace type, one in Hand off gets a worktree (KERNEL-1051). */
-  leadMode?: LeadMode
   /**
    * The agent itself, for one that isn't on the project's team: Kernel's own reviewer, which runs the reviews Kernel starts with
    * its own prompts (KERNEL-549). Without it, an `agentId` the team doesn't have falls back to the Lead.
@@ -112,7 +109,7 @@ export class Workspaces extends Feature {
     if (o.reviewOf && (!reviewed || reviewed.projectId !== projectId || reviewed.status === 'archived')) throw new Error('The workspace to review is not open in this project.')
     const remote = await this.k.config.remoteFor(project.path, repo)
     const main = o.lead ? await leadBase(project.path, remote) : undefined
-    const mode = reviewed ? 'worktree' : o.lead ? (main ? (o.leadMode === 'build' ? o.mode ?? repo.workspace.mode ?? s.workspace.mode : 'worktree') : 'current') : o.mode ?? repo.workspace.mode ?? s.workspace.mode
+    const mode = reviewed ? 'worktree' : o.lead ? (main ? o.mode ?? repo.workspace.mode ?? s.workspace.mode : 'current') : o.mode ?? repo.workspace.mode ?? s.workspace.mode
     // A project Kernel ran git init in waits for the user's first commit (KERNEL-231). Without one, a worktree has nothing to start from.
     // The Lead's base was found above, so its project has one.
     if (mode === 'worktree' && !o.lead && !(await hasCommit(project.path))) throw new Error(`${project.name} has no commit yet, so a new workspace has nothing to branch from. Make the first commit in ${project.path}, then try again.`)
@@ -596,12 +593,12 @@ export class Workspaces extends Feature {
 
   /**
    * Another open workspace on the project's checkout, which "One current-branch workspace per project" refuses a second to
-   * share: a teammate's, or a chat with Kernel that builds there (KERNEL-1051). `self` is the one asking, so it never counts, nor
-   * does a chat of the same agent unless both build.
+   * share: a teammate's, or a chat with Kernel that works there (KERNEL-1051, one-lead-chat). `self` is the one asking, so it never counts, nor
+   * does a chat of the same agent unless both are chats with Kernel.
    */
   onCheckout(projectId: string, self: { id?: string; agentId: string; lead?: boolean }): Workspace | undefined {
     return this.store.workspaces(projectId).find((w) => w.mode === 'current' && w.status !== 'archived' && w.id !== self.id
-      && (w.agentId !== self.agentId || (!!self.lead && isLeadChatWorkspace(w) && buildsHere(w))))
+      && (w.agentId !== self.agentId || (!!self.lead && ownsFolder(w))))
   }
 
   /**
@@ -825,7 +822,7 @@ export class Workspaces extends Feature {
       'workspaces.hunks': async ({ workspaceId, path }) => this.unmade(workspaceId) ? [] : this.hunks(workspaceId, path),
       'workspaces.commit': async ({ workspaceId, hunkIds, message }) => {
         this.mustBeMade(workspaceId)
-        if (this.mustWs(workspaceId).shared) throw new Error('This chat has no worktree of its own. Switch it to Build here first.')
+        if (this.mustWs(workspaceId).shared) throw new Error('This chat has no worktree of its own yet. Send a message in it first, which gives it one.')
         const picked = (await this.hunks(workspaceId)).filter((h) => hunkIds.includes(h.id))
         if (picked.length !== hunkIds.length) throw new Error('Those changes moved on. Open the card again and pick again.')
         await commitHunks(this.mustWs(workspaceId).path, picked, message?.trim() || `Update ${[...new Set(picked.map((h) => h.path))].join(', ')}`)

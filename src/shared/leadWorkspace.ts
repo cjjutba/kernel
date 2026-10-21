@@ -18,3 +18,9 @@ export const leadChatWorkspaceOf = (workspaces: Workspace[], threadId: string): 
 
 /** A chat that runs in the project's shared main folder and has no worktree, branch, ports or setup of its own (KERNEL-1050). */
 export const onSharedFolder = (ws: Workspace) => !!ws.shared
+
+/**
+ * A Lead chat that has a folder of its own, a worktree or the checkout, rather than the shared main folder. Its PRs take a
+ * teammate's path (review, Team updates, auto-merge), and it may edit files (docs/decisions/one-lead-chat.md).
+ */
+export const ownsFolder = (ws: Workspace | undefined): boolean => !!ws && isLeadChatWorkspace(ws) && !ws.shared

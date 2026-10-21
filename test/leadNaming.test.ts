@@ -55,7 +55,7 @@ async function project() {
   await run('git', ['-C', repo, 'push', '-q', '-u', 'origin', 'main'])
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt') }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt') }))
   const k = new Kernel({ dataDir, home })
   k.signedInReader = async () => true
   k.chats.titleFor = async () => undefined

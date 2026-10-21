@@ -1,7 +1,7 @@
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { TOOL_KINDS } from '@shared/telemetry'
-import type { AgentReach, AgentWarning, LeadMode, McpAccountServer, McpStatus } from '@shared/types'
+import type { AgentReach, AgentWarning, McpAccountServer, McpStatus } from '@shared/types'
 import { toolServerName } from './mcp'
 
 // What an agent file's `tools:` line lets the agent do (KERNEL-397).
@@ -63,11 +63,6 @@ export interface ToolPolicy {
   /** Whether the file's disallowedTools takes the tool away, rather than its tools line leaving it out. */
   disallows(tool: string): boolean
   /**
-   * Why the chat's mode refuses the tool, rather than the agent file: Hand off doesn't edit (KERNEL-770). `now` is the chat's
-   * mode at the call, which a switch during the reply may have changed from the one the session started in.
-   */
-  modeRefuses(tool: string, now?: LeadMode): string | undefined
-  /**
    * How much of an MCP server the session may reach. Kernel's own is always all of it. With `unlisted`, a server the tools
    * line leaves out counts as named, as in Bypass permissions with `unlisted_tools = "ask"` (bypass-allows-unlisted-mcp).
    * disallowedTools still takes away what it names, and a server the line names in part keeps only those tools.
@@ -77,15 +72,6 @@ export interface ToolPolicy {
 
 /** None of a server, all of it but `except`, or only `only`, by the tool's name on that server. */
 export type ServerAccess = { on: false } | { on: true; only?: string[]; except?: string[] }
-
-/** What a chat with Kernel in Hand off hears when it tries to edit a file (KERNEL-770). */
-export const HANDOFF_NO_EDIT = "This chat is in Hand off, so you don't edit files. Hand the change to a teammate with mcp__kernel__create_workspace, or tell the user they can switch this chat to Build here."
-
-/** The same refusal once the user switched the chat to Build here during the reply, which still runs in Hand off. */
-export const HANDOFF_SWITCHED = "This reply started while the chat was in Hand off, so you can't edit files in it. The user has switched this chat to Build here since, and that applies from their next message. Stop here and tell the user to send the request again."
-
-/** What a chat with Kernel hears when Hand off refuses an edit, by the chat's mode at the time of the call. */
-export const handoffRefusal = (now?: LeadMode): string => (now === 'build' ? HANDOFF_SWITCHED : HANDOFF_NO_EDIT)
 
 /** A `.md` file right in Claude Code's plans folder, where plan mode writes its plan. */
 export const isPlanFile = (path: unknown, plans: string) => typeof path === 'string' && path.endsWith('.md') && dirname(resolve(path)) === plans && !!basename(path)
@@ -130,11 +116,11 @@ function readLine(entries: string[]) {
  * (KERNEL-464). `allow` is the project's `[agents.<id>] allow`: MCP servers the user let this agent use though its tools line
  * doesn't name them, which count as named unless disallowedTools takes them away (KERNEL-537). `readOnly` is a review chat's
  * (KERNEL-549): Edit, Write and NotebookEdit are out whatever the lines say, a plan file included. Bash stays, for git and gh.
- * `lead` is a chat with Kernel's mode (KERNEL-770). In Hand off, Edit, Write and NotebookEdit are out whatever the tools line
- * says, but Write and Edit still reach a plan file (D-023). In Build here, Edit and Write are in whatever the tools line says,
- * and disallowedTools can still take them away. A Lead keeps every MCP tool, tracker writes included (KERNEL-1113).
+ * `lead` is a chat with Kernel. Its Edit and Write are in whatever the tools line says, since the Lead edits its own folder
+ * when the work is small, and disallowedTools can still take them away. A Lead keeps every MCP tool, tracker writes included
+ * (KERNEL-1113, one-lead-chat).
  */
-export function toolPolicy(tools: string[] | undefined, o: { disallowed?: string[]; plans?: string; aliases?: Record<string, string>; allow?: string[]; readOnly?: boolean; lead?: LeadMode } = {}): ToolPolicy | undefined {
+export function toolPolicy(tools: string[] | undefined, o: { disallowed?: string[]; plans?: string; aliases?: Record<string, string>; allow?: string[]; readOnly?: boolean; lead?: boolean } = {}): ToolPolicy | undefined {
   if (!tools && !o.disallowed?.length && !o.readOnly && !o.lead) return undefined
   const allowed = new Set(withAliases((o.allow ?? []).map((s) => `mcp__${s}`), aliasMap(o.aliases)).map((e) => e.split('__')[1]))
   const plans = resolve(o.plans ?? join(homedir(), '.claude', 'plans'))
@@ -144,14 +130,12 @@ export function toolPolicy(tools: string[] | undefined, o: { disallowed?: string
   const offAll = off.servers.has('*')
   const own = (tool: string) => tool.startsWith('mcp__kernel__') || ALWAYS.includes(tool)
   // A background command's output and its stop belong to Bash.
-  // Build here grants the tools that write a file, which the Lead's tools line may leave out (KERNEL-770).
-  const listed = (tool: string): boolean => !line || line.names.has(toolName(tool)) || (BASH_COMPANIONS.includes(tool) && listed('Bash')) || (o.lead === 'build' && WRITERS.includes(toolName(tool)))
+  // A Lead gets the tools that write a file, which its tools line may leave out.
+  const listed = (tool: string): boolean => !line || line.names.has(toolName(tool)) || (BASH_COMPANIONS.includes(tool) && listed('Bash')) || (!!o.lead && WRITERS.includes(toolName(tool)))
     || (tool.startsWith('mcp__') && (line.servers.has(tool.split('__')[1]) || allowed.has(tool.split('__')[1])))
   const disallows = (tool: string): boolean => !own(tool) && ((!!o.readOnly && READ_ONLY_OFF.includes(toolName(tool))) || off.names.has(toolName(tool)) || (BASH_COMPANIONS.includes(tool) && disallows('Bash'))
     || (tool.startsWith('mcp__') && (offAll || off.servers.has(tool.split('__')[1]))))
-  // Hand off only reaches a plan file, through `allows` below (KERNEL-770).
-  const handoff = (tool: string) => o.lead === 'handoff' && READ_ONLY_OFF.includes(toolName(tool))
-  const usable = (tool: string) => own(tool) || (listed(tool) && !disallows(tool) && !handoff(tool))
+  const usable = (tool: string) => own(tool) || (listed(tool) && !disallows(tool))
   const allows = (tool: string, input?: unknown) => usable(tool) || (!o.readOnly && WRITERS.includes(tool) && isPlanFile((input as { file_path?: unknown } | undefined)?.file_path, plans))
   const server = (name: string, so: { unlisted?: boolean } = {}): ServerAccess => {
     if (name === 'kernel') return { on: true }
@@ -167,8 +151,7 @@ export function toolPolicy(tools: string[] | undefined, o: { disallowed?: string
   // `mcp__*` can't go in the session's list: it would take Kernel's own server too. The gate refuses those calls instead.
   const named = [...[...off.servers].filter((s) => s !== '*' && s !== 'kernel').map((s) => `mcp__${s}`), ...off.tools.filter((t) => t.server !== 'kernel').map((t) => `mcp__${t.server}__${t.tool}`)]
   // A read-only session's writers go from its list too, so the model never reaches for them.
-  const modeRefuses = (tool: string, now?: LeadMode) => (handoff(tool) && !own(tool) ? handoffRefusal(now) : undefined)
-  return { hidden: [...new Set([...HIDEABLE.filter((t) => !usable(t)), ...(o.readOnly ? READ_ONLY_OFF : []), ...named])], allows, disallows, modeRefuses, server }
+  return { hidden: [...new Set([...HIDEABLE.filter((t) => !usable(t)), ...(o.readOnly ? READ_ONLY_OFF : []), ...named])], allows, disallows, server }
 }
 
 /**

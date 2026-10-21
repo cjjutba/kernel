@@ -774,7 +774,7 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     expect(off.k.tools.rulesFor(off.ws, lead)).toBe(LEAD_SHARING_RULE)
     expect(LEAD_RULE).toContain('Reviews start on their own once a PR passes checks')
     // Asked for, a review still goes to the reviewer.
-    expect(LEAD_RULE).toContain("When the user asks for a review that didn't start on its own, hand the PR to the team's reviewer")
+    expect(LEAD_RULE).toContain("When the user asks for one that didn't start, hand the PR to the team's reviewer")
     await on.k.stop()
     await off.k.stop()
   })

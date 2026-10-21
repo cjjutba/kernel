@@ -10,7 +10,7 @@ import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { BUILD_CLOSED } from '../src/main/services/permissions'
-import { forProvider, HANDOFF_NOW, HANDOFF_REMINDER, kernelTool, LEAD_BUILD_RULE, LEAD_RULE, planChanges, TEAMMATE_RULE } from '../src/main/services/handoff'
+import { CARRY_OUT, forProvider, kernelTool, LEAD_RULE, planChanges, TEAMMATE_RULE } from '../src/main/services/handoff'
 import { LIMIT_LIFTED, SESSION_GONE_NOTE, Sessions, type SessionDeps } from '../src/main/services/sessions'
 import { mentionNote } from '../src/main/services/mentions'
 import { OpenItems, openReminder } from '../src/main/features/openItems'
@@ -22,7 +22,7 @@ import { codexLimits, toCodexInput, unwrapShell } from '../src/main/services/pro
 /** The approval's note. Codex still has its plan in context, so the note names no file and carries no plan. */
 const APPROVED = 'Plan approved. Carry it out.'
 import { callTool, mcpOverrides, toolSpecs } from '../src/main/services/providers/codex/tools'
-import { HANDOFF_NO_EDIT, HANDOFF_SWITCHED, toolPolicy } from '../src/main/services/agentTools'
+import { toolPolicy } from '../src/main/services/agentTools'
 import { GET_ISSUE, issueText, issueTools } from '../src/main/services/issueMcp'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import { fakeCodex, item, script } from './helpers/fakeCodex'
@@ -773,20 +773,19 @@ describe('plan mode on Codex (KERNEL-406)', () => {
     expect(t.store.approval(card.id)).toMatchObject({ status: 'denied', answer: 'Backfill in batches' })
   })
 
-  it("has the Lead hand off after Approve, and reminds it once when a turn ends with nothing handed off", async () => {
+  it('has the Lead carry the plan out after Approve, doing or handing off each step, with no reminder to hand off', async () => {
     const t = track(await setup({ agent: kernel, chat: { plan: true } }))
     await t.sessions.send('chat', [{ type: 'text', text: planTurn }])
     const card = await t.pending()
     t.approvals.decide(card.id, { behavior: 'allow' })
-    // The approval reaches the Lead as "hand it off now". That turn ends without a workspace, so the reminder follows, once.
-    await until(async () => (await t.sent('turn/start')).length === 3)
+    // The approval reaches the Lead as "carry it out". Its turn may end without a workspace, and nothing nudges it to hand off.
+    await until(async () => (await t.sent('turn/start')).length === 2)
     await t.idle()
-    const inputs = (await t.sent('turn/start')).map((m) => m.params.input[0].text)
-    expect(inputs[1]).toBe(`Plan approved.\n\n${forProvider(HANDOFF_NOW, 'codex')}`)
-    expect(inputs[2]).toBe(forProvider(HANDOFF_REMINDER, 'codex'))
-    expect(inputs[1]).toContain('kernel_create_workspace')
     await new Promise((r) => setTimeout(r, 100))
-    expect(await t.sent('turn/start')).toHaveLength(3)
+    const inputs = (await t.sent('turn/start')).map((m) => m.params.input[0].text)
+    expect(inputs).toHaveLength(2)
+    expect(inputs[1]).toBe(`Plan approved.\n\n${forProvider(CARRY_OUT, 'codex')}`)
+    expect(inputs[1]).toContain('kernel_create_workspace')
     // The Lead's tool instructions ride in the thread's developer instructions, and Kernel's rules name its tools as Codex does.
     const instructions = (await t.sent('thread/start'))[0].params.developerInstructions as string
     expect(instructions).toContain('Lead tools.')
@@ -946,9 +945,9 @@ describe('Codex helpers (KERNEL-406)', () => {
     expect(kernelTool('codex', 'wait_for_merge')).toBe('kernel_wait_for_merge')
     expect(forProvider(TEAMMATE_RULE, 'claude')).toBe(TEAMMATE_RULE)
     expect(forProvider(TEAMMATE_RULE, 'codex')).toContain('call kernel_wait_for_merge and end your turn')
-    const tools = [tool('request_plan_approval', 'Ask, then call mcp__kernel__create_workspace.', {}, async () => ({ content: [{ type: 'text' as const, text: `approved. ${HANDOFF_NOW}` }] }))]
+    const tools = [tool('request_plan_approval', 'Ask, then call mcp__kernel__create_workspace.', {}, async () => ({ content: [{ type: 'text' as const, text: `approved. ${CARRY_OUT}` }] }))]
     expect(toolSpecs(tools)[0].description).toBe('Ask, then call kernel_create_workspace.')
-    expect((await callTool(tools, 'kernel_request_plan_approval', {})).contentItems).toEqual([{ type: 'inputText', text: `approved. ${forProvider(HANDOFF_NOW, 'codex')}` }])
+    expect((await callTool(tools, 'kernel_request_plan_approval', {})).contentItems).toEqual([{ type: 'inputText', text: `approved. ${forProvider(CARRY_OUT, 'codex')}` }])
   })
 
   it("takes Codex's shell wrapper off a command, so Kernel's rules see what the agent ran", () => {
@@ -1069,50 +1068,35 @@ describe('switching accounts while a chat waits on the user, on Codex (KERNEL-61
   })
 })
 
-describe('a chat with Kernel in Hand off or Build here, on Codex (KERNEL-770)', () => {
-  const leadWs = (leadMode?: 'handoff' | 'build') => ({ threadId: 'thread', ...(leadMode ? { leadMode } : {}) })
+describe('a chat with Kernel, on Codex (KERNEL-770, one-lead-chat)', () => {
+  const leadWs = { threadId: 'thread' }
   /** A turn that changes one file, at `path`, and asks Kernel to approve it. */
   const change = (path: string) => script({ notify: 'item/started', params: { item: { type: 'fileChange', id: 'f1', changes: [{ path, kind: { type: 'add' }, diff: '+hi' }], status: 'inProgress' } } }, { request: 'item/fileChange/requestApproval', params: { threadId: '$thread', turnId: '$turn', itemId: 'f1', startedAtMs: 1 } })
   const planTurn = script({ notify: 'item/completed', params: { item: { type: 'plan', id: 'p1', text: '1. Fix the padding' } } })
 
-  it('Hand off reads in the sandbox, declines every file change but a shared file, and takes the Hand off rule', async () => {
-    const t = track(await setup({ agent: kernel, ws: leadWs(), mode: 'bypassPermissions' }))
-    await t.sessions.send('chat', [{ type: 'text', text: change('src/app.ts') }])
-    await t.idle()
-    const [turn] = await t.sent('turn/start')
-    expect(turn.params.sandboxPolicy).toEqual({ type: 'readOnly', networkAccess: true })
-    await t.sessions.send('chat', [{ type: 'text', text: change(join(t.repo, '.kernel/shared/mock.html')) }])
-    await t.idle()
-    await t.sessions.send('chat', [{ type: 'text', text: change('.kernel/shared/../../src/app.ts') }])
-    await t.idle()
-    expect(await t.answers('item/fileChange/requestApproval')).toEqual([{ decision: 'decline' }, { decision: 'accept' }, { decision: 'decline' }])
-    const instructions = (await t.sent('thread/start'))[0].params.developerInstructions as string
-    expect(instructions).toContain(forProvider(LEAD_RULE, 'codex'))
-    expect(instructions).not.toContain(forProvider(LEAD_BUILD_RULE, 'codex'))
-    expect(t.of('note').map((n) => n.text)).toEqual([HANDOFF_NO_EDIT, HANDOFF_NO_EDIT])
-    // A switch to Build here applies from the next turn. Until the process restarts, the refusal says so.
-    t.store.saveWorkspace({ ...t.store.workspace(t.ws.id)!, leadMode: 'build' })
-    await t.sessions.send('chat', [{ type: 'text', text: change('src/app.ts') }])
-    await t.idle()
-    expect((await t.answers('item/fileChange/requestApproval')).at(-1)).toEqual({ decision: 'decline' })
-    expect(t.of('note').at(-1)?.text).toBe(HANDOFF_SWITCHED)
-  })
-
-  it('Build here writes in the workspace and accepts file changes as the mode says, with the Build here rule', async () => {
-    const t = track(await setup({ agent: kernel, ws: leadWs('build') }))
+  it('writes in the workspace like a teammate, accepts file changes as the mode says, and takes the one Lead rule', async () => {
+    const t = track(await setup({ agent: kernel, ws: leadWs }))
     await t.sessions.send('chat', [{ type: 'text', text: change('src/app.ts') }])
     await t.idle()
     expect((await t.sent('turn/start'))[0].params.sandboxPolicy).toMatchObject({ type: 'workspaceWrite' })
     expect(await t.answers('item/fileChange/requestApproval')).toEqual([{ decision: 'accept' }])
     const instructions = (await t.sent('thread/start'))[0].params.developerInstructions as string
-    expect(instructions).toContain(forProvider(LEAD_BUILD_RULE, 'codex'))
-    expect(instructions).toContain('kernel_suggest_hand_off')
+    expect(instructions).toContain(forProvider(LEAD_RULE, 'codex'))
+    expect(instructions).toContain('kernel_create_workspace')
+    expect(instructions).not.toContain('kernel_suggest_hand_off')
     expect(instructions).not.toContain('mcp__kernel__')
   })
 
-  it('Build here declines a file change until the go-ahead, shared files excepted, whatever the mode says (KERNEL-992)', async () => {
+  it('is read-only in plan mode', async () => {
+    const t = track(await setup({ agent: kernel, ws: leadWs, chat: { plan: true } }))
+    await t.sessions.send('chat', [{ type: 'text', text: 'Look at the padding' }])
+    await t.idle()
+    expect((await t.sent('turn/start'))[0].params.sandboxPolicy).toEqual({ type: 'readOnly', networkAccess: true })
+  })
+
+  it('declines a file change while the gate is closed, shared files excepted, whatever the mode says (KERNEL-992, KERNEL-1113)', async () => {
     let open = false
-    const t = track(await setup({ agent: kernel, ws: leadWs('build'), mode: 'bypassPermissions', buildOpen: () => open }))
+    const t = track(await setup({ agent: kernel, ws: leadWs, mode: 'bypassPermissions', buildOpen: () => open }))
     await t.sessions.send('chat', [{ type: 'text', text: change('src/app.ts') }])
     await t.idle()
     await t.sessions.send('chat', [{ type: 'text', text: change(join(t.repo, '.kernel/shared/mock.html')) }])
@@ -1124,8 +1108,16 @@ describe('a chat with Kernel in Hand off or Build here, on Codex (KERNEL-770)', 
     expect(t.of('note').map((n) => n.text)).toEqual([BUILD_CLOSED])
   })
 
-  it('Build here builds an approved plan itself: no hand-off note and no reminder', async () => {
-    const t = track(await setup({ agent: kernel, ws: leadWs('build'), chat: { plan: true } }))
+  it('reads in the sandbox while the chat still sits on the shared main folder, which no chat edits (KERNEL-1050)', async () => {
+    const t = track(await setup({ agent: kernel, ws: { threadId: 'thread', shared: true }, mode: 'bypassPermissions', buildOpen: () => false }))
+    await t.sessions.send('chat', [{ type: 'text', text: change('src/app.ts') }])
+    await t.idle()
+    expect((await t.sent('turn/start'))[0].params.sandboxPolicy).toEqual({ type: 'readOnly', networkAccess: true })
+    expect(await t.answers('item/fileChange/requestApproval')).toEqual([{ decision: 'decline' }])
+  })
+
+  it('carries out an approved plan itself: the note says to carry it out, and nothing reminds it to hand off', async () => {
+    const t = track(await setup({ agent: kernel, ws: leadWs, chat: { plan: true } }))
     await t.sessions.send('chat', [{ type: 'text', text: planTurn }])
     t.approvals.decide((await t.pending()).id, { behavior: 'allow' })
     await until(async () => (await t.sent('turn/start')).length === 2)
@@ -1133,31 +1125,6 @@ describe('a chat with Kernel in Hand off or Build here, on Codex (KERNEL-770)', 
     await new Promise((r) => setTimeout(r, 100))
     const inputs = (await t.sent('turn/start')).map((m) => m.params.input[0].text)
     expect(inputs).toHaveLength(2)
-    expect(inputs[1]).toBe(APPROVED)
-  })
-
-  it('declines a file change in a process started in Build here once the chat is switched to Hand off (KERNEL-994)', async () => {
-    const t = track(await setup({ agent: kernel, ws: leadWs('build') }))
-    await t.sessions.send('chat', [{ type: 'text', text: change('src/app.ts') }])
-    await t.idle()
-    t.store.saveWorkspace({ ...t.store.workspace('ws')!, leadMode: 'handoff' })
-    await t.sessions.send('chat', [{ type: 'text', text: change('src/app.ts') }])
-    await t.idle()
-    expect(await t.answers('item/fileChange/requestApproval')).toEqual([{ decision: 'accept' }, { decision: 'decline' }])
-    expect(t.of('note').map((n) => n.text)).toEqual([HANDOFF_NO_EDIT])
-  })
-
-  it('a switch takes effect from the next turn: the thread resumes with the new rule and sandbox', async () => {
-    const t = track(await setup({ agent: kernel, ws: leadWs() }))
-    await t.sessions.send('chat', [{ type: 'text', text: 'hello' }])
-    await t.idle()
-    t.store.saveWorkspace({ ...t.store.workspace('ws')!, leadMode: 'build' })
-    t.sessions.restartIdle(['ws'])
-    await t.sessions.send('chat', [{ type: 'text', text: 'Fix the padding' }])
-    await t.idle()
-    const [resume] = await t.sent('thread/resume')
-    expect(resume.params.developerInstructions).toContain(forProvider(LEAD_BUILD_RULE, 'codex'))
-    const turns = await t.sent('turn/start')
-    expect(turns.map((m) => m.params.sandboxPolicy.type)).toEqual(['readOnly', 'workspaceWrite'])
+    expect(inputs[1]).toContain('Carry it out now')
   })
 })

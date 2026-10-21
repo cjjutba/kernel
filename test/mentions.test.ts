@@ -31,7 +31,7 @@ describe('the text the Lead reads for a message with mentions (KERNEL-745)', () 
   })
 
   it('has LEAD_RULE tell the Lead to act for each teammate the user addressed', () => {
-    expect(LEAD_RULE).toContain('For each teammate the user addressed, call create_workspace, message_agent to their workspace, or ask_user')
+    expect(LEAD_RULE).toContain('For each teammate the user addressed, call mcp__kernel__create_workspace, mcp__kernel__message_agent or mcp__kernel__ask_user in that turn.')
   })
 
   it('says nothing for a message without mentions, and counts everyone as taking tasks before the team is read', () => {

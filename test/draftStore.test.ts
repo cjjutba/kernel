@@ -284,23 +284,23 @@ describe('a New chat box keeps its picks with its draft (KERNEL-544)', () => {
     expect(disk.has('kernel.drafts')).toBe(false)
   })
 
-  it("keeps the project's Hand off or Build here and Worktree or Local through a send, and drops the branch with the rest", async () => {
+  it("keeps the project's Worktree or Local through a send, and drops the branch with the rest", async () => {
     const m = await launch()
     m.saveDraft(KEY, words('go'), '')
-    m.savePicks(KEY, { ...picks, leadMode: 'build', place: 'current', baseRef: 'origin/feat/x' })
+    m.savePicks(KEY, { ...picks, place: 'current', baseRef: 'origin/feat/x' })
     m.clearDraft(KEY)
-    expect([m.loadDraft(KEY), m.loadPicks(KEY)]).toEqual([undefined, { leadMode: 'build', place: 'current' }])
+    expect([m.loadDraft(KEY), m.loadPicks(KEY)]).toEqual([undefined, { place: 'current' }])
     vi.advanceTimersByTime(500)
     const relaunched = await launch()
-    expect(relaunched.loadPicks(KEY)).toEqual({ leadMode: 'build', place: 'current' })
+    expect(relaunched.loadPicks(KEY)).toEqual({ place: 'current' })
   })
 
   it('goes back to following the default when a pick is set to undefined, and forgets a box left with nothing', async () => {
     const m = await launch()
-    m.savePicks(KEY, { leadMode: 'build', baseRef: 'origin/feat/x' })
+    m.savePicks(KEY, { place: 'current', baseRef: 'origin/feat/x' })
     m.savePicks(KEY, { baseRef: undefined })
-    expect(m.loadPicks(KEY)).toEqual({ leadMode: 'build' })
-    m.savePicks(KEY, { leadMode: undefined })
+    expect(m.loadPicks(KEY)).toEqual({ place: 'current' })
+    m.savePicks(KEY, { place: undefined })
     expect(m.loadPicks(KEY)).toBeUndefined()
     vi.advanceTimersByTime(500)
     expect(disk.has('kernel.drafts')).toBe(false)
@@ -308,7 +308,7 @@ describe('a New chat box keeps its picks with its draft (KERNEL-544)', () => {
 
   it('forgets the New chat drafts of projects that are gone, and keeps the rest', async () => {
     const m = await launch()
-    m.savePicks('new-chat:project-a', { leadMode: 'build' })
+    m.savePicks('new-chat:project-a', { place: 'current' })
     m.saveDraft('new-chat:project-b', words('b'), '')
     m.saveDraft('c1', words('in a chat'), 'w1')
     m.dropProjectDrafts(['project-b'])
@@ -340,7 +340,8 @@ describe('a New chat box keeps its picks with its draft (KERNEL-544)', () => {
     expect([m.loadPicks('new-chat:a'), m.loadPicks('new-chat:b')]).toEqual([undefined, undefined])
     expect(m.loadPicks('new-chat:c')).toEqual({ effort: 'ultra', plan: false })
     expect(m.loadPicks('new-chat:d')).toBeUndefined()
-    expect(m.loadPicks('new-chat:e')).toEqual({ leadMode: 'handoff', place: 'worktree', baseRef: 'origin/feat/x' })
+    // A leadMode an older version saved is dropped, the rest stays (one-lead-chat).
+    expect(m.loadPicks('new-chat:e')).toEqual({ place: 'worktree', baseRef: 'origin/feat/x' })
   })
 
   it("no longer reads the retired modal's bare draft, so the next write drops it from disk (KERNEL-788)", async () => {

@@ -29,7 +29,7 @@ describe('Applies to notes (KERNEL-725)', () => {
 
   it('words each timing', () => {
     expect(appliesTo('models.leadPlanMode')).toBe('Applies to new chats')
-    expect(appliesTo('workspace.mode')).toBe('Applies to teammates and to chats when they switch to Build here')
+    expect(appliesTo('workspace.mode')).toBe('Applies to teammates and to chats with Kernel')
     expect(appliesTo('workspace.baseRef')).toBe('Applies to new workspaces')
     expect(appliesTo('team.defaultTemplate')).toBe('Applies to new projects')
     expect(appliesTo('general.openTo')).toBe('Applies the next time Kernel opens')

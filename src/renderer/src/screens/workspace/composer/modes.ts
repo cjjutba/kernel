@@ -1,5 +1,4 @@
-import { PROVIDERS, type ChatRunMode, type LeadMode, type ModeReason, type PermissionMode, type Provider } from '@shared/types'
-import { LEAD_MODES, leadModeName, newChatLeadMode } from '@shared/leadMode'
+import { PROVIDERS, type ChatRunMode, type ModeReason, type PermissionMode, type Provider } from '@shared/types'
 import { MODE_INFO, unavailable, type ModeAvailabilities } from '../../../permissionModes'
 import type { IconName } from '../../../icons'
 
@@ -109,23 +108,5 @@ export function modeAria(shown: Shown): string {
   return `Permission mode: ${modeName(shown.runs)}.${said} Shift+Tab to change`
 }
 
-/** How a chat with Kernel works, in the order of its menu (KERNEL-780). */
-export const LEAD_MODE_ICON: Record<LeadMode, IconName> = { handoff: 'team', build: 'hammer' }
-
-export const LEAD_MODE_DESC: Record<LeadMode, string> = {
-  handoff: 'Kernel plans with you and gives each task to a teammate. It doesn’t edit files.',
-  build: 'Kernel makes the change itself in this chat’s worktree, opens a PR, and Artkin reviews it.'
-}
-
-/** Under the open composer's text, per mode. `name` is the Lead's name. */
-export const leadPlaceholder = (mode: LeadMode, name: string) => (mode === 'build' ? `Ask ${name} to make changes, @mention files, run /skills` : `Ask ${name} to plan work, @mention files, run /skills`)
-
-/** The menu's footer: where a new chat's mode comes from, the project's own pick or Settings, Agents. Both end on the mode a new chat starts in. */
-export function leadDefaultLine(project: LeadMode | undefined, app: LeadMode | undefined): string {
-  const mode = newChatLeadMode({ team: { leadMode: app } }, { agents: { leadMode: project } })
-  return `New chats start in ${leadModeName(mode)}, from ${project ? 'Project, Agents' : 'Settings, Agents'}.`
-}
-
-export interface LeadModeRow { mode: LeadMode; name: string; desc: string; icon: IconName; checked: boolean }
-
-export const leadModeRows = (current: LeadMode): LeadModeRow[] => LEAD_MODES.map((mode) => ({ mode, name: leadModeName(mode), desc: LEAD_MODE_DESC[mode], icon: LEAD_MODE_ICON[mode], checked: mode === current }))
+/** Under the open composer's text in a chat with Kernel. `name` is the Lead's name. */
+export const leadPlaceholder = (name: string) => `Ask ${name} to plan work or make changes, @mention files, run /skills`

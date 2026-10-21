@@ -1,15 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { AgentDef, BuiltinCommand, Chat, ChatPart, Decision, Effort, FileEntry, ModelId, PermissionMode, QueuedMessage, Skill, Workspace } from '@shared/types'
-import type { LeadMode } from '@shared/types'
 import { chatProvider } from '@shared/providers'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
-import { leadModeOf } from '@shared/leadMode'
 import { modelLabelOf, useCodexInUse, useProviderModels } from './providerModels'
 import { call, cleanError } from '../../../api'
 import { bypassConfirmed } from '../../../bypassConfirm'
 import { useModeAvailability } from '../../../permissionModes'
-import { actions, getState, loadWorkspace, setLeadMode, useStore } from '../../../store'
-import { useProjectSettings } from '../../settings/useSettings'
+import { actions, getState, loadWorkspace, useStore } from '../../../store'
 import { AgentAvatar, arrowRow, useBusy } from '../../../ui'
 import { attempt } from '../MessageActions'
 import { PlanStrip, usePlanStrip } from '../cards/plan'
@@ -30,7 +27,7 @@ import { SWITCH_TOAST_MS, lastRanOn, noteOpened, noteSent, switchToast, warnsOnS
 import { useRetryKey } from '../../../retry'
 import { rememberEffort, useDefaultEffort } from './modelPrefs'
 import { useModelKeys } from './useModelKeys'
-import { buttonName, cyclePatch, cycleRun, leadDefaultLine, leadPlaceholder, modePatch, type CycleRun, nextMode, offLine, shownMode, type ComposerMode } from './modes'
+import { buttonName, cyclePatch, cycleRun, leadPlaceholder, modePatch, type CycleRun, nextMode, offLine, shownMode, type ComposerMode } from './modes'
 import { ComposerShell } from './ComposerShell'
 import type { PlusPanel } from './PlusMenu'
 import { canSendNow, QueueList } from './QueueList'
@@ -94,7 +91,6 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
   // Approve is a user action, so the strip, the placeholder, the chip and the glow all change in the frame it is pressed (KERNEL-895). After it the caret goes to the box, where the Approve button had the focus.
   const strip = usePlanStrip(plan, () => d.focus())
   // Fixtures open the model picker and the mode menu the same way, through the app's menu, for a shot (WorkspaceModelPicker, KERNEL-406).
-  // In a chat with Kernel the mode menu is Hand off and Build here (KERNEL-780).
   const [menu, setMenu] = useState<MenuName>(contextForced ? 'context' : getState().ui.menu === 'model' ? 'model' : getState().ui.menu === 'mode' ? 'mode' : getState().ui.menu === 'plus' ? 'plus' : null)
   const [skills, setSkills] = useState<Skill[]>([])
   const [commands, setCommands] = useState<BuiltinCommand[]>([])
@@ -106,31 +102,17 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
   const filePick = useRef<HTMLInputElement>(null)
   const run = useRef<CycleRun | null>(null)
   const name = agent?.name ?? 'the agent'
-  // Only a chat with Kernel has a mode, Hand off or Build here (KERNEL-780).
   const withKernel = !!ws && isLeadChatWorkspace(ws)
-  const leadMode = leadModeOf(ws)
-  const projectLeadMode = useProjectSettings(withKernel ? ws.projectId : undefined)?.agents?.leadMode
-  const appLeadMode = useStore((s) => s.settings?.team.leadMode)
-  // The switch only flips the mode, so it answers at once. A refusal (Current branch is in use by another chat) shows in the toast and the switch stays where it was.
-  const pickLeadMode = (mode: LeadMode) => {
-    d.focus()
-    if (!ws || mode === leadMode) return
-    void attempt('Could not switch', async () => {
-      await setLeadMode(ws.id, mode)
-      // Build here is a teammate's panel, with its changes first. Hand off goes back to the Lead's PR list.
-      actions.ui.setWorkspaceView({ leadRight: mode === 'build' ? 'changes' : 'prs' })
-    })
-  }
   // The edits Kernel can't carry into a hand-off: teammates start from main and won't see them.
   const [dirty, setDirty] = useState<string[]>([])
   useEffect(() => {
-    if (!withKernel || leadMode !== 'handoff' || !ws || ws.mode !== 'worktree') { setDirty([]); return }
+    if (!withKernel || !ws || ws.shared || ws.mode !== 'worktree') { setDirty([]); return }
     let live = true
     call('workspaces.changes', { workspaceId: ws.id, target: { kind: 'uncommitted' } })
       .then((files) => { if (live) setDirty(files.map((f) => f.path).filter((p) => !p.startsWith('.kernel/'))) })
       .catch(() => { if (live) setDirty([]) })
     return () => { live = false }
-  }, [withKernel, leadMode, ws?.id, ws?.mode, running])
+  }, [withKernel, ws?.id, ws?.mode, ws?.shared, running])
 
   const mention = mentionAt(d.before)
   const slash = slashAt(d.before, !d.first)
@@ -340,7 +322,7 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
   const model = modelLabelOf(chat.model, providerModels)
   const hasDraft = !d.empty
   const compact = !!viewer && !engaged && !hasDraft && d.pending === 0 && !blocked && !plan && !viewer.held && menu === null
-  const placeholder = why ?? (blocked ? 'Paused until this is resolved' : plan ? 'Enter your plan adjustments here' : queueWhy === 'worktree' || viewer ? 'Add a follow up' : withKernel ? leadPlaceholder(leadMode, name) : `Ask ${name} to make changes, @mention files, run /skills`)
+  const placeholder = why ?? (blocked ? 'Paused until this is resolved' : plan ? 'Enter your plan adjustments here' : queueWhy === 'worktree' || viewer ? 'Add a follow up' : withKernel ? leadPlaceholder(name) : `Ask ${name} to make changes, @mention files, run /skills`)
 
   // ^⌘1 to 9 pick the Nth current model of the chat's provider and ⌘⇧/ cycles the effort, with the picker open or not (useModelKeys).
   useModelKeys({ provider, model: chat.model, effort: chat.effort, fallback, onModel: pickModel, onEffort: setEffort })
@@ -420,7 +402,6 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
       input={<ComposerInput d={d} aria-label={`Message ${name}`} aria-autocomplete="list" disabled={blocked} running={running} placeholder={placeholder} onInput={() => setDismissed('')} onKeyDown={onKey} />}
       foot={<ComposerToolbar
         compact={compact}
-        lead={withKernel ? { mode: leadMode, footer: leadDefaultLine(projectLeadMode, appLeadMode), onPick: pickLeadMode } : undefined}
         agent={!agent?.lead && <span className="cmp-agent"><AgentAvatar name={name} size={16} /><span className="cmp-name">{name}</span></span>}
         model={{ label: model, provider, open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider, grouped, started: !!chat.sessionId, model: chat.model, effort: chat.effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x); d.focus() }, onEffort: setEffort } }}
         mode={{ provider, availability, shown, open: menu === 'mode', onOpen: (o) => setMenu(o ? 'mode' : null), onPick: (m) => { setMenu(null); pickMode(m); d.focus() }, onCycle: cycleMode }}

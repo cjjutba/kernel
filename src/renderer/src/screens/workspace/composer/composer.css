@@ -30,11 +30,6 @@
 .cmp-foot .cmp-model-name > span { white-space: nowrap; }
 /* The effort sits beside the model name in muted text and gives way before the name does. */
 .cmp-foot .cmp-model-name .cmp-effort-text { color: var(--muted); font-weight: var(--fw-regular); }
-/* Hand off | Build here: two sides in one hairline pill, the picked side filled with a surface and drawn in ink, the other muted. */
-.cmp-switch { display: inline-flex; flex-shrink: 0; align-items: center; gap: 2px; height: 28px; padding: 2px; border: 1px solid var(--line-3); border-radius: var(--r-pill); }
-.cmp-switch-side { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px 0 8px; border: 0; border-radius: var(--r-pill); background: transparent; color: var(--muted); font: inherit; font-size: var(--fs-ui); font-weight: var(--fw-medium); white-space: nowrap; }
-.cmp-switch-side:hover { color: var(--ink); }
-.cmp-switch-side[aria-pressed='true'] { background: var(--surface-3); color: var(--ink); }
 /* The + button, and the chip beside it when New chat's Run in or Branch differs from the default. */
 .cmp-plus { position: relative; display: inline-flex; align-items: center; gap: 4px; }
 .cmp-where-chip { max-width: 180px; font-size: var(--fs-code); }
@@ -293,10 +288,10 @@
 .hunk-card { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: var(--r-md); border: 1px solid var(--card-line); background: var(--card-bg); font-size: var(--fs-ui); }
 .hunk-row { padding: 9px 12px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--surface); cursor: pointer; }
 
-/* A narrow chat column: the composer pulls in, and labels give way to icons. The permission name goes first, then the Hand off label, then the carets. The model name stays whole (D-080).
+/* A narrow chat column: the composer pulls in, and labels give way to icons. The permission name goes first, then the carets. The model name stays whole (D-080).
    The agent's role, then its whole pill, give way too. The widths are the mock's composer widths plus the 48px of padding. */
 @container chat (max-width: 720px) { .cmp-foot .cmp-mode .cmp-mode-name { display: none; } .cmp-foot .cmp-mode { padding: 0 6px; } }
-@container chat (max-width: 620px) { .cmp-switch-name { display: none; } .cmp-switch-side { padding: 0 8px; } .cmp-where-text { max-width: 84px; } }
+@container chat (max-width: 620px) { .cmp-where-text { max-width: 84px; } }
 @container chat (max-width: 520px) { .composer-wrap { padding: 4px 12px 12px; } .cmp-role { display: none; } }
 @container chat (max-width: 560px) { .cmp-foot .cmp-effort-text { display: none; } }
 @container chat (max-width: 470px) { .cmp-foot { gap: 4px; } .cmp-foot .cmp-model { padding: 0 5px; gap: 5px; } .cmp-run .cmp-mode > svg:last-child { display: none; } }
