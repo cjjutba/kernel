@@ -14,7 +14,7 @@ export type SettingsPage =
   | 'agents'
   /** `git` also holds the setup and archive switches the Scripts page had (KERNEL-680). */
   | 'git' | 'prs' | 'bigterm'
-  | 'hooks' | 'integrations' | 'privacy' | 'about'
+  | 'hooks' | 'integrations' | 'privacy' | 'remote' | 'about'
   /** A project's own pages. `section` on the route picks one, and none means General. */
   | 'project'
 
@@ -113,6 +113,12 @@ export interface AppSettings {
    * Settings, Privacy changes it.
    */
   privacy: { telemetry: 'ask' | 'on' | 'off' }
+  /**
+   * Remote access: a server in this app that another device can pair with and drive Kernel through (remote-access-server).
+   * Off until the user turns it on. `host` is `local` (127.0.0.1, this Mac only) or `network` (every interface). `port` is the one
+   * Kernel tries first, and `remote.status` says the one it got. Only the app's own window may change these: a paired device can't.
+   */
+  remote: { enabled: boolean; host: 'local' | 'network'; port: number }
   /**
    * First-launch onboarding (KERNEL-1088). `done` is set when Finish setup is pressed, and Settings, General can clear it to run it
    * again. `out` holds the starter agents left off the team, and `reviewer` who reviews pull requests (an agent id,
