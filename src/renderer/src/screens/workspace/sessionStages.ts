@@ -47,6 +47,8 @@ export interface StageInput {
   hasSetup?: boolean
   /** What the pull request's stages need beyond the workspace. Without it the rail draws the quiet stages it drew before the pull request had any. */
   pr?: PrFacts
+  /** A chat with Kernel's own work: the first stage reads as started by your message, and a stage that can't apply to the chat is left out. */
+  lead?: boolean
 }
 
 /** The setup stage: the worktree being made, the script running, how it ended, or no script at all. */
@@ -81,6 +83,14 @@ export function sessionStages(input: StageInput): Stage[] {
   return sessionView(input).stages
 }
 
+/**
+ * Whether a chat with Kernel has work of its own to show stages for: files changed in its folder, or a pull request open, being made or merged. A chat that only answered
+ * questions has neither, so its rail lists what it handed off and nothing else.
+ */
+export function hasOwnWork(ws: Workspace, pr?: PrFacts): boolean {
+  return (!!ws.stat && ws.stat.files > 0) || !!ws.prNumber || ws.prState !== 'none' || pr?.pending === 'create'
+}
+
 /** The stages, and what the title bar says about the pull request while the rail is hidden. */
 export function sessionView(input: StageInput): { stages: Stage[]; title?: PrTitle } {
   const { ws, running, waiting, doing } = input
@@ -89,8 +99,11 @@ export function sessionView(input: StageInput): { stages: Stage[]; title?: PrTit
   const stat = ws.stat && ws.stat.files > 0 ? ws.stat : undefined
   // The agent finished a turn with changes in the tree: they are what a pull request opens with. A pull request being created is built already.
   const built = merged || hasPr || ws.prState === 'creating' || input.pr?.pending === 'create' || (!!input.pr && !running && !waiting && !!stat)
-  const briefed: Stage = { id: 'briefed', label: 'Briefed', mark: 'done', sub: briefedSub(ws), at: ws.createdAt }
-  const setup = setupStage(input)
+  const briefed: Stage = input.lead
+    ? { id: 'briefed', label: 'Started', mark: 'done', sub: 'Started by your message', at: ws.createdAt }
+    : { id: 'briefed', label: 'Briefed', mark: 'done', sub: briefedSub(ws), at: ws.createdAt }
+  // A chat on the shared main folder has no worktree and no setup run.
+  const setup = input.lead && ws.shared ? undefined : setupStage(input)
   // The agent works alongside setup, so the stage that follows is current whatever setup says, until a pull request is open.
   const building: Stage = built
     ? { id: 'building', label: 'Built', mark: 'done', ...(stat ? { stat } : { sub: 'Pull request opened' }) }
@@ -100,5 +113,5 @@ export function sessionView(input: StageInput): { stages: Stage[]; title?: PrTit
         ? { id: 'building', label: 'Building', mark: 'current', sub: doing ?? 'Working' }
         : { id: 'building', label: 'Building', mark: 'current', ...(stat ? { stat } : { sub: 'Waiting for a message' }) }
   const after = reviewStages(ws, input.pr, built, !running && !waiting)
-  return { stages: [briefed, setup, building, ...after.stages], ...(after.title ? { title: after.title } : {}) }
+  return { stages: [briefed, ...(setup ? [setup] : []), building, ...after.stages], ...(after.title ? { title: after.title } : {}) }
 }
