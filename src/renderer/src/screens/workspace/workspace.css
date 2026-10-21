@@ -88,8 +88,8 @@ button.ws-issue:hover { background: var(--surface-3); }
 .rail-peek-tx { margin: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; font-size: var(--fs-ui); line-height: var(--lh-ui); color: var(--ink-2); overflow-wrap: anywhere; }
 /* The list is a card 8px left of the rail and level with its top: a head, then a row for each message with its own dash, its time at the end, and the one in view lit. The pop's padding is the hover bridge over that gap. */
 .rail-pop { position: absolute; top: 0; right: 100%; padding-right: 8px; }
-.rail-card { width: min(360px, calc(100cqw - 48px)); padding: 4px; border: 1px solid var(--line-3); border-radius: var(--r-md); background: var(--surface); }
-.rail-head { display: flex; justify-content: space-between; padding: 6px 10px 4px; font-size: var(--fs-meta); color: var(--muted); }
+.rail-jump { width: min(360px, calc(100cqw - 48px)); padding: 4px; border: 1px solid var(--line-3); border-radius: var(--r-md); background: var(--surface); }
+.rail-jump-head { display: flex; justify-content: space-between; padding: 6px 10px 4px; font-size: var(--fs-meta); color: var(--muted); }
 .rail-list { position: relative; max-height: 440px; overflow-y: auto; }
 .rail-opt { display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border-radius: var(--r-sm); font-size: var(--fs-ui); color: var(--ink-2); cursor: default; }
 .rail-opt-mk { flex-shrink: 0; width: 10px; height: 2px; border-radius: var(--r-pill); background: var(--faint); }
