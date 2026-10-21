@@ -43,3 +43,6 @@
 .rm-push[data-tone='fail'] > svg { color: var(--del); }
 /* The branch pattern is a short mono field that reads from its left edge, as a field does. */
 .set-inline.rm-pattern { width: 180px; text-align: left; }
+/* An instruction's state beside Edit: Default is quiet, Custom reads as a value */
+.rm-state { font-size: var(--fs-code); color: var(--muted); }
+.rm-state[data-custom] { color: var(--ink-2); }

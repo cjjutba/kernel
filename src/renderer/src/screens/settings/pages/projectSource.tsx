@@ -22,8 +22,8 @@ export function SourcePill({ children }: { children: ReactNode }) {
 const PILL: Record<Where, string | undefined> = { app: undefined, shared: 'settings.toml', mine: 'Your file', both: 'Your file' }
 
 /** "Same as the app." with the app's page one click away, for a row that follows it. `tail` finishes it ("Follows the app, which leaves it off."). */
-export function FollowsApp({ to, lead = 'Same as', tail }: { to: SettingsTarget; lead?: string; tail?: string }) {
-  return <>{lead} <SettingsLink variant="quiet" to={to}>the app</SettingsLink>{tail ? `, which ${tail}` : ''}.</>
+export function FollowsApp({ to, lead = 'Same as', name = 'the app', tail }: { to: SettingsTarget; lead?: string; name?: string; tail?: string }) {
+  return <>{lead} <SettingsLink variant="quiet" to={to}>{name}</SettingsLink>{tail ? `, which ${tail}` : ''}.</>
 }
 
 type RowProps = ComponentProps<typeof Row>
