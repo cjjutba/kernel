@@ -38,3 +38,8 @@
 .rm-folder-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rm-folder-missing { flex-shrink: 0; font: var(--fs-code) var(--font); color: var(--muted); }
 .rm-scope { font-size: var(--fs-meta); color: var(--muted); }
+/* Push access: the result's icon takes its color from the check, and the status card keeps the page's row height (KERNEL-437) */
+.rm-push[data-tone='ok'] > svg { color: var(--add); }
+.rm-push[data-tone='fail'] > svg { color: var(--del); }
+/* The branch pattern is a short mono field that reads from its left edge, as a field does. */
+.set-inline.rm-pattern { width: 180px; text-align: left; }

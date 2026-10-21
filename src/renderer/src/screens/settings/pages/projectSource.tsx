@@ -21,9 +21,9 @@ export function SourcePill({ children }: { children: ReactNode }) {
 
 const PILL: Record<Where, string | undefined> = { app: undefined, shared: 'settings.toml', mine: 'Your file', both: 'Your file' }
 
-/** "Same as the app." with the app's page one click away, for a row that follows it. */
-export function FollowsApp({ to, page }: { to: SettingsTarget; page?: string }) {
-  return <>Same as <SettingsLink variant="quiet" to={to}>{page ?? 'the app'}</SettingsLink>.</>
+/** "Same as the app." with the app's page one click away, for a row that follows it. `tail` finishes it ("Follows the app, which leaves it off."). */
+export function FollowsApp({ to, lead = 'Same as', tail }: { to: SettingsTarget; lead?: string; tail?: string }) {
+  return <>{lead} <SettingsLink variant="quiet" to={to}>the app</SettingsLink>{tail ? `, which ${tail}` : ''}.</>
 }
 
 type RowProps = ComponentProps<typeof Row>
@@ -33,12 +33,13 @@ type RowProps = ComponentProps<typeof Row>
  * `app` is what the row says while it follows the app, `value` is the word for the value in the personal file ("Off"), when the row has one.
  * A value in the personal file can be reset, and the button shows with the pointer or focus on the row.
  */
-export function SourcedRow({ rs, path, app, value, onReset, label, desc, ...rest }: Omit<RowProps, 'inherited' | 'changed' | 'changedIn' | 'onReset' | 'hover'> & {
-  rs: ProjectSettings | null; path: string; app?: ReactNode; value?: string; onReset?: () => void
+export function SourcedRow({ rs, path, app, value, extra, onReset, label, desc, ...rest }: Omit<RowProps, 'inherited' | 'changed' | 'changedIn' | 'onReset' | 'hover'> & {
+  rs: ProjectSettings | null; path: string; app?: ReactNode; value?: string; extra?: ReactNode; onReset?: () => void
 }) {
   const where = whereOf(rs, path)
   const pill = PILL[where]
-  const line = desc ?? (where === 'app' ? app : where === 'shared' ? 'Shared with the team in settings.toml.' : where === 'mine' ? 'Only on this Mac, in your personal file.' : `${value ? `${value} in your file. ` : 'Your file wins. '}settings.toml sets it for everyone else.`)
+  const source = desc ?? (where === 'app' ? app : where === 'shared' ? 'Shared with the team in settings.toml.' : where === 'mine' ? 'Only on this Mac, in your personal file.' : `${value ? `${value} in your file. ` : 'Your file wins. '}settings.toml sets it for everyone else.`)
+  const line = extra ? <>{source} {extra}</> : source
   return (
     <Row
       {...rest}
