@@ -1,0 +1,17 @@
+{"provider":"codex","scenario":"plain-turn","description":"A turn with a reasoning summary, streamed reply text, a command and the final reply."}
+{"dir":"out","msg":{"method":"initialize","params":{"clientInfo":{"name":"kernel"},"capabilities":{"experimentalApi":true}}}}
+{"dir":"in","msg":{"result":{"userAgent":"codex/0.153.4","codexHome":"/home/u/.codex","platformFamily":"unix","platformOs":"macos"}}}
+{"dir":"out","msg":{"method":"initialized"}}
+{"dir":"out","msg":{"method":"thread/start","params":{"model":"gpt-6-astra","approvalPolicy":"untrusted","sandbox":"workspace-write","developerInstructions":"~You are Sean."}}}
+{"dir":"in","msg":{"result":{"thread":{"id":"thread-1"},"model":"gpt-6-astra"}}}
+{"dir":"out","msg":{"method":"turn/start","params":{"threadId":"thread-1","input":[{"type":"text","text":"Add a pdf_url column"}],"model":"gpt-6-astra","collaborationMode":{"mode":"default"}}}}
+{"dir":"in","msg":{"result":{"turn":{"id":"turn-1","items":[],"status":"inProgress"}}}}
+{"dir":"in","msg":{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1"}}}}
+{"dir":"in","msg":{"method":"item/completed","params":{"item":{"type":"reasoning","id":"r1","summary":["**Reading the schema**"],"content":[]}}}}
+{"dir":"in","msg":{"method":"item/started","params":{"item":{"type":"agentMessage","id":"a1","text":"","phase":"commentary"}}}}
+{"dir":"in","msg":{"method":"item/agentMessage/delta","params":{"threadId":"thread-1","turnId":"turn-1","itemId":"a1","delta":"I'll start with "}}}
+{"dir":"in","msg":{"method":"item/agentMessage/delta","params":{"threadId":"thread-1","turnId":"turn-1","itemId":"a1","delta":"the schema."}}}
+{"dir":"in","msg":{"method":"item/started","params":{"item":{"type":"commandExecution","id":"c1","command":"/bin/zsh -lc \"cat src/db/schema.ts\"","cwd":"/work","status":"inProgress","commandActions":[],"aggregatedOutput":null,"exitCode":null}}}}
+{"dir":"in","msg":{"method":"item/completed","params":{"item":{"type":"commandExecution","id":"c1","command":"/bin/zsh -lc \"cat src/db/schema.ts\"","cwd":"/work","status":"completed","commandActions":[],"aggregatedOutput":"export const invoices = {}","exitCode":0}}}}
+{"dir":"in","msg":{"method":"item/completed","params":{"item":{"type":"agentMessage","id":"a2","text":"Added the column.","phase":"final_answer"}}}}
+{"dir":"in","msg":{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","items":[],"itemsView":"summary","status":"completed","error":null,"startedAt":1,"completedAt":2,"durationMs":1200}}}}

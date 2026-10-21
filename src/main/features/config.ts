@@ -62,6 +62,9 @@ export class Config extends Feature {
     this.o.onSettings?.(this.settings)
     if (before.pr.autoReview === false && this.settings.pr.autoReview) void this.k.reviews.reviewReady().catch(() => undefined)
     if (before.privacy?.telemetry !== this.settings.privacy.telemetry) await this.k.telemetry.settingsChanged()
+    // A save that leaves Remote access alone adds no wait, which other features' timing may depend on.
+    const remote = this.k.remote.settingsChanged(before.remote)
+    if (remote) await remote
     // The server reads the timeout per request. Only the copy in the installed hooks needs rewriting.
     if (before.permissions.approvalTimeoutSec !== this.settings.permissions.approvalTimeoutSec && (await this.k.hooks.present())) await this.k.hooks.writeHooks(this.settings.hookPort)
     return this.settings

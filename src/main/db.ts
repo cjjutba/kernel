@@ -17,6 +17,9 @@ export const KEEP_RECEIPT_MS = 30 * DAY
 export const COMPACT_MIN_FREE_BYTES = 32 * 1024 * 1024
 export const COMPACT_MIN_FREE_SHARE = 0.2
 
+/** A device paired with Remote access. `tokenHash` is the hex SHA-256 of its session token. */
+export interface RemoteDeviceRow { id: string; tokenHash: string; name: string; createdAt: number; lastSeenAt: number; expiresAt: number }
+
 export class Store {
   readonly db: Database.Database
   private seq = 0
@@ -324,6 +327,19 @@ export class Store {
     this.db.prepare('insert or replace into shared_comments (id, shared_id, version, data, created_at) values (?, ?, ?, ?, ?)').run(c.id, c.sharedId, c.version, JSON.stringify(c), c.at)
     return c
   }
+
+  // devices paired with Remote access (remote-access-server). Only the SHA-256 of a session token is kept.
+  remoteDevices(): RemoteDeviceRow[] {
+    return (this.db.prepare('select id, token_hash, name, created_at, last_seen_at, expires_at from remote_devices order by created_at desc, rowid desc').all() as Record<string, string | number>[])
+      .map((r) => ({ id: String(r.id), tokenHash: String(r.token_hash), name: String(r.name), createdAt: Number(r.created_at), lastSeenAt: Number(r.last_seen_at), expiresAt: Number(r.expires_at) }))
+  }
+  addRemoteDevice(d: RemoteDeviceRow) {
+    this.db.prepare('insert into remote_devices (id, token_hash, name, created_at, last_seen_at, expires_at) values (?, ?, ?, ?, ?, ?)').run(d.id, d.tokenHash, d.name, d.createdAt, d.lastSeenAt, d.expiresAt)
+  }
+  touchRemoteDevice(id: string, at: number) { this.db.prepare('update remote_devices set last_seen_at = ? where id = ?').run(at, id) }
+  /** Whether a device was there to remove. */
+  deleteRemoteDevice(id: string): boolean { return this.db.prepare('delete from remote_devices where id = ?').run(id).changes > 0 }
+  deleteExpiredRemoteDevices(now: number) { this.db.prepare('delete from remote_devices where expires_at <= ?').run(now) }
 
   // engine state that outlives a restart, one JSON value per key (usage limits, chats a limit stopped)
   meta<T>(key: string): T | undefined { return this.one('select data from meta where key = ?', key) }

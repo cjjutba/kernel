@@ -155,9 +155,16 @@ export const migrations: Migration[] = [
     }
   },
   {
+    // Devices paired with Remote access (remote-access-server). A session token is never stored, only its SHA-256 `token_hash`.
+    version: 10,
+    up: (db) => db.exec(`
+      create table if not exists remote_devices (id text primary key, token_hash text not null unique, name text not null, created_at integer not null, last_seen_at integer not null, expires_at integer not null);
+    `)
+  },
+  {
     // Receipts for Kernel's own tool calls (docs/decisions/durable-tool-calls.md). One row per chat and provider call id, with
     // the result the call returned, so a repeat of the same call answers from it and does its work once.
-    version: 10,
+    version: 11,
     up: (db) => db.exec(`
       create table if not exists tool_receipts (chat_id text not null, call_id text not null, tool text not null, result text not null, created_at integer not null, primary key (chat_id, call_id));
       create index if not exists tool_receipts_by_time on tool_receipts (created_at);
