@@ -718,7 +718,7 @@ export const teamFixtures: Record<string, Fixture> = {
   HistoryEmpty: scene((f) => ({ ...projectsScene(f), ui: { route: { name: 'history' } } })),
   // Archived in a project's menu: History for Client A alone.
   HistoryProject: scene((f) => ({ ...historyScene(f), ui: { route: { name: 'history', projectId: ids.projectA } } })),
-  // Search with "archived" typed: the archived workspaces, which a pick restores and opens.
+  // Search with "datatable" typed: the archived workspace under an Archived heading, which a pick restores and opens (Pen 12.7).
   SearchArchived: scene((f) => ({ ...historyScene(f), ui: { route: { name: 'inbox' }, modal: { name: 'search' } } })),
   // No PNG: Delete in History (KERNEL-333). The bulk confirm over every archived row, two branches with unpushed commits among them.
   HistoryConfirmDelete: scene((f) => {
@@ -729,7 +729,7 @@ export const teamFixtures: Record<string, Fixture> = {
   // No PNG: the same confirm when the count fails (KERNEL-868). Delete stays off, and Try again counts once more.
   HistoryConfirmDeleteFailed: scene((f) => {
     const h = historyScene(f)
-    return { ...h, fails: { 'workspaces.deletePreview': 'The database is busy.' }, ui: { route: { name: 'history' }, modal: { name: 'confirm', kind: 'deleteHistory', workspaceIds: h.workspaces!.filter((w) => w.status === 'archived').map((w) => w.id) } } }
+    return { ...h, fails: { 'workspaces.deletePreview': 'git branch -r timed out' }, ui: { route: { name: 'history' }, modal: { name: 'confirm', kind: 'deleteHistory', workspaceIds: h.workspaces!.filter((w) => w.status === 'archived').map((w) => w.id) } } }
   }),
   HistoryConfirmDeleteOne: scene((f) => ({ ...historyScene(f), deletePreview: { workspaces: 1, skipped: [], unpushedBranches: 1, unpushed: [{ id: 'ws-h3', branch: 'spike/try-datatable' }], transcriptBytes: 3_460_300 }, ui: { route: { name: 'history' }, modal: { name: 'confirm', kind: 'deleteHistory', workspaceIds: ['ws-h3'] } } })),
   NewAgent: scene((f) => ({ ...beforeWren(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' }, modal: { name: 'newAgent', projectId: ids.projectA, step: 'describe', prefill: { name: 'Wren', model: 'sonnet' } } } })),

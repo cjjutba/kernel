@@ -3295,7 +3295,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // The last tab of a chat that is still running asks first, since closing it archives the chat and its two workspaces (KERNEL-405).
   GroupedCloseLastTab: scene((f) => {
     const g = grouped(f, { tab: 'chat-table', chats: (c) => c.filter((x) => x.id !== 'chat-table-copy') })
-    return { ...g, ui: { ...g.ui!, modal: { name: 'confirm', kind: 'archiveChat', threadId: GROUPED.table } } }
+    return { ...g, ui: { ...g.ui!, modal: { name: 'confirm', kind: 'closeChats', workspaceId: CHAT_WS[GROUPED.table], chatIds: ['chat-table'] } } }
   }),
   // Hovering a chat row shows Archive, like a workspace row's (KERNEL-405). The shot hovers the table chat (scripts/shots.ts).
   GroupedChatArchive: scene((f) => grouped(f, { running: [] })),

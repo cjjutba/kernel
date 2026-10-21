@@ -1098,8 +1098,22 @@ export const platformFixtures: Record<string, Fixture> = {
   WorkspaceFolderMissing: scene((f) => ({ workspaces: withWorkspace(f, ids.table, { folderGone: true }), ui: open })),
   WorkspaceHooksDown: scene(() => ({ hooks: { port: 7420, listening: false, installed: true, events: hookEvents }, ui: open })),
   // KERNEL-401: a GitHub rate limit holds PR reads off until 3:41 PM, over a PR that passed its checks.
+  // Pen 12.1: a branch that is up to date archives with one button.
   ConfirmArchive: scene((f) => ({
+    gitStatus: { [ids.table]: { branch: 'feat/t-14-invoice-table', ahead: 0, behind: 0, dirty: { files: 0, added: 0, removed: 0 } } },
+    push: f.push,
+    ui: { ...open, modal: { name: 'confirm', kind: 'archive', workspaceId: ids.table } }
+  })),
+  // Two commits that never reached GitHub: the main button pushes first, and Archive anyway leaves them on the local branch.
+  ConfirmArchiveUnpushed: scene((f) => ({
     gitStatus: { [ids.table]: { branch: 'feat/t-14-invoice-table', ahead: 2, behind: 0, dirty: { files: 0, added: 0, removed: 0 } } },
+    push: f.push,
+    ui: { ...open, modal: { name: 'confirm', kind: 'archive', workspaceId: ids.table } }
+  })),
+  // Its PR is still open: archiving stops Kernel watching it but leaves it open on GitHub, and the box says so before it goes (Pen 12.3).
+  ConfirmArchiveOpenPr: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { prNumber: 43, prState: 'ready' }),
+    gitStatus: { [ids.table]: { branch: 'feat/t-14-invoice-table', ahead: 0, behind: 0, dirty: { files: 2, added: 34, removed: 6 } } },
     push: f.push,
     ui: { ...open, modal: { name: 'confirm', kind: 'archive', workspaceId: ids.table } }
   })),

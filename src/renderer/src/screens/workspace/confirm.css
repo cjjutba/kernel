@@ -1,5 +1,6 @@
 /* ConfirmArchive.png and ConfirmDiscard.png: the facts box and the option under the body. */
-.wsc-facts { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: var(--r); background: var(--panel); font-size: var(--fs-meta); color: var(--ink-3); }
+.wsc-facts { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: var(--r-sm); background: var(--canvas); font-size: var(--fs-meta); color: var(--ink-2); }
+.wsc-facts .wsc-quiet { color: var(--muted); }
 .wsc-error { margin: 0; color: var(--del); }
 
 .wsc-blockers { margin: 0; padding: 0 0 0 18px; display: flex; flex-direction: column; gap: 6px; color: var(--ink-2); line-height: var(--lh); }
@@ -10,3 +11,17 @@
 .wsc-files { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
 .wsc-files li { display: flex; gap: 10px; }
 .wsc-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+
+/* ConfirmDiscard: a file per row, its folder faint and its name in ink, with the line counts at the end (Pen 12.2). */
+.wsc-files.wsc-facts { margin: 0; list-style: none; gap: 0; padding: 6px 12px; }
+.wsc-file { display: flex; align-items: center; gap: 10px; height: 28px; }
+.wsc-file .wsc-path { color: var(--ink-2); font-size: var(--fs-meta); }
+.wsc-dir { color: var(--muted); }
+.wsc-counts { color: var(--muted); font-size: var(--fs-meta); }
+.wsc-more { height: 28px; display: flex; align-items: center; color: var(--muted); }
+
+/* ConfirmArchiveChat: what archiving costs, one row each with a glyph in front (Pen 12.3). */
+.wsc-costs { margin: 0; padding: 8px 12px; list-style: none; gap: 0; }
+.wsc-cost { display: flex; align-items: flex-start; gap: 10px; min-height: 26px; padding: 5px 0; font-size: var(--fs-code); line-height: var(--lh-ui); }
+.wsc-cost > svg { flex-shrink: 0; margin-top: 2px; color: var(--muted); }
+.wsc-cost-for { color: var(--muted); }

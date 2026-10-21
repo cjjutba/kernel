@@ -119,15 +119,13 @@ export function ConfirmCloseChats({ workspaceId, chatIds }: { workspaceId: strin
   const drops = queued ? ` and drops ${plural(queued, 'queued message')}` : ''
   const body = `${agent} is still working in ${where}. Closing stops ${working.length > 1 ? 'those turns' : 'the turn'}${drops}. Changes already in the worktree stay.`
 
+  // Closing a Lead chat's last tab archives the chat, so the dialog says so, and the red button names both things it does (Pen 12.7, GroupedCloseLastTab).
   if (whole) {
-    const { title, started } = whole
-    const handed = started ? ` The ${started === 1 ? 'workspace' : `${started} workspaces`} it started ${started === 1 ? 'stays' : 'stay'} in the sidebar.` : ''
     return (
       <ConfirmDialog
-        title="Close this chat?" body={`${agent} is still working in this chat. Closing its last tab stops that turn and closes the chat.${handed}`}
-        busy={!!closing} busyPattern="ripple" busyLabel="Closing" confirmLabel="Close chat" onConfirm={() => void close()} onCancel={actions.ui.closeModal}
+        title="Close the last tab?" body={`This is the chat's last tab. Closing it archives the chat: ${agent} stops, and the chat moves to History.`}
+        danger busy={!!closing} busyPattern="ripple" busyLabel="Closing" confirmLabel="Close and archive" onConfirm={() => void close()} onCancel={actions.ui.closeModal}
       >
-        <div className="wsc-facts mono"><span>{title}</span><span>{plural(chatIds.length, 'tab')} · {agent} is working</span></div>
         {error && <p role="alert" className="wsc-error">{error}</p>}
       </ConfirmDialog>
     )
