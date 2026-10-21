@@ -14,6 +14,9 @@
 
 /* ConfirmDiscard: a file per row, its folder faint and its name in ink, with the line counts at the end (Pen 12.2). */
 .wsc-files.wsc-facts { margin: 0; list-style: none; gap: 0; padding: 6px 12px; }
+.wsc-facts[data-edge] { border: 1px solid var(--line-2); border-radius: var(--r); }
+/* The line under a list of files: how many change and what is kept (ConfirmRevert, Pen 8.14). */
+.wsc-foot { margin: 0; font-size: var(--fs-meta); color: var(--muted); }
 .wsc-file { display: flex; align-items: center; gap: 10px; height: 28px; }
 .wsc-file .wsc-path { color: var(--ink-2); font-size: var(--fs-meta); }
 .wsc-dir { color: var(--muted); }

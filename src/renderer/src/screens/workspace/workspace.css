@@ -75,18 +75,31 @@ button.ws-issue:hover { background: var(--surface-3); }
 .chat-rail { position: absolute; z-index: 4; top: 12px; right: 6px; width: 22px; }
 .rail-btn { display: flex; flex-direction: column; align-items: flex-end; gap: var(--rail-gap, 6px); width: 100%; padding: 6px 5px; border: 0; border-radius: var(--r-sm); background: transparent; }
 .rail-btn[aria-expanded='true'] { background: var(--surface-3); }
-.rail-m { display: block; flex-shrink: 0; width: 12px; height: var(--rail-mark, 2px); border-radius: var(--r-pill); background: var(--faint); }
+.rail-m { display: block; flex-shrink: 0; width: 12px; height: var(--rail-mark, 2px); border-radius: var(--r-pill); background: var(--faint); transition: width var(--dur-fast) var(--ease-out); }
 .rail-m[data-update] { width: 6px; }
 .rail-m[data-now] { background: var(--ink); }
-/* The list is a menu popover, 8px left of the rail and level with its top. The pop's padding is the hover bridge over that gap. 15 rows and a half row show before it scrolls. */
+/* The mark under the pointer grows to 16px (KERNEL-1095), and its message shows beside the rail: who, when, which of how many, and the first lines. */
+.rail-m[data-hot] { width: 16px; margin-right: -4px; background: var(--ink-3); }
+.rail-m[data-hot][data-now] { background: var(--ink); }
+.rail-peek { position: absolute; right: 100%; width: 300px; max-width: calc(100cqw - 48px); display: flex; flex-direction: column; gap: 4px; margin-right: 8px; padding: 10px 12px; border: 1px solid var(--line-3); border-radius: var(--r); background: var(--surface); pointer-events: none; }
+.rail-peek-top { display: flex; align-items: center; gap: 8px; font-size: var(--fs-meta); color: var(--muted); }
+.rail-peek-who { font-weight: var(--fw-medium); color: var(--ink-3); }
+.rail-peek-n { margin-left: auto; }
+.rail-peek-tx { margin: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; font-size: var(--fs-ui); line-height: var(--lh-ui); color: var(--ink-2); overflow-wrap: anywhere; }
+/* The list is a card 8px left of the rail and level with its top: a head, then a row for each message with its own dash, its time at the end, and the one in view lit. The pop's padding is the hover bridge over that gap. */
 .rail-pop { position: absolute; top: 0; right: 100%; padding-right: 8px; }
-.rail-list { position: relative; width: min(320px, calc(100cqw - 48px)); max-height: 440px; overflow-y: auto; padding: 6px; border: 1px solid var(--line-3); border-radius: var(--r-md); background: var(--surface-2); }
-.rail-opt { display: flex; align-items: baseline; gap: 8px; height: 28px; padding: 0 10px; border-radius: var(--r-sm); font-size: var(--fs-ui); line-height: 28px; color: var(--ink-2); cursor: default; }
-.rail-opt-tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rail-card { width: min(360px, calc(100cqw - 48px)); padding: 4px; border: 1px solid var(--line-3); border-radius: var(--r-md); background: var(--surface); }
+.rail-head { display: flex; justify-content: space-between; padding: 6px 10px 4px; font-size: var(--fs-meta); color: var(--muted); }
+.rail-list { position: relative; max-height: 440px; overflow-y: auto; }
+.rail-opt { display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border-radius: var(--r-sm); font-size: var(--fs-ui); color: var(--ink-2); cursor: default; }
+.rail-opt-mk { flex-shrink: 0; width: 10px; height: 2px; border-radius: var(--r-pill); background: var(--faint); }
+.rail-opt-tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rail-opt-nx { flex-shrink: 0; font-size: var(--fs-meta); color: var(--ink-3); }
-.rail-opt[data-now] { color: var(--ink); font-weight: var(--fw-medium); }
+.rail-opt-time { flex-shrink: 0; font-size: var(--fs-meta); color: var(--muted); font-variant-numeric: tabular-nums; }
+.rail-opt[data-now] { color: var(--ink); }
+.rail-opt[data-now] .rail-opt-mk { background: var(--ink); }
 .rail-opt[data-update] { color: var(--muted); }
-.rail-opt[data-active] { background: var(--hover); color: var(--ink); }
+.rail-opt[data-active] { background: var(--surface-3); color: var(--ink); }
 .rail-opt[data-update][data-active] { color: var(--ink-2); }
 /* The jumped-to message holds a 1px ring for 1.2s, fading over the last 400ms. */
 @keyframes jump-ring { 0%, 66.6% { outline-color: var(--line-3); } 100% { outline-color: transparent; } }
@@ -99,14 +112,19 @@ button.ws-issue:hover { background: var(--surface-3); }
 /* The row a message's actions take under it, held empty while the message is only being sent, so the working line sits where the transcript puts it once the row is there. */
 .msg-acts-space { height: var(--msg-acts-h, 24px); flex: none; }
 .msg-user { align-self: flex-end; max-width: 82%; align-items: flex-end; gap: 4px; }
-.bubble { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px 14px; border-radius: var(--r-md); border: 1px solid var(--card-line); background: var(--card-bg); color: var(--ink-2); font-size: var(--fs-chat); line-height: var(--lh-loose); }
+.bubble { white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px 16px; border-radius: var(--r-lg); background: var(--surface); color: var(--ink-2); font-size: var(--fs-chat); line-height: var(--lh-loose); }
+/* A message with tokens has lines 30px apart, so two lines of 24px tokens don't touch, and the 3px each end gains comes off the padding (KERNEL-1095). */
+.bubble[data-tokens] { padding-block: 9px; line-height: 30px; }
 /* The setup wait (KERNEL-430): messages waiting for setup sit where they will land, at lower contrast, with one line or card for setup. */
-.msg-user[data-queued] .bubble { background: var(--surface); color: var(--muted); }
+.msg-user[data-queued] .bubble { color: var(--muted); }
 /* A message git couldn't send reads as sent, with Not sent under it (KERNEL-1093). */
-.msg-user[data-queued][data-failed] .bubble { background: var(--card-bg); color: var(--ink-2); }
-.bubble-images { display: flex; flex-wrap: wrap; gap: 6px; max-width: 424px; }
+.msg-user[data-queued][data-failed] .bubble { color: var(--ink-2); }
+/* The images of a message: 104 by 76, above what was said, each one a token in the words as well. */
+.bubble-images { display: flex; flex-wrap: wrap; gap: 8px; max-width: 440px; }
 .bubble-images:not(:last-child) { margin-bottom: 10px; }
-.bubble-images .thumb { width: 80px; height: 56px; padding: 0; overflow: hidden; border: 1px solid var(--line-2); border-radius: var(--r-xs); background: var(--surface-3); cursor: pointer; }
+.bubble[data-tokens] .bubble-images:not(:last-child) { margin-bottom: 13px; }
+.bubble-images .thumb { display: flex; align-items: center; justify-content: center; width: 104px; height: 76px; padding: 0; overflow: hidden; border: 1px solid var(--line-3); border-radius: var(--r); background: var(--surface-3); color: var(--muted); cursor: pointer; }
+.bubble-images .thumb[data-state='gone'] { background: var(--surface); cursor: default; }
 .bubble-images .thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .queued-meta { display: flex; align-items: center; gap: 14px; font-size: var(--fs-meta); color: var(--muted); }
 /* A message waiting for setup keeps its Edit and Cancel out of sight until it is pointed at or tabbed into (KERNEL-951). */
@@ -114,11 +132,12 @@ button.ws-issue:hover { background: var(--surface-3); }
 .msg-user[data-queued]:hover .queued-edit, .msg-user[data-queued]:focus-within .queued-edit { opacity: 1; }
 .queued-meta .btn { margin: -4px 0; }
 .not-sent { display: inline-flex; align-items: center; gap: 6px; }
-.msg-chip { display: inline-flex; align-items: center; gap: 6px; height: 22px; margin-right: 4px; padding: 0 7px; vertical-align: middle; border-radius: var(--r-sm); border: 1px solid var(--chip-line); background: var(--surface-3); font: var(--fs-chip) var(--mono); color: var(--ink-2); }
-.msg-chip .chip-meta { color: var(--muted); }
-.msg-chip[data-state='unreadable'] { opacity: 0.6; }
-.msg-chip[data-state='gone'] .chip-name { color: var(--muted); text-decoration: line-through; }
-button.msg-chip:hover { border-color: var(--line-3); }
+/* The tokens of a sent message are the composer's (composer.css): 24px, a --surface-3 fill, a --line-3 outline and the icon of their kind. A skill and an @ file stay compact. */
+.msg-chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; margin: 0 2px; padding: 0 8px 0 7px; vertical-align: middle; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface-3); font: var(--fs-ui) var(--font); line-height: normal; color: var(--ink-2); }
+.msg-chip[data-kind='image'], .msg-chip[data-kind='file'], .msg-chip[data-kind='folder'] { padding-left: 4px; }
+.msg-chip[data-kind='repo'], .msg-chip[data-kind='skill'] { height: 18px; gap: 4px; padding: 0 6px 0 5px; border-color: transparent; border-radius: var(--r-2xs); font: var(--fs-code) var(--mono); color: var(--ink); }
+.msg-chip[data-kind='repo'] .chip-name, .msg-chip[data-kind='skill'] .chip-name { color: var(--ink); }
+.msg-chip[data-state='gone'] .chip-name { color: var(--ink-2); }
 .msg-reply { gap: 6px; }
 .msg-kernel { gap: 4px; }
 .msg-acts { display: flex; gap: 2px; height: var(--msg-acts-h, 24px); opacity: 0; transition: opacity var(--dur-fast); }

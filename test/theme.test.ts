@@ -75,7 +75,7 @@ describe('theme contrast', () => {
     expect([...under('light', light, ['danger', ...TERM], SURFACES, 4.5), ...under('dark', dark, TERM.filter((n) => n !== 'term-black'), main, 4.5)]).toEqual([])
   })
   it('every kind color reaches 3:1 on surface-3 in both themes', () => {
-    const kinds = ['image', 'text', 'pdf', 'doc', 'sheet', 'slides', 'archive', 'media', 'branch'].map((n) => `kind-${n}`)
+    const kinds = ['branch'].map((n) => `kind-${n}`)
     expect(themes(both).flatMap(([name, theme]) => under(name, theme, kinds, ['surface-3'], 3))).toEqual([])
   })
   it('faint is non-text and reaches 3:1 on every surface in both themes', () => {

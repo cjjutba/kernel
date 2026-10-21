@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { AgentDef, BuiltinCommand, Chat, ChatPart, Decision, Effort, FileEntry, ModelId, PermissionMode, QueuedMessage, Skill, Workspace } from '@shared/types'
 import type { LeadMode } from '@shared/types'
 import { chatProvider } from '@shared/providers'
@@ -7,29 +7,30 @@ import { leadModeOf } from '@shared/leadMode'
 import { modelLabelOf, useCodexInUse, useProviderModels } from './providerModels'
 import { call, cleanError } from '../../../api'
 import { bypassConfirmed } from '../../../bypassConfirm'
-import { FileIcon } from '../../../components/FileIcon'
 import { useModeAvailability } from '../../../permissionModes'
 import { actions, getState, loadWorkspace, setLeadMode, useStore } from '../../../store'
 import { useProjectSettings } from '../../settings/useSettings'
-import { AgentAvatar, arrowRow, Button, Icon, useBusy } from '../../../ui'
+import { AgentAvatar, arrowRow, useBusy } from '../../../ui'
 import { attempt } from '../MessageActions'
 import { PlanStrip, usePlanStrip } from '../cards/plan'
 import { placeAnswerNow } from '../cards/optimisticAnswer'
 import { noteFromParts, waitingPlan } from '../cards/steps'
-import { baseName, dirName, filterAgents, mentionAt, mentionMenu, mentionPart, runsOnEnter, slashAt, slashMenu } from './autocomplete'
+import { filterAgents, mentionAt, mentionMenu, mentionPart, runsOnEnter, slashAt, slashMenu } from './autocomplete'
+import { AutoMenu, wordPlace, type MenuPlace } from './AutoMenu'
 import { onAddToComposer, onComposerCommand, onComposerFocusAsked, onEditQueued, takeComposerFocus } from './bus'
 import { useDraft } from './draft'
 import { escapeStops, queueBackInBox } from './stop'
-import { loadFailureLine, useComposerLoads } from './useComposerLoads'
+import { loadFailureLine, loadFailureSub, useComposerLoads } from './useComposerLoads'
 import { pathOnlyFiles, PLAN_SEND_BLOCKED } from './attach'
 import { ComposerInput } from './ComposerInput'
 import { ContextRing } from './ContextRing'
 import { HunkCard } from './HunkCard'
 import { ComposerToolbar } from './ComposerToolbar'
-import { SWITCH_TOAST, SWITCH_TOAST_MS, lastRanOn, noteOpened, noteSent, warnsOnSwitch } from './modelSwitch'
+import { SWITCH_TOAST_MS, lastRanOn, noteOpened, noteSent, switchToast, warnsOnSwitch } from './modelSwitch'
+import { useRetryKey } from '../../../retry'
 import { rememberEffort, useDefaultEffort } from './modelPrefs'
 import { useModelKeys } from './useModelKeys'
-import { cyclePatch, cycleRun, leadDefaultLine, leadPlaceholder, modePatch, type CycleRun, nextMode, offLine, shownMode, type ComposerMode } from './modes'
+import { buttonName, cyclePatch, cycleRun, leadDefaultLine, leadPlaceholder, modePatch, type CycleRun, nextMode, offLine, shownMode, type ComposerMode } from './modes'
 import { ComposerShell } from './ComposerShell'
 import type { PlusPanel } from './PlusMenu'
 import { canSendNow, QueueList } from './QueueList'
@@ -94,7 +95,7 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
   const strip = usePlanStrip(plan, () => d.focus())
   // Fixtures open the model picker and the mode menu the same way, through the app's menu, for a shot (WorkspaceModelPicker, KERNEL-406).
   // In a chat with Kernel the mode menu is Hand off and Build here (KERNEL-780).
-  const [menu, setMenu] = useState<MenuName>(contextForced ? 'context' : getState().ui.menu === 'model' ? 'model' : getState().ui.menu === 'mode' ? 'mode' : null)
+  const [menu, setMenu] = useState<MenuName>(contextForced ? 'context' : getState().ui.menu === 'model' ? 'model' : getState().ui.menu === 'mode' ? 'mode' : getState().ui.menu === 'plus' ? 'plus' : null)
   const [skills, setSkills] = useState<Skill[]>([])
   const [commands, setCommands] = useState<BuiltinCommand[]>([])
   const [files, setFiles] = useState<FileEntry[]>([])
@@ -135,6 +136,8 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
   const slash = slashAt(d.before, !d.first)
   const acKey = mention ? `@${mention.query}` : slash ? `/${slash.query}` : ''
   const acOpen = !!acKey && dismissed !== acKey && !blocked
+  /** Where the menu sits: over the @ or / word, which `wordPlace` measures once the box has drawn the draft. */
+  const [place, setPlace] = useState<MenuPlace | null>(null)
   const slashGroups = useMemo(() => (slash ? slashMenu(skills, commands, slash.query) : []), [skills, commands, slash?.query])
   const slashRows = slashGroups.flatMap((g) => g.rows)
   // Only the Lead's chat can @ a teammate (KERNEL-746): its message goes to the Lead, who acts for them.
@@ -142,12 +145,14 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
   const mentionGroups = useMemo(() => mentionMenu(files, mentionAgents), [files, mentionAgents])
   const mentionRows = mentionGroups.flatMap((g) => g.rows)
   const rows = mention ? mentionRows : slashRows
+  const wordLength = mention ? mention.query.length + 1 : slash ? slash.query.length + 1 : 0
+  useLayoutEffect(() => { setPlace(acOpen ? wordPlace(d.input.current, wordLength) : null) }, [acOpen, wordLength, d.before, d.slots.length])
   const projectId = ws?.projectId
 
   // The queue, what it waits for and the run mode are also pushed as events; this reads what was set before the screen opened.
   // A read that failed says so above the box, with Retry, and is read again when the network is back.
   const { failed, retry } = useComposerLoads(chat.id)
-  const [retrying, runRetry] = useBusy<'retry'>()
+  useRetryKey(`composer-load:${chat.id}`, retry)
   useEffect(() => { if (projectId) void call('skills.list', { projectId }).then(setSkills).catch(() => setSkills([])) }, [projectId])
   useEffect(() => { void call('commands.list', undefined).then(setCommands).catch(() => setCommands([])) }, [])
 
@@ -220,9 +225,14 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
   }
 
   noteOpened(chat.id, chat.model)
+  // The model and effort the chat had before the last pick, so the toast's Undo can go back to them.
+  const before = useRef<{ model: string; effort: Effort } | null>(null)
+  useRetryKey(`chat-model:${chat.id}`, () => { const was = before.current; if (was) { before.current = null; void configure({ model: was.model, effort: was.effort }) } })
   const pickModel = (m: string, effort: Effort) => {
     const warn = warnsOnSwitch(!!chat.sessionId, lastRanOn(chat.id), m)
-    void configure({ model: m, effort }, warn ? () => actions.ui.toast(SWITCH_TOAST, SWITCH_TOAST_MS) : undefined)
+    const was = { model: chat.model, effort: chat.effort }
+    before.current = was
+    void configure({ model: m, effort }, warn ? () => actions.ui.toast(switchToast(modelLabelOf(m, providerModels), chat.contextUsage?.used, `chat-model:${chat.id}`), SWITCH_TOAST_MS) : undefined)
   }
   // KERNEL-406: the chat's provider, its models, and a new tab on the other provider for a chat that has started.
   const provider = chatProvider(chat)
@@ -233,6 +243,14 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
   const appMode = useStore((s) => s.settings?.permissions.mode)
   const availability = useModeAvailability()
   const shown = shownMode(chat.plan, runMode, chat.mode ?? projectMode ?? appMode ?? 'default')
+  // A read that failed is a toast, raised once when the failure starts and gone when the read works (DESIGN.md, Toasts). The box keeps working meanwhile.
+  const failLine = loadFailureLine(failed)
+  const modeNow = buttonName(shown.runs)
+  useEffect(() => {
+    if (!failLine) return
+    const id = actions.ui.toast({ title: failLine, sub: loadFailureSub(failed, modeNow), glyph: 'error', action: { label: 'Retry', retry: `composer-load:${chat.id}`, primary: true } })
+    return () => actions.ui.dismissToast(id)
+  }, [failLine, chat.id])
   /** Plan sets `plan` and leaves the chat's `mode`. Every other mode sets `mode` and leaves plan. Bypass permissions asks once first, and what it saves is this chat's mode. */
   const setMode = (mode: ComposerMode, patch: (m: ComposerMode) => ReturnType<typeof modePatch> | ReturnType<typeof cyclePatch> = modePatch) => {
     if (mode === shown.picked) return
@@ -286,6 +304,13 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
     if (acOpen && rows.length) {
       const to = arrowRow(e, at, rows.length, true)
       if (to !== null) { e.preventDefault(); setAt(to); return }
+      // → on a folder opens it: its path replaces the word, and the menu lists what is inside (KERNEL-1095).
+      const row = mention ? mentionRows[at] : undefined
+      if (e.key === 'ArrowRight' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && mention && row?.kind === 'file' && row.entry.dir) {
+        e.preventDefault()
+        d.insert({ type: 'text', text: `@${row.entry.reference ? row.entry.path.slice(row.entry.path.lastIndexOf('/') + 1) : row.entry.path}/` }, mention.query.length + 1)
+        return
+      }
       if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') { e.preventDefault(); pickRow(at, e.key === 'Enter'); return }
     }
     if (acOpen && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setDismissed(acKey); return }
@@ -315,7 +340,7 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
   const model = modelLabelOf(chat.model, providerModels)
   const hasDraft = !d.empty
   const compact = !!viewer && !engaged && !hasDraft && d.pending === 0 && !blocked && !plan && !viewer.held && menu === null
-  const placeholder = why ?? (blocked ? 'Paused until this is resolved' : plan ? 'Enter your plan adjustments here' : running || queueWhy === 'worktree' || viewer ? 'Add a follow up' : withKernel ? leadPlaceholder(leadMode, name) : `Ask ${name} to make changes, @mention files, run /skills`)
+  const placeholder = why ?? (blocked ? 'Paused until this is resolved' : plan ? 'Enter your plan adjustments here' : queueWhy === 'worktree' || viewer ? 'Add a follow up' : withKernel ? leadPlaceholder(leadMode, name) : `Ask ${name} to make changes, @mention files, run /skills`)
 
   // ^⌘1 to 9 pick the Nth current model of the chat's provider and ⌘⇧/ cycles the effort, with the picker open or not (useModelKeys).
   useModelKeys({ provider, model: chat.model, effort: chat.effort, fallback, onModel: pickModel, onEffort: setEffort })
@@ -367,12 +392,6 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
         <span className="sr-only" role="status" aria-live="polite">{strip.said}</span>
         {banner}
         {!compact && dirty.length > 0 && <UncommittedNote files={dirty} />}
-        {loadFailureLine(failed) && (
-          <div className="note" role="status">
-            <span className="note-text grow">{loadFailureLine(failed)}</span>
-            <Button variant="ghost" busy={retrying === 'retry'} busyLabel="Trying again" busyPattern="ripple" onClick={() => void runRetry('retry', retry)}>Retry</Button>
-          </div>
-        )}
         {!compact && (
           <QueueList
             queue={queue}
@@ -389,57 +408,23 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
       </>}
       popup={<>
         {acOpen && rows.length > 0 && (
-          <div role="listbox" aria-label={mention ? mentionGroups.map((g) => g.label).join(' and ') : slashGroups.map((g) => g.label).join(' and ')} className="cmp-ac">
-            {mention && agent?.lead && !team.some((a) => !a.lead) && (
-              <><p>Teammates</p><p className="cmp-ac-none">No teammates yet in this project. Hire one from Project, Agents.</p></>
-            )}
-            {mention
-              ? mentionGroups.map((g) => (
-                <Fragment key={g.label}>
-                  <p>{g.label}</p>
-                  {g.rows.map((r) => {
-                    const i = mentionRows.indexOf(r)
-                    return r.kind === 'agent' ? (
-                      <button key={`agent:${r.agent.id}`} type="button" role="option" aria-selected={i === at} aria-label={`${r.agent.name}, ${r.agent.role}`} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
-                        <AgentAvatar name={r.agent.name} size={16} /><span className="cmp-ac-name">{r.agent.name}</span><span className="sub ellipsis">{r.agent.role}</span>
-                      </button>
-                    ) : (
-                      <button key={r.entry.path} type="button" role="option" aria-selected={i === at} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
-                        <FileIcon path={r.entry.path} dir={r.entry.dir} /><span className="mono">{baseName(r.entry.path)}{r.entry.dir && '/'}</span><span className="sub ellipsis">{r.entry.reference ?? dirName(r.entry.path)}</span>
-                      </button>
-                    )
-                  })}
-                </Fragment>
-              ))
-              : slashGroups.map((g) => (
-                <Fragment key={g.label}>
-                  <p>{g.label}</p>
-                  {g.rows.map((s) => {
-                    const i = slashRows.indexOf(s)
-                    return (
-                      <button key={s.name} type="button" role="option" aria-selected={i === at} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
-                        <span className="mono">/{s.name}</span><span className="sub ellipsis">{s.description}</span>
-                      </button>
-                    )
-                  })}
-                </Fragment>
-              ))}
-          </div>
+          <AutoMenu menu={mention ? { kind: 'mention', groups: mentionGroups } : { kind: 'slash', groups: slashGroups }} at={at} place={place} noTeam={!!mention && !!agent?.lead && !team.some((a) => !a.lead)}
+            label={mention ? mentionGroups.map((g) => g.label).join(' and ') : slashGroups.map((g) => g.label).join(' and ')} onAt={setAt} onPick={(i) => pickRow(i, true)} />
         )}
         {acOpen && mention && !files.length && !mentionAgents.length && query !== undefined && query.length > 0 && (
-          <div className="cmp-ac" role="status"><p className="cmp-ac-none">{agent?.lead ? `No files or teammates match “${mention.query}”.` : `No files match “${mention.query}”.`}</p></div>
+          <div className="cmp-ac" role="status" style={place ? { left: place.left, bottom: place.bottom } : undefined}><p className="cmp-ac-none">{agent?.lead ? `No files or teammates match “${mention.query}”.` : `No files match “${mention.query}”.`}</p></div>
         )}
       </>}
       box={{ 'data-plan': chat.plan || plan ? 'true' : undefined, 'data-blocked': blocked || undefined, 'data-drop': d.over || undefined, style: { opacity: blocked ? 0.5 : 1 } }}
       top={<PlanStrip strip={strip} hasText={hasDraft} onSendChanges={() => void send()} onBack={d.focus} />}
-      input={<ComposerInput d={d} aria-label={`Message ${name}`} aria-autocomplete="list" disabled={blocked} placeholder={placeholder} onInput={() => setDismissed('')} onKeyDown={onKey} />}
+      input={<ComposerInput d={d} aria-label={`Message ${name}`} aria-autocomplete="list" disabled={blocked} running={running} placeholder={placeholder} onInput={() => setDismissed('')} onKeyDown={onKey} />}
       foot={<ComposerToolbar
         compact={compact}
         lead={withKernel ? { mode: leadMode, footer: leadDefaultLine(projectLeadMode, appLeadMode), onPick: pickLeadMode } : undefined}
-        agent={!agent?.lead && <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{agent?.role}</span></span>}
+        agent={!agent?.lead && <span className="cmp-agent"><AgentAvatar name={name} size={16} /><span className="cmp-name">{name}</span></span>}
         model={{ label: model, provider, open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider, grouped, started: !!chat.sessionId, model: chat.model, effort: chat.effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x); d.focus() }, onEffort: setEffort } }}
         mode={{ provider, availability, shown, open: menu === 'mode', onOpen: (o) => setMenu(o ? 'mode' : null), onPick: (m) => { setMenu(null); pickMode(m); d.focus() }, onCycle: cycleMode }}
-        context={chat.context !== undefined && <ContextRing chat={chat} blocked={blocked} open={menu === 'context'} onOpen={(o) => setMenu(o ? 'context' : null)} />}
+        context={(chat.context !== undefined || !!contextForced) && <ContextRing chat={chat} name={name} blocked={blocked} open={menu === 'context'} onOpen={(o) => setMenu(o ? 'context' : null)} />}
         plus={{ panel: menu === 'model' || menu === 'context' || menu === 'mode' || menu === 'runIn' || menu === 'branch' ? null : menu, onPanel: setMenu, projectId, workspaceId: chat.workspaceId, onMode: () => setMenu('mode'), onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
         send={{ label: plan ? 'Send plan adjustments' : running ? 'Queue message' : 'Send', ready: hasDraft && !blocked && !d.pending, disabled: blocked, busy: d.pending > 0, busyLabel: 'Attaching', stop: running, stopping: stopping !== null, onSend: () => void send(), onStop: stop }} />}
       hidden={<input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />}

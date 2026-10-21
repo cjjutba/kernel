@@ -250,6 +250,11 @@ async function openVersions(page: Page) {
   await page.waitForTimeout(300)
 }
 
+async function blurFocus(page: Page) {
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+  await page.waitForTimeout(200)
+}
+
 // The typing shots draw the composer focused, which takes a real focus. Focus also settles the plan glow at full.
 async function focusComposer(page: Page) {
   await page.locator('.cmp-input').focus()
@@ -682,11 +687,11 @@ async function dragOverPane(page: Page) {
   await page.waitForTimeout(300)
 }
 async function dropWhileReading(page: Page) {
-  // An image read that never finishes in time for the shot, so the chips show as they land, before the read fills them in.
+  // An image read that never finishes in time for the shot, so the token shows as it lands with Attaching, before the read fills it in.
   await page.evaluate(() => { FileReader.prototype.readAsDataURL = function () { /* never loads */ } })
   await page.locator('.cmp-input').evaluate((box) => {
     const dt = new DataTransfer()
-    for (const n of ['invoice-table.png', 'staging-log.txt', 'Screenshot 2026-10-14 at 21.21.42.png']) dt.items.add(new File(['x'], n, { type: n.endsWith('.png') ? 'image/png' : 'text/plain' }))
+    for (const n of ['Review.png']) dt.items.add(new File(['x'], n, { type: 'image/png' }))
     box.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }))
   })
   await page.waitForTimeout(300)
@@ -740,9 +745,30 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   ConnectRepoNoMatch: async (page) => { await page.getByPlaceholder('Search').fill('kernel-docs'); await page.waitForTimeout(500) },
   ConnectRepoCloning: async (page) => { await page.getByRole('radio').first().click(); await page.getByRole('button', { name: /^Clone repo/ }).click(); await page.waitForTimeout(300) },
   ComposerDragOver: dragOverPane,
-  WorkspaceModelPickerCodex: openLegacyModels,
+  // Part 8 (KERNEL-1095): a box with a draft shows the caret, and a menu over the word being typed reads the caret, so the shots focus the box.
+  ChatComposer: focusComposer,
+  // A popover opened without a pointer takes the focus ring on its first control, which a person who clicked doesn't see.
+  WorkspaceContextRingNear: async (page) => { await page.locator('.ctx-ring').hover(); await page.waitForTimeout(900) },
+  WorkspaceContextPopover: blurFocus,
+  WorkspaceContextPopoverFull: blurFocus,
+  ContextPopoverEmpty: blurFocus,
+  WorkspaceReplyMenu: async (page) => { await page.getByRole('menuitem', { name: 'Fork into new tab' }).hover(); await page.waitForTimeout(300) },
+  WorkspaceRevertMenu: async (page) => { await page.getByRole('menuitem', { name: 'Revert files to here' }).hover(); await page.waitForTimeout(300) },
+  ComposerPlusMenu: async (page) => { await page.getByRole('menuitem', { name: /Add attachment/ }).hover(); await page.waitForTimeout(300) },
+  WorkspaceMention: focusComposer,
+  ComposerMentionFolders: focusComposer,
+  ComposerMentionReference: focusComposer,
+  WorkspaceSlash: focusComposer,
+  WorkspaceIssueChip: focusComposer,
+  WorkspacePaste: focusComposer,
+  WorkspacePasteWrap: focusComposer,
+  WorkspacePasteAfter: focusComposer,
+  ComposerChipKinds: focusComposer,
+  ComposerFileMixed: focusComposer,
+  ComposerFilePdf: focusComposer,
+  ComposerFileCap: focusComposer,
+  ComposerFileUnreadable: focusComposer,
   WorkspaceModelPickerLegacy: openLegacyModels,
-  WorkspaceModelPickerLegacyChat: openLegacyModels,
   SettingsModels: fullLength(),
   SettingsModelsPicker: (page) => openRolePicker(page),
   SettingsModelsPickerCodex: (page) => openRolePicker(page, 'Codex', false, 'Frontend'),
@@ -761,6 +787,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   },
   SettingsModelsPickerBoth: async (page) => { await openRolePicker(page); await page.getByRole('tab', { name: 'Codex' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
   SettingsModelsPickerCompact: async (page) => { await openRolePicker(page, undefined, false, 'QA'); await page.getByPlaceholder('Search models').fill('hai'); await page.waitForTimeout(300) },
+  NewAgentDrafting: async (page) => { await page.getByRole('button', { name: 'Draft with Kernel' }).click(); await page.getByRole('button', { name: 'Drafting' }).waitFor() },
   NewAgentPicker: async (page) => { await page.getByRole('button', { name: /^Model, / }).click(); await page.getByRole('dialog').last().waitFor() },
   SettingsAgentEditPicker: async (page) => { await page.getByRole('button', { name: /^Model and effort, / }).click() },
   SettingsModelsPickerCodexRole: async (page) => { await openRolePicker(page, undefined, false, 'Frontend'); await page.getByRole('tab', { name: 'Codex' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
@@ -894,12 +921,11 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspacePlanFinishedFollowed: async (page) => { await page.locator('.plan-attn-n').focus(); await page.waitForTimeout(300) },
   WorkspacePlanFinishedLong: async (page) => { await page.locator('.plan-attn-n').focus(); await page.waitForTimeout(300) },
   WorkspaceReadImagePreview: (page) => openRows(page, ['ReviewRc.png']),
-  WorkspacePasteImagePreview: (page) => hoverPreview(page, page.getByRole('button', { name: 'Open image.png' })),
+  WorkspacePasteImagePreview: (page) => hoverPreview(page, page.getByRole('button', { name: 'Open ReviewRc.png' })),
   WorkspacePasteTextPreview: (page) => hoverPreview(page, page.getByRole('button', { name: 'Open pasted_text_1.txt' })),
-  WorkspaceIssuePreview: (page) => hoverPreview(page, page.getByRole('button', { name: /^Open issue T-17/ })),
+  WorkspaceIssuePreview: (page) => hoverPreview(page, page.getByRole('button', { name: /^Open issue KERNEL-1084/ })),
   WorkspaceReadImageTab: async (page) => { await openRows(page, ['ReviewRc.png']); await page.getByRole('button', { name: 'Open in a tab' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(400) },
   WorkspaceReadImageMissing: (page) => openRows(page, ['ReviewRc.png']),
-  WorkspaceJustSent: sendMessage,
   WorkspaceJustSentLong: sendMessage,
   WorkspaceJustSentDone: sendAndFinish,
   WorkspaceNewChatJustSent: sendFromNewChat,
@@ -945,8 +971,9 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   SettingsAccountsMoves: (page) => scrollToSection(page, 'Chats and accounts'),
   SettingsTeamOrigins: (page) => scrollToSection(page, 'In this repo'),
   SettingsTeamOwnAgents: (page) => scrollToSection(page, 'In this repo'),
-  ChatRail: async (page) => { await readFromMessage(page, 'Change of method for the conflict'); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
-  ChatRailOpen: async (page) => { await readFromMessage(page, 'Change of method for the conflict'); await openRail(page, 'Reword that in plain words') },
+  // 8.6 and 8.13 (KERNEL-1095): the pointer on a mark shows its message beside the rail, and the list opens from the keyboard with the pointer on one of its rows.
+  ChatRail: async (page) => { await readFromMessage(page, 'Post both shots on KERNEL-232'); await page.locator('.rail-m').nth(8).hover(); await page.waitForTimeout(300) },
+  ChatRailOpen: async (page) => { await readFromMessage(page, 'Post both shots on KERNEL-232'); await page.locator('.rail-btn').focus(); await page.getByRole('option', { name: 'Post both shots on KERNEL-232 as well, so the Lead sees it.', exact: true }).hover(); await page.waitForTimeout(300) },
   ChatRailLead: (page) => openRail(page, 'Christian, opened PR #162')
 }
 

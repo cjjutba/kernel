@@ -226,8 +226,8 @@ const WHEEL_END_MS = 120
 
 /** A toast's button. `primary` fills it, for the action that fixes what went wrong. `kbd` is the shortcut that presses it, shown in its tooltip. */
 export interface ToastButton { label: string; onClick?: () => void; primary?: boolean; kbd?: string }
-export type ToastGlyph = 'done' | 'error' | 'merged' | 'plug' | 'download'
-const glyphIcon: Record<ToastGlyph, IconName> = { done: 'check', error: 'alertCircle', merged: 'merged', plug: 'plug', download: 'download' }
+export type ToastGlyph = 'done' | 'error' | 'merged' | 'plug' | 'download' | 'switch'
+const glyphIcon: Record<ToastGlyph, IconName> = { done: 'check', error: 'alertCircle', merged: 'merged', plug: 'plug', download: 'download', switch: 'swap' }
 
 export interface ToastProps { title: string; sub?: string; /** A third, quieter line: what the toast is about. */ detail?: string; glyph?: ToastGlyph; /** Up to two, drawn left to right with the last at the edge. */ actions?: ToastButton[]; /** Leave now, the way a timeout does. */ closing?: boolean; /** Stay until closed or an action is pressed, with no 5s timeout: a toast about something waiting on the person, such as a downloaded update. Needs `onDismiss`. */ stay?: boolean; onDismiss?: () => void }
 
