@@ -1,6 +1,2 @@
 .app-toasts .toast-sub { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
 
-/* The update card (KERNEL-164): a toast's surface and hairline, no close button, like a toast. */
-.update-card { position: relative; display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }
-.update-card-title { font-weight: var(--fw-medium); color: var(--ink); }
-.update-card-actions { display: flex; gap: 8px; }

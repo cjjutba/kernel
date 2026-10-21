@@ -3,6 +3,7 @@ import type { DevUiPage, Modal, Route } from '@shared/types'
 import { call } from './api'
 import { SidebarToggle, toggleFocus, toggleRightPanel, toggleSidebar, useFoldPanels } from './components/PanelToggles'
 import { Sidebar } from './components/Shell'
+import { TitleBarUpdate } from './components/footer/UpdatePill'
 import { Toasts } from './components/Toasts'
 import { ConfirmBypass } from './components/ConfirmBypass'
 import { askAboutTelemetry, TelemetryAsk } from './components/TelemetryAsk'
@@ -261,6 +262,8 @@ export function App() {
         </div>
         {/* Once, at a fixed spot, so it is the same element with the sidebar open or hidden. Settings has no toggle: its column can't be hidden. */}
         {!fullWindow(route) && route.name !== 'settings' && <SidebarToggle />}
+        {/* With the sidebar hidden its footer is gone, so an update that is ready shows as a pill at the title bar's right end (Pen 17.3). */}
+        {hidden && <TitleBarUpdate />}
         {modal && <ModalView modal={modal} />}
         <Toasts />
         <Tooltips />

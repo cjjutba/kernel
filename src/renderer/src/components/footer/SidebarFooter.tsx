@@ -18,8 +18,7 @@ export function SidebarFooter() {
         <HelpMenu />
         <UsageButton />
       </div>
-      <span className="grow" />
-      <UpdateSlot />
+      <div className="sbf-slot"><UpdateSlot /></div>
     </footer>
   )
 }

@@ -750,9 +750,9 @@ export const teamFixtures: Record<string, Fixture> = {
     ...teamScene(f),
     ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' }, modal: { name: 'confirm', kind: 'issueTaken', issue: 'KERNEL-31', findings: [{ kind: 'branch', ref: 'origin/feat/kernel-31-export-pdf' }, { kind: 'pr', number: 41, title: 'Export invoices as PDF' }, { kind: 'assignee', name: 'Maya Chen' }], held: invoicePdfChat } }
   })),
-  UpdateReady: scene((f) => ({ ...homeScene(f), update: { status: 'ready', current: '0.1.0', version: '0.2.0' }, ui: home })),
-  // The update pill stays in the footer while the sidebar is hidden (KERNEL-588).
-  UpdateReadyNoSidebar: scene((f) => ({ ...homeScene(f), update: { status: 'ready', current: '0.1.0', version: '0.2.0' }, ui: { ...home, sidebar: false } })),
+  UpdateReady: scene((f) => ({ ...homeScene(f), update: { status: 'ready', current: '0.42.0', version: '0.43.0' }, ui: home })),
+  // With the sidebar hidden its footer goes, so the Update pill moves to the title bar (Redesign 17).
+  UpdateReadyNoSidebar: scene((f) => ({ ...homeScene(f), update: { status: 'ready', current: '0.42.0', version: '0.43.0' }, ui: { ...home, sidebar: false } })),
   Inbox: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })),
   // The plan card with a write-up and a saved file, on the chat card shell (KERNEL-1110).
   InboxPlanDoc: scene((f) => {

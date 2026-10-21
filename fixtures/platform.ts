@@ -427,46 +427,44 @@ const integrationRows: Integration[] = [
 /** The same screen as `src`, drawn in the light theme (HomeLight.png, WorkspaceLight.png). */
 const light = (src: Fixture): Fixture => ({ ...src, ui: { ...src.ui, theme: 'light' } })
 
-// What's new: 0.6.0's notes as the updater reads them (scripts/notes.ts renderApp). New features have titles, and
-// Improved and Fixed come as one note per area, long enough to fold into rows.
+// What's new (Redesign 17): 0.43.0's notes as the updater reads them (scripts/notes.ts renderApp). New features have titles, and
+// Improved and Fixed come as one note per area, shown as rows.
 const whatsNewNotes = [
-  { title: 'Pull requests page', body: 'Every open pull request across your projects, with checks, review and conflicts, and Merge on the ready ones.' },
-  { title: 'Work in the sidebar', body: 'Issues and Pull requests share one entry, with a tab for each and an All projects picker. Press 1 or 2 to switch.' },
-  { title: 'History in the bottom bar', body: 'A History button next to Help opens History for all projects.' },
-  { title: 'Attach any file', body: "Up to 50 MB each. The chip shows the file's type and size." },
-  { title: 'Chats reopen where you left them', body: 'Even after a restart. Scroll to bottom shows how many messages arrived while you read higher up.' },
-  { title: 'Switch modes with ⌘⇧H', body: 'Moves a chat with Kernel between Hand off and Build here.' },
-  { title: 'Improved', body: 'Rooms are now called projects everywhere in Kernel.' },
-  { title: 'Improved: Chat', body: 'Sending a message shows it at the end of the chat at once, and the chat stays at the end while the reply streams.\nA long chat opens in place after a restart without moving as it draws.\nA running turn shows its timer on its own line under the work, and says when it is waiting for you.\nKernel answers questions without ending on an offer to file or hand off the work.' },
-  { title: 'Improved: Issues and pull requests', body: 'Work, Issues shows the last list and the last issue you read at once when you come back, then refreshes in the background.\nThe Lead\'s PRs tab shows an approved review in green and a failing state in red, each with a small icon.\nHovering Not reviewed on a pull request says when automatic review is off.' },
-  { title: 'Improved: Message box and models', body: 'The model picker has a rail to switch between Favorites, Claude and Codex, with older models folded under Legacy models.\nA draft in a message box comes back with the cursor and scroll where you left them.\nThe composer no longer suggests your next message.' },
-  { title: 'Improved: Keyboard', body: 'Escape stops a running turn, and Stop stays available while you type.\nInbox, Issues, Projects, Pull requests and History share the same list keys.' },
-  { title: 'Improved: Accounts and usage', body: 'Kernel moves to an account with room before the one in use hits its limit, unless you turn it off in Settings, Accounts.' },
-  { title: 'Fixed: Chat', body: 'Fixed a chat drifting toward the bottom each time you left it and came back.\nFixed long commands in a turn\'s steps running past the edge of the chat.\nFixed Edit and Cancel flashing under a message right after starting a new chat.\nFixed a chat with a plan waiting shaking after you switch to another chat and back.' },
-  { title: 'Fixed: Agents', body: 'Fixed agents being asked to rebase a branch they had already pushed, which they then couldn\'t push.\nFixed a frontend agent\'s profile and composer showing the Backend effort from Settings, Models.' },
-  { title: 'Fixed: Look and feel', body: 'Fixed the window buttons drifting off the top bar after zooming the window in or out.\nFixed the sidebar button shifting slightly when the sidebar is shown or hidden.' }
+  { title: 'Automatic review is on by default', body: "Every pull request gets a review unless you turn it off in Settings, Pull requests. If you turned it off before, it stays off." },
+  { title: 'Evidence on the pull request', body: 'Kernel can keep one comment on GitHub that lists each acceptance criterion and its state. Turn it on in Settings, Pull requests.' },
+  { title: 'Improved: Pull requests', body: 'The PRs panel shows each check as it finishes.\nMerge waits for required checks, then tries once more.' },
+  { title: 'Improved: Chat with Kernel', body: 'A reply that changed files ends with the files it changed.' },
+  { title: 'Fixed: Chat with Kernel', body: 'Fixed a chat losing its draft after a restart.\nFixed a long command running past the edge of a step.' },
+  { title: 'Fixed: Pull requests', body: 'Fixed the PRs panel showing a merged PR as open.' },
+  { title: 'Fixed: Settings', body: 'Fixed a rule in Settings, Hooks being forgotten after a restart.' }
 ]
 const whatsNewModal = { ...teamFixtures.UpdateReady.ui, modal: { name: 'whatsNew' as const } }
 const whatsNew: Fixture = {
   ...teamFixtures.UpdateReady,
-  update: { status: 'ready', current: '0.5.0', version: '0.6.0', notes: whatsNewNotes },
+  update: { status: 'ready', current: '0.42.0', version: '0.43.0', notes: whatsNewNotes },
   ui: whatsNewModal
 }
 // What's new opened from the sidebar with no update ready (KERNEL-154): the running version's notes and Done.
-const whatsNewCurrent: Fixture = { ...teamFixtures.UpdateReady, update: { status: 'idle', current: '0.6.0', currentNotes: whatsNewNotes }, ui: whatsNewModal }
-/** What's new opened from the sidebar while the updater is in `update`'s state, over the running 0.6.0's notes. */
-const whatsNewWith = (update: Partial<AppUpdate>): Fixture => ({ ...whatsNewCurrent, update: { status: 'idle', current: '0.6.0', currentNotes: whatsNewNotes, ...update } })
-// 0.6.0's notes, published before titles and areas: three flat lists. New shows in full, the rest fold after five.
+const whatsNewCurrent: Fixture = { ...teamFixtures.UpdateReady, update: { status: 'idle', current: '0.43.0', currentNotes: whatsNewNotes }, ui: whatsNewModal }
+/** What's new opened from the sidebar while the updater is in `update`'s state, over the running 0.43.0's notes. */
+const whatsNewWith = (update: Partial<AppUpdate>): Fixture => ({ ...whatsNewCurrent, update: { status: 'idle', current: '0.43.0', currentNotes: whatsNewNotes, ...update } })
+// 0.39.0's notes, published before titles and areas: a flat list for each section, folded into one row.
 const flatNotes = [
-  { title: 'New', body: whatsNewNotes.slice(0, 6).map((n) => `${n.title}. ${n.body}`).concat('File paths that agents mention in chat open the file in a tab when you click them.', 'Command Shift H switches a chat with Kernel between Hand off and Build here.', 'You can attach any file to a message, up to 50 MB each.').join('\n') },
-  { title: 'Improved', body: whatsNewNotes.filter((n) => n.title.startsWith('Improved')).flatMap((n) => n.body.split('\n')).join('\n') },
-  { title: 'Fixed', body: whatsNewNotes.filter((n) => n.title.startsWith('Fixed')).flatMap((n) => n.body.split('\n')).join('\n') }
+  { title: 'Improved', body: 'Chats remember their scroll position.\nThe composer keeps a draft per chat.\nSearch finds archived chats.' },
+  { title: 'Fixed', body: 'Fixed a chat jumping to the top after a restart.\nFixed Search missing a chat renamed a moment ago.' }
 ]
-// A patch with one short Fixed section lists it flat, with no area rows.
+const whatsNewFlat: Fixture = { ...whatsNew, update: { status: 'ready', current: '0.38.2', version: '0.39.0', notes: flatNotes } }
+// A patch with one short Fixed list: it lists open, with no row to fold it.
 const whatsNewPatch: Fixture = {
   ...whatsNew,
-  update: { status: 'ready', current: '0.6.0', version: '0.6.1', notes: [{ title: 'Fixed', body: 'Fixed long commands in a turn\'s steps running past the edge of the chat.\nFixed the Back and Forward buttons missing from the sidebar in Settings.' }] }
+  update: { status: 'ready', current: '0.43.0', version: '0.43.1', notes: [{ title: 'Fixed', body: 'Fixed a chat losing its draft after a restart.\nFixed the PRs panel showing a merged PR as open.' }] }
 }
+/** The toast that says a restart failed (Pen 17.4, WhatsNewRestartFailed). */
+const restartFailedToast: Toast = { id: 'upd-restart', title: "Couldn't restart Kernel", sub: "The installer didn't start. Your agents kept working.", glyph: 'error', action: { label: 'Try again', retry: 'update-install', primary: true } }
+/** The toast that says a check failed (Pen 17.4, WhatsNewCheckFailed). */
+const checkFailedToast: Toast = { id: 'upd-check', title: "Couldn't check for updates", sub: "GitHub releases didn't answer.", glyph: 'error', action: { label: 'Try again', retry: 'update-check', primary: true } }
+/** A check that failed on the running version, with no notes to show: a calm body and a toast. */
+const whatsNewCheckFailed: Fixture = { ...whatsNewWith({ status: 'error', error: 'net::ERR_CONNECTION_TIMED_OUT', currentNotes: undefined }), ui: { ...whatsNewModal, toasts: [checkFailedToast] } }
 
 /** KERNEL-251: Codex is on the PATH and one custom command is saved, as SettingsBigTerminal.png and WorkspaceTerminalPresets.png draw them. */
 const codex: TerminalPreset = { id: 'codex', name: 'Codex', command: 'codex', builtin: true, skipsPermissions: false }
@@ -521,26 +519,29 @@ const projectEnvPage: Fixture = scene((f) => ({
 
 export const platformFixtures: Record<string, Fixture> = {
   WhatsNew: whatsNew,
-  // Restart to update stays busy as Restarting while the install call is out, with Later off beside it.
+  // Restart to update stays busy as Restarting while the install call is out, with Later gone beside it.
   WhatsNewRestarting: { ...whatsNew, lag: { 'update.install': 60_000 }, motion: { action: { click: 'Restart to update' }, ms: 400, area: '.modal' } },
-  // A restart that fails says why above the buttons, and Restart to update becomes Try again.
-  WhatsNewRestartFailed: { ...whatsNew, fails: { 'update.install': 'No update is ready' }, motion: { action: { click: 'Restart to update' }, ms: 400, area: '.modal' } },
+  // A restart that fails leaves the dialog as it was, and a toast says why with Try again.
+  WhatsNewRestartFailed: { ...whatsNew, ui: { ...whatsNewModal, toasts: [restartFailedToast] } },
   WhatsNewPatch: whatsNewPatch,
-  WhatsNewInstalled: { ...whatsNew, update: { status: 'idle', current: '0.6.0', version: '0.6.0', installed: true, notes: whatsNewNotes } },
+  WhatsNewInstalled: { ...whatsNew, update: { status: 'idle', current: '0.43.0', version: '0.43.0', installed: true, notes: whatsNewNotes } },
   WhatsNewLight: light(whatsNew),
   WhatsNewCurrent: whatsNewCurrent,
-  // A release from before titles and areas, with the area rows' fixture open on Fixed so the stuck heading shows its hairline.
-  WhatsNewFlat: whatsNewWith({ currentNotes: flatNotes }),
-  WhatsNewFlatOpen: { ...whatsNewWith({ currentNotes: flatNotes }), motion: { action: { click: 'Show 3 more' }, ms: 300, area: '.modal' } },
-  WhatsNewGroupOpen: { ...whatsNew, motion: { action: { click: 'Issues and pull requests 3' }, ms: 300, area: '.modal' } },
+  // A release from before titles and areas: each list folds into one row, and the second opens on its changes.
+  WhatsNewFlat: whatsNewFlat,
+  WhatsNewFlatOpen: { ...whatsNewFlat, motion: { action: { click: 'Show 3 changes' }, ms: 300, area: '.modal' } },
+  WhatsNewGroupOpen: { ...whatsNew, motion: { action: { click: 'Pull requests 2' }, ms: 300, area: '.modal' } },
   // Opened before Kernel answers update.get: Loading release notes.
   WhatsNewLoading: { ...whatsNewCurrent, update: undefined, lag: { 'update.get': 60_000 } },
   // A dev run, or a release without notes.
-  WhatsNewEmpty: whatsNewWith({ currentNotes: [] }),
-  WhatsNewDownloading: whatsNewWith({ status: 'downloading', version: '0.7.0', progress: 42 }),
-  WhatsNewCheckFailed: whatsNewWith({ status: 'error', error: 'net::ERR_INTERNET_DISCONNECTED' }),
+  WhatsNewEmpty: { ...whatsNew, update: { status: 'ready', current: '0.43.1', version: '0.43.2', notes: [] } },
+  // The next version's notes while it downloads, with the percentage in the footer and Restart to update waiting.
+  WhatsNewDownloading: { ...whatsNew, update: { status: 'downloading', current: '0.43.0', version: '0.44.0', progress: 62, notes: [{ title: 'Several projects in one chat', body: 'Mention a second project with @ and Kernel works in both.' }] } },
+  WhatsNewCheckFailed: whatsNewCheckFailed,
   // Try again on a failed check spins as Trying again until the check answers.
-  WhatsNewCheckRetrying: { ...whatsNewWith({ status: 'error', error: 'net::ERR_INTERNET_DISCONNECTED' }), lag: { 'update.check': 60_000 }, motion: { action: { press: ['Tab', 'Tab', 'Tab', 'Enter'] }, ms: 400, area: '.modal' } },
+  WhatsNewCheckRetrying: { ...whatsNewCheckFailed, ui: whatsNewModal, lag: { 'update.check': 60_000 }, motion: { action: { click: 'Try again' }, ms: 400, area: '.modal' } },
+  // The title bar's Update pill in a workspace, where it sits left of the right panel's toggle.
+  UpdateReadyWorkspaceNoSidebar: { ...workspaceFixtures.Workspace, update: { status: 'ready', current: '0.42.0', version: '0.43.0' }, ui: { ...workspaceFixtures.Workspace.ui, sidebar: false } },
   // The update card in the light theme (KERNEL-164). UpdateReady shows it in dark; no PNG draws it.
   UpdateReadyLight: light(teamFixtures.UpdateReady),
   WorkspaceLight: light(workspaceFixtures.Workspace),
@@ -1141,9 +1142,9 @@ export const platformFixtures: Record<string, Fixture> = {
   AboutInstallFailedSignature: aboutPage({ status: 'idle', current: '0.43.2', installFailed: { version: '0.44.0', reason: 'signature' } }),
   AboutInstallFailedOther: aboutPage({ status: 'idle', current: '0.43.2', installFailed: { version: '0.44.0', reason: 'other' } }),
   AuditAboutUpdateBlocked: aboutPage({ status: 'idle', current: '0.43.2', blocked: 'Kernel 0.44.0 is ready, but this copy runs from Downloads. Move Kernel to Applications to update.' }),
-  // The home screen while an update downloads or fails: a quiet footer line.
-  AuditHomeUpdateDownloading: { ...teamFixtures.UpdateReady, update: { status: 'downloading', current: '0.1.0', version: '0.2.0', progress: 42 } },
-  AuditHomeUpdateError: { ...teamFixtures.UpdateReady, update: { status: 'error', current: '0.1.0', error: 'net::ERR_INTERNET_DISCONNECTED' } },
+  // The home screen while an update downloads, a quiet footer line, or when the download failed: the footer goes back to its round button and a toast says why.
+  AuditHomeUpdateDownloading: { ...teamFixtures.UpdateReady, update: { status: 'downloading', current: '0.43.0', version: '0.44.0', progress: 62 } },
+  AuditHomeUpdateError: { ...teamFixtures.UpdateReady, update: { status: 'error', current: '0.43.0', version: '0.44.0', error: 'net::ERR_CONNECTION_TIMED_OUT' }, ui: { ...teamFixtures.UpdateReady.ui, toasts: [{ id: 'upd-download', title: "Couldn't download Kernel 0.44.0", sub: "GitHub releases didn't answer.", glyph: 'error', action: { label: 'Try again', retry: 'update-check', primary: true } }] } },
   // Toasts: three at once (merged, failed with a second action, plain), and one with a long title and sub, over a workspace.
   ToastsStacked: { ...workspaceFixtures.WorkspaceTurnRunning, ui: { ...workspaceFixtures.WorkspaceTurnRunning.ui, toasts: [
     { id: 't1', glyph: 'merged', title: 'PR #1151 merged', sub: 'Squashed into main', action: { label: 'View', href: 'https://github.com/kernel/kernel/pull/1151' } },
