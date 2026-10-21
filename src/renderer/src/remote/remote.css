@@ -1,5 +1,5 @@
 /* The browser client (remote-web-client): the pairing page and the notice over the app while the Mac is out of reach. */
-.remote-gate-body { display: flex; flex-direction: column; gap: 14px; padding: 16px 20px 20px; font-size: var(--fs-ui); line-height: 1.5; color: var(--ink-2); }
+.remote-gate-body { display: flex; flex-direction: column; gap: 14px; padding: 16px 20px 20px; font-size: var(--fs-ui); line-height: var(--lh); color: var(--ink-2); }
 .remote-gate-body p { margin: 0; }
 .remote-gate-field { display: flex; flex-direction: column; gap: 6px; }
 .remote-gate-error, .remote-gate-notice { color: var(--ink); }

@@ -406,7 +406,7 @@ button.rail-row:hover { background: var(--surface); color: var(--ink-2); }
 .rail-card .handed-list { margin: 0; padding: 0 10px 10px; list-style: none; }
 .handed-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 4px 6px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-3); text-align: left; cursor: pointer; }
 .handed-row:hover { background: var(--surface); }
-.handed-row:focus-visible { outline: 1px solid var(--line-3); outline-offset: -1px; }
+.handed-row:focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
 .handed-row .agent-avatar { flex: none; }
 .handed-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .handed-name { color: var(--ink-2); font-size: var(--fs-ui); font-weight: var(--fw-medium); }
