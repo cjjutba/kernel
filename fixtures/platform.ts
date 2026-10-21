@@ -168,32 +168,42 @@ const usageHome = (extra: Partial<Fixture> = {}, ui: Partial<Fixture['ui']> = {}
 const switchedHome = (accounts: AccountProfile[], switched: PushEvent): Fixture => usageHome({ accounts, push: [{ type: 'accounts', accounts }, switched] })
 /** The popover open over the same home, in Detailed unless `view` says Compact. */
 const usagePopover = (extra: Partial<Fixture> = {}, ui: Partial<Fixture['ui']> = {}): Fixture => usageHome(extra, { menu: 'plan', ...ui })
+// Redesign 15 (Pen 15.4): Main account is Claude Code's own login, in use with two chats on it, beside a 2nd account and an API key, and Codex runs on its own login.
+const pageMain: AccountProfile = { ...mainClaude, chats: 2, mcpSignIns: [] }
+const pageSecond: AccountProfile = { ...secondClaude, mcpSignIns: [] }
+const pageAccounts: AccountProfile[] = [pageMain, pageSecond, footerKey(), footerCodex]
+const pageUsage = (): RateLimit[] => [
+  window5('claude', 'cli', 11, next(20, 20)), windowWeek('claude', 'cli', 90, nextOn(4, 3, 0)),
+  { type: 'seven_day_overage_included', status: 'allowed', utilization: 0, resetsAt: secs(nextOn(4, 3, 0)) },
+  window5('claude', 'second', 36, next(19, 5)), windowWeek('claude', 'second', 53, nextOn(5, 9, 0)),
+  window5('codex', 'cli', 12, next(19, 5)), windowWeek('codex', 'cli', 31, nextOn(1, 3, 0))
+]
 /** Settings, Accounts with each account's nickname, plan and usage windows (KERNEL-561, KERNEL-680). `tab` scrolls to that provider. */
 const providersPage = (tab: Provider, extra: Partial<Fixture> = {}) => scene(() => ({
-  accounts: richAccounts,
+  accounts: pageAccounts,
   providerStatus,
-  usage: providerUsage(),
+  usage: pageUsage(),
   ...extra,
-  ui: { route: { name: 'settings', page: 'accounts', tab } }
+  ui: { route: { name: 'settings', page: 'accounts', tab }, ...extra.ui }
 }))
-/**
- * Work, the account in use, hit its weekly limit with switching off, so the page's banner offers Personal, which is past 75% of its
- * 5-hour window: one red meter and one amber (feat-providers-redesign).
- */
+/** Main account, the account in use, hit its 5-hour limit and is near its weekly one, with switching off: the row says At limit and the meters turn red and amber (Pen 15.31). */
 const limitUsage = (): RateLimit[] => [
-  window5('claude', 'cli', 3, next(16, 10)), { ...windowWeek('claude', 'cli', 100, next(4, 0)), status: 'rejected' },
-  window5('claude', 'personal', 82, next(11, 20)), windowWeek('claude', 'personal', 10, nextOn(1, 3, 0)),
-  window5('codex', 'cli', 7, next(16, 15)), windowWeek('codex', 'cli', 21, nextOn(4, 8, 0))
+  { ...window5('claude', 'cli', 100, next(20, 20)), status: 'rejected' }, windowWeek('claude', 'cli', 91, nextOn(4, 3, 0)),
+  window5('claude', 'second', 36, next(19, 5)), windowWeek('claude', 'second', 53, nextOn(5, 9, 0)),
+  window5('codex', 'cli', 12, next(19, 5)), windowWeek('codex', 'cli', 31, nextOn(1, 3, 0))
 ]
+/** Both Claude subscriptions at their weekly limit, so the page says Claude Code is on hold and offers the API key (KERNEL-1043). */
 const holdUsage = (): RateLimit[] => [
-  window5('claude', 'cli', 3, next(16, 10)), { ...windowWeek('claude', 'cli', 100, next(4, 0)), status: 'rejected' },
-  window5('claude', 'personal', 12, next(11, 20)), { ...windowWeek('claude', 'personal', 100, nextOn(1, 3, 0)), status: 'rejected' },
-  window5('codex', 'cli', 7, next(16, 15)), windowWeek('codex', 'cli', 21, nextOn(4, 8, 0))
+  window5('claude', 'cli', 3, next(20, 20)), { ...windowWeek('claude', 'cli', 100, nextOn(4, 3, 0)), status: 'rejected' },
+  window5('claude', 'second', 12, next(19, 5)), { ...windowWeek('claude', 'second', 100, nextOn(5, 9, 0)), status: 'rejected' },
+  window5('codex', 'cli', 12, next(19, 5)), windowWeek('codex', 'cli', 31, nextOn(1, 3, 0))
 ]
-const holdPage = () => scene(() => ({ accounts: richAccounts, providerStatus, usage: holdUsage(), ui: { route: { name: 'settings', page: 'accounts' } } }))
-const limitPage = () => providersPage('claude', { usage: limitUsage(), settings: { ...DEFAULT_SETTINGS('/Users/you'), accounts: { ...DEFAULT_SETTINGS('/Users/you').accounts, switchAtLimit: { claude: false, codex: false } } } })
+const noSwitching = { ...DEFAULT_SETTINGS('/Users/you'), accounts: { ...DEFAULT_SETTINGS('/Users/you').accounts, switchAtLimit: { claude: false, codex: false } } }
+const limitPage = () => providersPage('claude', { usage: limitUsage(), settings: noSwitching })
+/** A switch to 2nd account that has started and is waiting on its call (Pen 15.31, A switch waits for running turns). */
+const holdPage = () => providersPage('claude', { ui: { route: { name: 'settings', page: 'accounts', tab: 'claude' }, switching: { provider: 'claude', accountId: 'second' } } })
 /** The Add account sheet is opened from the page's button, and a sign-in that waits on the browser is the engine's `account.add` step. */
-const addAccountPage = (tab: Provider, step?: 'browser' | 'code') => providersPage(tab, step ? { push: [{ type: 'account.add', add: { provider: tab, step, url: tab === 'claude' ? 'https://claude.ai/oauth/authorize' : 'https://auth.openai.com/oauth/authorize' } }] } : {})
+const addAccountPage = (tab: Provider, waiting = false) => providersPage(tab, waiting ? { push: [{ type: 'account.add', add: { provider: tab, step: 'browser', url: tab === 'claude' ? 'https://claude.ai/oauth/authorize' : 'https://auth.openai.com/oauth/authorize' } }] } : {})
 
 // KERNEL-26, KERNEL-191: the project pages read their own project's .kernel files, so the fixture gives Client A the values the canvas shows.
 // `sources` says which file set what: both files are there, so the settings files button offers both.
@@ -342,6 +352,10 @@ const signInAllRun: McpSignInAll = { accountId: 'personal', servers: ['Linear', 
 const signInAllFailed: McpSignInAll = { ...signInAllRun, current: undefined, done: ['Linear', 'claude.ai Gmail'], failed: [{ server: 'claude.ai Google Drive', error: 'The sign-in was not finished in the browser.' }], finished: true }
 const mcpPage = (extra: Partial<Fixture>, route: { tab?: Provider; account?: string } = { account: 'personal' }) => scene(() => ({ ...clientA(), mcp: mcpAcrossServers, mcpAccounts: mcpAcrossAccounts, accounts: [workClaude, personalClaude, ownCodex], ...extra, ui: { route: { name: 'settings', page: 'mcp', ...route }, ...extra.ui } }))
 const setUpModal: Modal = { name: 'mcpSetUp', provider: 'claude', accountId: 'personal' }
+// Redesign 15 (Pen 15.31): two MCP servers on 2nd account need a sign-in. The run is on Linear, then ends with Linear refused.
+const secondNeeds = [{ server: 'Linear', connector: false }, { server: 'Figma', connector: false }]
+const secondRun: McpSignInAll = { accountId: 'second', servers: ['Linear', 'Figma'], current: 'Linear', done: [], failed: [] }
+const secondFailed: McpSignInAll = { ...secondRun, current: undefined, finished: true, failed: [{ server: 'Linear', error: 'The browser window closed before sign-in finished.' }] }
 /** Two Codex accounts that list the same servers, which the page shows as one Codex tab (KERNEL-660). */
 const sharedCodex = (): McpAccount[] => {
   const [, , codex] = mcpAcrossAccounts
@@ -548,88 +562,73 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsModelsPickerCompact: modelsPage(),
   SettingsModelsPickerCodexRole: modelsPage(),
   SettingsModelsNarrow: largeModels(),
-  // KERNEL-406, KERNEL-665: both providers' accounts and status, with Claude's own login active, a second Claude account, a key, and Fable's weekly window on Work.
-  SettingsAccounts: providersPage('claude', { accounts: [workClaude, personalClaude, keyAccount('claude'), ownCodex], usage: [...providerUsage(), fableWindow] }),
-  // KERNEL-701: Work is added in Kernel and is also Claude Code's own login in Terminal, so it shows once, with its details open.
-  // KERNEL-774: Main account has Fable, 2nd account (Pro) has none and says Not in plan, and 3rd account's 5-hour window has reset and sits at 0%.
-  SettingsAccountsReset: providersPage('claude', {
-    accounts: footerAccounts,
-    usage: [
-      window5('claude', 'second', 18, next(23, 0)), windowWeek('claude', 'second', 32, nextOn(1, 3, 0)),
-      window5('claude', 'cli', 9, next(22, 0)), windowWeek('claude', 'cli', 9, nextOn(2, 3, 0)),
-      { type: 'seven_day_opus', status: 'allowed', utilization: 0, resetsAt: secs(nextOn(2, 3, 0)), model: 'claude-fable-5-1' },
-      window5('claude', 'third', 100, Date.now() - 3600_000), windowWeek('claude', 'third', 49, nextOn(3, 3, 0)),
-      window5('codex', 'cli', 0, next(18, 36)), windowWeek('codex', 'cli', 24, inDays(8, 13, 36))
-    ]
-  }),
-  SettingsAccountsAlsoCli: providersPage('claude', { accounts: [{ ...workClaude, cli: false, alsoCli: true }, personalClaude, keyAccount('claude'), ownCodex] }),
+  // Redesign 15 (Pen 15.4): Claude Code's accounts with their meters, then Limits and Chats and accounts. The window is tall, so the whole page is in the shot.
+  SettingsAccounts: providersPage('claude'),
+  // Pen 15.31: one account's row in each state it has. Main account is Claude Code's own login in use, and 2nd account is one added in Kernel.
+  // A window about to reset: Main account's 5-hour window is at 98%.
+  SettingsAccountsReset: providersPage('claude', { usage: [window5('claude', 'cli', 98, Date.now() + 12 * 60_000), windowWeek('claude', 'cli', 58, nextOn(4, 3, 0)), window5('claude', 'second', 36, next(19, 5)), windowWeek('claude', 'second', 53, nextOn(5, 9, 0)), window5('codex', 'cli', 12, next(19, 5)), windowWeek('codex', 'cli', 31, nextOn(1, 3, 0))] }),
+  // KERNEL-701: Main account is added in Kernel and is also Claude Code's own login in Terminal, so it shows once, with its note.
+  SettingsAccountsAlsoCli: providersPage('claude', { accounts: [{ ...pageMain, cli: false, alsoCli: true }, pageSecond, footerKey(), footerCodex] }),
   // KERNEL-1056: the fallback switch under Switch accounts at a limit, on with both providers signed in, and off with a reason while Codex is signed out.
-  SettingsAccountsFallback: providersPage('claude', { accounts: [workClaude, personalClaude, ownCodex] }),
-  SettingsAccountsFallbackDisabled: providersPage('claude', { accounts: [workClaude, personalClaude, { ...ownCodex, signedIn: false }] }),
+  SettingsAccountsFallback: providersPage('claude'),
+  SettingsAccountsFallbackDisabled: providersPage('claude', { accounts: [pageMain, pageSecond, footerKey(), { ...footerCodex, signedIn: false }] }),
   SettingsAccountsCodex: providersPage('codex'),
-  SettingsAccountsCodexSignedOut: providersPage('codex', { accounts: [workClaude, { ...ownCodex, signedIn: false }, personalCodex], providerStatus: { codex: { provider: 'codex', source: 'bundled', version: '0.153.4', signedIn: false, configFile: '/Users/you/.codex/config.toml' } } }),
-  // KERNEL-524: an API key account beside the login, on each tab, then with the key in use and the sheet that adds one.
-  SettingsAccountsApiKey: providersPage('claude', { accounts: [workClaude, keyAccount('claude'), ownCodex] }),
+  SettingsAccountsCodexSignedOut: providersPage('codex', { accounts: [pageMain, { ...footerCodex, signedIn: false }], providerStatus: { codex: { provider: 'codex', source: 'bundled', version: '0.153.4', signedIn: false, configFile: '/Users/you/.codex/config.toml' } } }),
+  // KERNEL-524: an API key account beside the login, on each tab, then with the key in use and the dialog that adds one.
+  SettingsAccountsApiKey: providersPage('claude', { accounts: [pageMain, footerKey(), footerCodex] }),
   SettingsAccountsApiKeyActive: providersPage('claude', {
-    accounts: [{ ...workClaude, active: false }, keyAccount('claude', true), ownCodex],
+    accounts: [{ ...pageMain, active: false }, footerKey(true), footerCodex],
     providerStatus: { ...providerStatus, claude: { provider: 'claude', source: 'bundled', version: '2.1.292', signedIn: true, loginMethod: 'API key', configFile: '/Users/you/.claude/settings.json' } }
   }),
-  SettingsAccountsCodexApiKey: providersPage('codex', { accounts: [workClaude, ownCodex, keyAccount('codex')] }),
-  SettingsAddAccountApiKey: providersPage('claude', { accounts: [workClaude, keyAccount('claude'), ownCodex] }),
-  // KERNEL-561: the one-button sheet on each tab, and its signing-in state. Claude's `code` step arrives from the start and the sheet shows a link for it (KERNEL-615), Codex has no such step.
+  SettingsAccountsCodexApiKey: providersPage('codex', { accounts: [pageMain, footerCodex, { id: 'key', provider: 'codex', label: 'OpenAI API key', cli: false, auth: 'apiKey', active: false, signedIn: true }] }),
+  SettingsAddAccountApiKey: providersPage('claude'),
+  // Redesign 15 (Pen 15.5, 15.32): Add account opens three cards, Continue opens what the pick needs. Claude's sign-in waits on the browser, which is the engine's `account.add` step.
   SettingsAddAccount: addAccountPage('claude'),
-  SettingsAddAccountBrowser: addAccountPage('claude', 'code'),
+  SettingsAddAccountBrowser: addAccountPage('claude', true),
   SettingsAddAccountCodex: addAccountPage('codex'),
-  SettingsAddAccountCodexBrowser: addAccountPage('codex', 'browser'),
-  // KERNEL-561: Personal being renamed, and a Claude account from before the full login that asks to sign in again with the usage its last turn read.
+  SettingsAddAccountCodexBrowser: addAccountPage('codex', true),
+  // KERNEL-561: 2nd account being renamed, and a Claude account from before the full login that asks to move to one, with the usage its last turn read.
   SettingsAccountsRename: providersPage('claude'),
   SettingsAccountsLegacy: providersPage('claude', {
-    accounts: [workClaude, { ...personalClaude, email: undefined, plan: undefined, usageFromTurns: true, legacyToken: true }, keyAccount('claude'), ownCodex],
-    usage: providerUsage(todayAt(14, 10))
+    accounts: [pageMain, { ...pageSecond, id: 'legacy', label: 'Claude Code login', email: undefined, plan: undefined, usageFromTurns: true, legacyToken: true }, footerKey(), footerCodex],
+    usage: pageUsage()
   }),
-  // KERNEL-619: Claude Code found two claude.ai connectors on Personal's login that need a sign-in. Work's login has none.
-  SettingsAccountsMcp: providersPage('claude', {
-    mcpAccounts: mcpAcrossAccounts,
-    accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, mcpSignIns: [{ server: 'claude.ai Google Drive', connector: true }, { server: 'claude.ai Gmail', connector: true }] }, keyAccount('claude'), ownCodex]
-  }),
-  // KERNEL-627: Sign in to all on the same line while it runs, then what failed.
-  SettingsAccountsMcpSigningIn: providersPage('claude', {
-    mcpAccounts: mcpAcrossAccounts,
-    accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, mcpSignIns: personalMcpSignIns.slice(1) }, keyAccount('claude'), ownCodex],
-    push: [{ type: 'account.mcpSignInAll', run: signInAllRun }]
-  }),
-  SettingsAccountsMcpSignInFailed: providersPage('claude', {
-    mcpAccounts: mcpAcrossAccounts,
-    accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, mcpSignIns: personalMcpSignIns.slice(2) }, keyAccount('claude'), ownCodex],
-    push: [{ type: 'account.mcpSignInAll', run: signInAllFailed }]
-  }),
-  // KERNEL-661: the notice after adding Personal, with Set up opening the checklist.
+  // KERNEL-619: Claude Code found two MCP servers on 2nd account that need a sign-in. Main account has none.
+  SettingsAccountsMcp: providersPage('claude', { mcpAccounts: mcpAcrossAccounts, accounts: [pageMain, { ...pageSecond, mcpSignIns: secondNeeds }, footerKey(), footerCodex] }),
+  // KERNEL-627: Sign in to all on the account's row while it runs, then what failed, with a toast that says why.
+  SettingsAccountsMcpSigningIn: providersPage('claude', { mcpAccounts: mcpAcrossAccounts, accounts: [pageMain, { ...pageSecond, mcpSignIns: secondNeeds }, footerKey(), footerCodex], push: [{ type: 'account.mcpSignInAll', run: secondRun }] }),
+  SettingsAccountsMcpSignInFailed: providersPage('claude', { mcpAccounts: mcpAcrossAccounts, accounts: [pageMain, { ...pageSecond, mcpSignIns: secondNeeds.slice(0, 1) }, footerKey(), footerCodex], push: [{ type: 'account.mcpSignInAll', run: secondFailed }] }),
+  // KERNEL-661: the notice after adding 2nd account, which opens its servers on Settings, MCP servers.
   SettingsMcpNeededNotice: scene(() => ({
     ...clientA(),
-    accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, mcpSignIns: personalMcpSignIns }, keyAccount('claude'), ownCodex],
+    accounts: [pageMain, { ...pageSecond, mcpSignIns: secondNeeds }, footerKey(), footerCodex],
     providerStatus,
-    usage: providerUsage(),
-    ui: { route: { name: 'settings', page: 'accounts', tab: 'claude' }, toasts: [{ id: 'mcp-needed', title: '6 MCP servers need you', action: { label: 'Set up', modal: setUpModal } }] }
+    usage: pageUsage(),
+    ui: { route: { name: 'settings', page: 'accounts', tab: 'claude' }, toasts: [{ id: 'mcp-needed', title: '2 MCP servers need a sign-in', sub: 'Linear and Figma, for 2nd account.', action: { label: 'Open MCP servers', route: { name: 'settings', page: 'mcp', tab: 'claude', account: 'second' } } }] }
   })),
-  // KERNEL-619: Personal's Keychain item waits on a macOS prompt. It reads as waiting, not signed out, keeps no usage lines, and can't be switched to or signed out.
+  // KERNEL-619: 2nd account's Keychain item waits on a macOS prompt. It reads as waiting, not signed out, keeps no usage lines, and can't be switched to or signed out.
   SettingsAccountsKeychain: providersPage('claude', {
-    accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, keychainWait: true }, keyAccount('claude'), ownCodex],
-    usage: providerUsage().filter((l) => l.accountId !== 'personal')
+    accounts: [pageMain, { ...pageSecond, keychainWait: true }, footerKey(), footerCodex],
+    usage: pageUsage().filter((l) => l.accountId !== 'second')
   }),
-  // KERNEL-619: both logins are seats in one Claude Team organization, so Personal says it shares limits with Work.
+  // KERNEL-619: both logins are seats in one Claude Team organization, so 2nd account says it shares limits with Main account.
   SettingsAccountsSameOrg: providersPage('claude', {
-    accounts: [{ ...workClaude, plan: 'Claude Team', mcpSignIns: [], sameOrg: ['personal'] }, { ...personalClaude, plan: 'Claude Team', mcpSignIns: [], sameOrg: ['cli'] }, keyAccount('claude'), ownCodex],
+    accounts: [{ ...pageMain, plan: 'Claude Team', sameOrg: ['second'] }, { ...pageSecond, plan: 'Claude Team', sameOrg: ['cli'] }, footerKey(), footerCodex],
     providerStatus: { ...providerStatus, claude: { ...providerStatus.claude!, plan: 'Claude Team' } }
   }),
-  // feat-providers-redesign: the account in use at its weekly limit with switching off, the page in light, and Personal's menu and Remove.
+  // Main account at its 5-hour limit with switching off, the page in light, and 2nd account's switch in flight.
   SettingsAccountsLimit: limitPage(),
   SettingsAccountsLimitLight: light(limitPage()),
-  // KERNEL-1043: every Claude subscription at its weekly limit, so the page says Claude is on hold and offers the API key.
   SettingsAccountsHold: holdPage(),
+  // KERNEL-1043: every Claude subscription at its weekly limit, so the page says Claude Code is on hold and offers the API key.
+  SettingsAccountsOnHold: providersPage('claude', { usage: holdUsage() }),
   SettingsAccountsLight: light(providersPage('claude')),
+  // 2nd account's menu, its name turned into a field, and Remove asking first. A chat runs on it, so the dialog says where it moves.
   SettingsAccountsMenu: providersPage('claude'),
-  SettingsAccountsRemove: providersPage('claude'),
-  // KERNEL-619: Personal's login is already in Kernel, so Add account says so and keeps its Sign in button.
+  SettingsAccountsRemove: providersPage('claude', { accounts: [pageMain, { ...pageSecond, chats: 1 }, footerKey(), footerCodex] }),
+  // Advanced opened: each provider's executable and config file, and Codex's personality.
+  SettingsAccountsAdvanced: providersPage('claude'),
+  // KERNEL-619: the engine has refused the account Add account opened the browser for, because Kernel already has it.
   SettingsAddAccountDuplicate: providersPage('claude', { push: [{ type: 'account.add', add: { provider: 'claude', step: 'failed', error: 'That account is already in Kernel.' } }] }),
   // KERNEL-561: the menu lists every account of both providers with its plan and usage, and Cmd+K switches to any that isn't in use.
   AccountMenu: { ...teamFixtures.Inbox, accounts: footerAccounts, usage: footerUsage(), ui: { route: { name: 'inbox' }, menu: 'account' } },

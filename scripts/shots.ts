@@ -474,54 +474,46 @@ async function openBaseBranch(page: Page) {
   await page.waitForTimeout(300)
 }
 
-// SettingsAddAccountApiKey is the Add account sheet on its API key step with a name and a key typed. The sheet and what is typed in it are local to the page (KERNEL-524).
-async function typeApiKey(page: Page) {
-  await pickAddAccount(page, 'API key', 0)
-  await page.locator('#acct-label').fill('Work key')
-  await page.locator('#acct-key').fill('sk-ant-api03-5f1c9d27a0b84e63')
-  await page.mouse.move(0, 0)
-  await page.waitForTimeout(300)
+// Settings, Accounts is a long page and its Pen frame is drawn at full length, so its shots make the window tall enough to hold it. `then` runs after.
+const TALL_ACCOUNTS = 1560
+const accountsTall = (then?: (page: Page, app: ElectronApplication) => Promise<void>) => async (page: Page, app: ElectronApplication) => {
+  await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.w, size.h), { w: WIDTH, h: TALL_ACCOUNTS })
+  await page.waitForTimeout(400)
+  await then?.(page, app)
 }
 
-// Add account's menu lists Subscription and API key under Claude Code, then under Codex (KERNEL-680). `nth` 0 is Claude Code's, 1 Codex's.
-async function pickAddAccount(page: Page, kind: 'Subscription' | 'API key', nth: 0 | 1) {
+// The Add an account dialog (Redesign 15, Pen 15.5): the page's Add account row opens three cards, and Continue opens the step the pick needs. The dialog and the pick are local to the page.
+async function openAddAccount(page: Page, opts: { pick?: string; next?: string | true } = {}) {
   await page.getByRole('button', { name: 'Add account' }).click()
-  await page.getByRole('menuitem', { name: new RegExp(`^${kind}`) }).nth(nth).click()
-}
-
-// The Add account sheets (KERNEL-561): the sheet is opened from the page's menu, and Browser is the sheet after Sign in. Both are local to the page.
-async function openAddAccount(page: Page, nth: 0 | 1, signIn?: string) {
-  await pickAddAccount(page, 'Subscription', nth)
-  if (signIn) {
-    await page.getByRole('button', { name: signIn }).click()
-    await page.getByText('Finish signing in in your browser.').waitFor()
+  await page.getByRole('dialog', { name: 'Add an account' }).waitFor()
+  if (opts.pick) await page.getByRole('radio', { name: new RegExp(opts.pick) }).click()
+  if (opts.next) {
+    await page.getByRole('button', { name: 'Continue' }).click()
+    if (typeof opts.next === 'string') await page.getByText(opts.next).waitFor()
   }
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
-
-// SettingsAddAccountDuplicate is the sheet after Sign in with Claude, once the engine has refused an account Kernel already has (KERNEL-619).
-async function addDuplicate(page: Page) {
-  await pickAddAccount(page, 'Subscription', 0)
-  await page.getByRole('button', { name: 'Sign in with Claude' }).click()
-  await page.getByText('That account is already in Kernel').waitFor()
+// SettingsAddAccountApiKey is the dialog on its API key step with a key typed.
+async function typeApiKey(page: Page) {
+  await openAddAccount(page, { pick: 'API key', next: true })
+  await page.locator('#acct-key').fill('sk-ant-api03-5f1c9d27a0b84e634f2a')
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
 
-// SettingsAccountsMenu is Personal's menu open, SettingsAccountsRename its name turned into a field and SettingsAccountsRemove its Remove
+// SettingsAccountsMenu is 2nd account's menu open, SettingsAccountsRename its name turned into a field and SettingsAccountsRemove its Remove
 // asking first. The menu, the field and the dialog are local to the page, so click them open.
-async function personalMenu(page: Page, item?: string) {
-  await page.getByRole('button', { name: 'More for Personal' }).first().click()
+async function secondMenu(page: Page, item?: string) {
+  await page.getByRole('button', { name: 'More for 2nd account' }).first().click()
   if (item) await page.getByRole('menuitem', { name: item }).click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
 
-// SettingsAccountsAlsoCli is Work's details open, where the Sign-in source line is. The open state is local to the page.
-async function openDetails(page: Page, account: string) {
-  await page.getByRole('button', { name: new RegExp(account) }).and(page.locator('.ac-disc')).first().click()
-  await page.mouse.move(0, 0)
+// SettingsAccountsAdvanced is the folded Advanced section opened. The fold is local to the page.
+async function openAdvanced(page: Page) {
+  await page.getByRole('button', { name: 'Advanced' }).click()
   await page.waitForTimeout(300)
 }
 
@@ -727,16 +719,19 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   NewChatPermissionMenu: openPermissionMenu,
   NewChatBuildHere: pickBuildHere,
   PanelFilter: filterChanges,
+  SettingsAccounts: accountsTall(),
   SettingsAddAccountApiKey: typeApiKey,
-  SettingsAddAccount: (page) => openAddAccount(page, 0),
-  SettingsAddAccountBrowser: (page) => openAddAccount(page, 0, 'Sign in with Claude'),
-  SettingsAddAccountCodex: (page) => openAddAccount(page, 1),
-  SettingsAddAccountCodexBrowser: (page) => openAddAccount(page, 1, 'Sign in with ChatGPT'),
-  SettingsAddAccountDuplicate: addDuplicate,
-  SettingsAccountsAlsoCli: (page) => openDetails(page, 'Work'),
-  SettingsAccountsRename: (page) => personalMenu(page, 'Rename'),
-  SettingsAccountsMenu: (page) => personalMenu(page),
-  SettingsAccountsRemove: (page) => personalMenu(page, 'Remove'),
+  SettingsAddAccount: (page) => openAddAccount(page),
+  SettingsAddAccountBrowser: (page) => openAddAccount(page, { next: 'Finish signing in to Claude in your browser' }),
+  SettingsAddAccountCodex: (page) => openAddAccount(page),
+  SettingsAddAccountCodexBrowser: (page) => openAddAccount(page, { next: 'Finish signing in to ChatGPT in your browser' }),
+  SettingsAddAccountDuplicate: (page) => openAddAccount(page, { next: 'That account is already in Kernel.' }),
+  SettingsAccountsRename: (page) => secondMenu(page, 'Rename'),
+  SettingsAccountsMenu: (page) => secondMenu(page),
+  SettingsAccountsRemove: (page) => secondMenu(page, 'Remove'),
+  SettingsAccountsAdvanced: accountsTall(openAdvanced),
+  SettingsAccountsFallback: (page) => scrollToSection(page, 'Limits'),
+  SettingsAccountsFallbackDisabled: (page) => scrollToSection(page, 'Limits'),
   SearchSwitchAccount: typeSwitch,
   SearchQuery: (page) => typeInPalette(page, 'invoice'),
   SearchNoMatches: (page) => typeInPalette(page, 'flux capacitor'),

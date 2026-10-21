@@ -1,12 +1,13 @@
-import { useId, useRef, type ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
 import type { AccountProfile, RateLimit } from '@shared/types'
 import { resetPhrase } from '@shared/usage'
-import { Button, IconButton, Menu, Meter, Spinner, type MenuEntry, MENU_SEPARATOR } from '../../../ui'
+import { Button, Icon, IconButton, Menu, Meter, ProviderMark, Spinner, type IconName, type MenuEntry, MENU_SEPARATOR } from '../../../ui'
 import { isFable, live, windowsOf } from '../../../components/footer/planModel'
 import './accounts.css'
 
-// One account on Settings, Accounts (KERNEL-680, Calm.dc.html): its name, plan and In use on the left, a meter under each column (5-hour, Weekly
-// and the per-model weekly window when the data has one), then Switch and the menu, shown on hover. A click on the name opens its details.
+// One account on Settings, Accounts (Redesign 15, Pen 15.4): its mark, name with badges and a line of who it is, then its action and menu. Under
+// them one line for each usage window (5-hour, Weekly and the model with its own weekly window) with a meter, the percent and when it resets, then
+// what Kernel has to say about the account, one line each, and the rows of an MCP sign-in that is running or failed.
 
 /** The row's own action: Switch, Sign in, Sign in again or Replace key. `busy` spins it with `busyLabel`. */
 export interface RowAction { label: string; onClick: () => void; busy?: boolean; busyLabel?: string }
@@ -47,19 +48,35 @@ export function blockedUntil(a: AccountProfile, usage: RateLimit[], now: number)
   return { blocked: hits.length > 0, ...(times.length ? { at: Math.max(...times) } : {}) }
 }
 
-export function AccountRow({ account, line2, back, note, cells, active, action, pending, locked, menu, menuHeading, menuOpen, onMenu, rename, open, onToggle, details, children }: {
+/** A pill after the name: "In use", "Terminal", "Added in Kernel", "Legacy". `limit` is the account at a limit, in the failing text color. */
+export interface RowBadge { text: string; tone?: 'limit' }
+
+/** One line under the windows: what Kernel says of the account, with the glyph that says what kind of thing it is. */
+export interface RowNote { icon?: IconName; text: ReactNode }
+
+/** One usage window under the name: how much is used (0 to 100) and "resets 8:20 PM". */
+export interface RowWindow { title: string; pct: number; reset?: string }
+
+/** The row's windows from `rowCells`: the 5-hour, weekly and model windows with a reading, in the Pen's words ("resets Thursday 3:00 AM"). A column the plan doesn't have is left out. */
+export function rowWindows(cells: (Cell | undefined)[], third?: string): RowWindow[] {
+  return cells.flatMap((c, i): RowWindow[] => {
+    if (!c || c.absent) return []
+    const title = i === 2 && third ? third.split(' ')[0] : c.title
+    return [{ title, pct: c.pct, ...(c.reset ? { reset: `resets ${c.reset.replace(/^at /, '').replace(' at ', ' ')}` } : {}) }]
+  })
+}
+
+export function AccountRow({ account, name, badges, sub, windows, notes, action, pending, locked, menu, menuHeading, menuOpen, onMenu, rename, children }: {
   account: AccountProfile
-  /** The plan, "API key" or "Signed out". */
-  line2: string
-  /** "Back at 4:10 PM" while the account is at a limit. */
-  back?: string
-  /** Said across the meter columns when there are no meters: "Billed per token", "Sign in to see usage". */
-  note?: string
-  cells: (Cell | undefined)[]
-  /** Agents run on it: "In use" shows after the name. */
-  active: boolean
+  /** The nickname, or the email when there is none. */
+  name: string
+  badges: RowBadge[]
+  /** Who it is: the email, plan and chats on it, "Billed per token", "Signed out". */
+  sub: string
+  windows: RowWindow[]
+  notes: RowNote[]
   action?: RowAction
-  /** Something the menu started is running, such as "Signing out": a spinning button stands in for the action. */
+  /** Something the menu started is running, such as "Signing out": its loader and words stand in for the action. */
   pending?: string
   /** Another action runs, or a sheet is open. */
   locked: boolean
@@ -68,78 +85,73 @@ export function AccountRow({ account, line2, back, note, cells, active, action, 
   menuOpen: boolean
   onMenu: (open: boolean) => void
   rename?: RowRename
-  open: boolean
-  onToggle: () => void
-  /** The rows of the open details: Email, resets, MCP sign-ins and Sign-in source. */
-  details: { k: string; v: ReactNode }[]
-  /** Lines under the name in the open details, after the rows: the Keychain wait. */
+  /** Rows under the account: an MCP sign-in that is running or did not finish. */
   children?: ReactNode
 }) {
   const anchor = useRef<HTMLDivElement>(null)
-  const detailsId = useId()
   // Escape, a press outside or a pick closes the menu and hands focus back to its button. Rename's field and Remove's dialog take it after.
   const close = () => { onMenu(false); anchor.current?.querySelector<HTMLButtonElement>('.ac-more')?.focus() }
   // Enter and Escape end the rename themselves, so the blur that follows when the field goes away saves nothing twice.
   // A blur with the name cleared keeps the old name: only Enter sends an empty name.
   const renameDone = useRef(false)
   if (!rename) renameDone.current = false
-  if (rename) {
-    return (
-      <div className="ac-row" data-open="true">
-        <div className="ac-renaming">
-          <input
-            className="input ac-rename" aria-label={`Name for ${account.label}`} autoComplete="off" spellCheck={false} autoFocus placeholder={account.email} disabled={rename.saving} value={rename.value}
-            onFocus={(e) => e.currentTarget.select()} onChange={(e) => { renameDone.current = false; rename.onChange(e.target.value) }}
-            onBlur={() => { if (renameDone.current || rename.saving) return; if (rename.value.trim()) rename.onSave(); else rename.onCancel() }}
-            onKeyDown={(e) => {
-              if (e.nativeEvent.isComposing) return
-              if (e.key === 'Enter') { e.preventDefault(); renameDone.current = true; rename.onSave() }
-              else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); renameDone.current = true; rename.onCancel() }
-            }}
-          />
-          {rename.saving && <span className="set-save" data-state="saving" role="status"><Spinner label={null} pattern="ripple" />Saving</span>}
-        </div>
-      </div>
+  const key = account.auth === 'apiKey'
+  const title = rename
+    ? (
+      <span className="ac-renaming">
+        <input
+          className="input ac-rename" aria-label={`Name for ${account.label}`} autoComplete="off" spellCheck={false} autoFocus placeholder={account.email} disabled={rename.saving} value={rename.value}
+          onFocus={(e) => e.currentTarget.select()} onChange={(e) => { renameDone.current = false; rename.onChange(e.target.value) }}
+          onBlur={() => { if (renameDone.current || rename.saving) return; if (rename.value.trim()) rename.onSave(); else rename.onCancel() }}
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing) return
+            if (e.key === 'Enter') { e.preventDefault(); renameDone.current = true; rename.onSave() }
+            else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); renameDone.current = true; rename.onCancel() }
+          }}
+        />
+        {rename.saving && <span className="set-save" data-state="saving" role="status"><Spinner label={null} pattern="ripple" />Saving</span>}
+      </span>
     )
-  }
-  const keep = menuOpen || !!pending || !!action?.busy || action?.label === 'Sign in'
+    : <span className="ac-name-line"><span className="ac-name">{name}</span>{badges.map((b) => <span key={b.text} className="ac-badge" data-tone={b.tone}>{b.text}</span>)}</span>
   return (
-    <div className="ac-row" data-open={open || undefined}>
-      <div className="ac-grid ac-main">
-        <button type="button" className="ac-disc" aria-expanded={open} aria-controls={detailsId} onClick={onToggle}>
-          <svg className="ac-chev" width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3.5 10.5 8 6 12.5" /></svg>
-          <span className="ac-who">
-            <span className="ac-name-line"><span className="ac-name">{account.label}</span>{active && <span className="ac-inuse">In use</span>}</span>
-            <span className="ac-line2">{line2}{back && <span className="ac-back"> · {back}</span>}</span>
-          </span>
-        </button>
-        {note
-          ? <span className="ac-note">{note}</span>
-          : cells.map((c, i) => (
-            <span key={i} className="ac-cell" data-tip={c?.reset ? `${c.title} resets ${c.reset}` : ''}>
-              {c?.absent && <span className="ac-absent">Not in plan</span>}
-              {c && !c.absent && <><Meter value={c.pct / 100} label={`${account.label}, ${c.title}${c.reset ? `, resets ${c.reset}` : ''}`} /><span className="ac-pc" data-hot={c.pct >= 90 || undefined}>{c.pct}%</span></>}
-            </span>
-          ))}
-        <div className="ac-acts" ref={anchor} data-keep={keep || undefined}>
+    <>
+    <div className="ac-row" data-account={`${account.provider}:${account.id}`}>
+      <div className="ac-top">
+        <span className="ac-mark" aria-hidden="true">{key ? <Icon name="key" size={14} /> : <ProviderMark provider={account.provider} size={14} />}</span>
+        <div className="ac-who">
+          {title}
+          <span className="ac-sub">{sub}</span>
+        </div>
+        <div className="ac-acts" ref={anchor}>
           {pending
-            ? <Button busy busyLabel={pending}>{pending}</Button>
-            : action && <Button aria-label={`${action.label} ${account.label}`} busy={action.busy} busyPattern="ripple" busyLabel={action.busyLabel} disabled={locked} onClick={action.onClick}>{action.label}</Button>}
+            ? <span className="ac-pending" role="status"><Spinner label={null} pattern="ripple" />{pending}</span>
+            : action && <Button aria-label={`${action.label} ${name}`} busy={action.busy} busyPattern="ripple" busyLabel={action.busyLabel} disabled={locked} onClick={action.onClick}>{action.label}</Button>}
           <IconButton
-            icon="more" size={16} label={`More for ${account.label}`} aria-haspopup="menu" aria-expanded={menuOpen} disabled={locked || !!pending}
+            icon="more" size={16} label={`More for ${name}`} aria-haspopup="menu" aria-expanded={menuOpen} disabled={locked || !!pending}
             className={menuOpen ? 'ac-more on' : 'ac-more'} onClick={() => onMenu(!menuOpen)}
           />
-          {menuOpen && <Menu label={account.label} heading={menuHeading} anchorRef={anchor} onClose={close} style={{ right: 0, top: 32, width: 220 }} items={menu} />}
+          {menuOpen && <Menu label={name} heading={menuHeading} anchorRef={anchor} onClose={close} style={{ right: 0, top: 32, width: 220 }} items={menu} />}
         </div>
       </div>
-      {open && (
-        <div id={detailsId} role="region" aria-label={`${account.label} details`} className="ac-details">
-          <dl>
-            {details.map((d) => <div key={d.k} className="ac-kv"><dt>{d.k}</dt><dd>{d.v}</dd></div>)}
-          </dl>
-          {children}
+      {windows.length > 0 && (
+        <div className="ac-wins">
+          {windows.map((w) => (
+            <div key={w.title} className="ac-win">
+              <span className="ac-win-name">{w.title}</span>
+              <Meter value={w.pct / 100} label={`${name}, ${w.title}${w.reset ? `, ${w.reset}` : ''}`} />
+              <span className="ac-pc" data-tone={w.pct >= 90 ? 'hot' : undefined}>{w.pct}%</span>
+              {w.reset && <span className="ac-reset">{w.reset}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+      {notes.length > 0 && (
+        <div className="ac-notes">
+          {notes.map((n, i) => <p key={i} className="ac-note">{n.icon && <Icon name={n.icon} size={14} />}<span>{n.text}</span></p>)}
         </div>
       )}
     </div>
+    {children}
+    </>
   )
 }
