@@ -13,7 +13,7 @@ import { ApprovalCard } from './cards/ApprovalCard'
 import { waitingPlan } from './cards/steps'
 import { Markdown } from './markdown'
 import { attempt, CopyOverlay, MessageActions, type MessageAction } from './MessageActions'
-import { ChipIcon, chipFileKind, fileView, ImageButton, IssueButton, isPastedText, TextButton, usePrState, type ImagePart } from './composer/Chip'
+import { fileView, ImageButton, IssueButton, isPastedText, isToken, TextButton, TokenBody, tokenAttrs, usePrState, type ImagePart } from './composer/Chip'
 import { buildThread, countsLabel, fmtDuration, turnFiles, type NoteItem, type ThreadBlock } from './thread'
 import { ThoughtLine, ToolGroup, ToolRow, TranscriptAway, TranscriptWorkspace, TurnClock, TurnLine, type TurnClockValue } from './Steps'
 import { InstructionCard } from './pr/InstructionCard'
@@ -92,12 +92,12 @@ export function PartChip({ part, gone }: { part: ChatPart; gone?: boolean }) {
   const prState = usePrState(part)
   if (part.type === 'text') return null
   const view = fileView(part, gone)
-  const kind = { 'data-file-kind': chipFileKind(part), 'data-pr-state': prState }
-  const body = <>{part.type === 'skill' ? <span aria-hidden="true" className="muted">/</span> : <ChipIcon part={part} />}<span className="chip-name">{view ? view.label : part.name}</span>{view?.size && <span className="chip-meta">{view.size}</span>}</>
-  if (part.type === 'image' && part.dataUrl) return <ImageButton image={{ ...part, dataUrl: part.dataUrl }} className="msg-chip" data-kind="image" {...kind}>{body}</ImageButton>
-  if (isPastedText(part)) return <TextButton paste={part} className="msg-chip" data-kind="file" {...kind}>{body}</TextButton>
-  if (part.type === 'issue') return <IssueButton issue={part} className="msg-chip" data-kind="issue" {...kind}>{body}</IssueButton>
-  return <span className="msg-chip" data-tip={view?.tip} data-tip-hint={view?.hint} data-state={view?.state} data-kind={part.type} {...kind}>{body}</span>
+  const attrs = tokenAttrs(part, { gone, prState })
+  const body = <TokenBody part={part} gone={gone} />
+  if (part.type === 'image' && part.dataUrl && !gone) return <ImageButton image={{ ...part, dataUrl: part.dataUrl }} className="msg-chip" {...attrs}>{body}</ImageButton>
+  if (isPastedText(part)) return <TextButton paste={part} className="msg-chip" {...attrs}>{body}</TextButton>
+  if (part.type === 'issue') return <IssueButton issue={part} className="msg-chip" {...attrs}>{body}</IssueButton>
+  return <span className="msg-chip" data-tip={view?.tip} data-tip-side="above" data-tip-mono={view ? '' : undefined} {...attrs}>{body}</span>
 }
 
 /** True when a revert to this checkpoint would change something: it is linked and the worktree isn't already there. */
@@ -106,7 +106,7 @@ function useRevertable(workspaceId: string, checkpointId: string | undefined): b
 }
 
 const revertAction = (workspaceId: string, checkpointId: string, label: string, start?: boolean): MessageAction =>
-  ({ icon: 'history', label, onClick: () => actions.ui.openModal({ name: 'confirm', kind: 'revert', workspaceId, checkpointId, ...(start ? { start } : {}) }) })
+  ({ icon: 'history', label, rule: true, onClick: () => actions.ui.openModal({ name: 'confirm', kind: 'revert', workspaceId, checkpointId, ...(start ? { start } : {}) }) })
 
 /** Your answers to several questions are listed in the question's own card, so the chat's message that holds them has nothing left to say (KERNEL-1094). */
 const answersListed = (item: Extract<ChatItem, { kind: 'user' }>, approvals: Approval[]) => !!item.approvalId && (approvals.find((a) => a.id === item.approvalId)?.questions?.length ?? 0) > 1
@@ -117,13 +117,21 @@ function UserMessage({ item, workspaceId, onEdit }: { item: Extract<ChatItem, { 
   const archived = useStore((s) => s.workspaces.find((w) => w.id === workspaceId)?.status === 'archived')
   const more: MessageAction[] = revertable && item.checkpointId ? [revertAction(workspaceId, item.checkpointId, 'Revert files to start of chat', true)] : []
   const thumbs = item.parts.filter((p): p is ImagePart => p.type === 'image' && !!p.dataUrl)
+  // An image the archived workspace took with it keeps its place as an empty square, and its token says it is gone.
+  const goneOf = (p: ChatPart) => archived && (p.type === 'file' || p.type === 'image') && !!p.path?.startsWith('.kernel/attachments/')
+  const lost = item.parts.filter((p) => p.type === 'image' && !p.dataUrl && goneOf(p))
   if (listed) return null
   return (
     <div className="msg msg-user" data-jump={item.id}>
-      <div className="bubble">
-        {/* Images the window holds are thumbnails, five to a row, above what was said. One it doesn't hold is a chip. */}
-        {thumbs.length > 0 && <div className="bubble-images">{thumbs.map((p, i) => <ImageButton key={i} image={p} className="thumb"><img src={p.dataUrl} alt="" /></ImageButton>)}</div>}
-        {item.parts.map((p, i) => (p.type === 'text' ? <span key={i}>{p.text} </span> : thumbs.includes(p as ImagePart) ? null : <PartChip key={i} part={p} gone={archived && p.type === 'file' && !!p.path?.startsWith('.kernel/attachments/')} />))}
+      <div className="bubble" data-tokens={item.parts.some(isToken) || undefined}>
+        {/* Every image is a thumbnail above what was said, and a token in the words too. One the window doesn't hold is a token only, and a lost one an empty square. */}
+        {(thumbs.length > 0 || lost.length > 0) && (
+          <div className="bubble-images">
+            {thumbs.map((p, i) => <ImageButton key={i} image={p} className="thumb"><img src={p.dataUrl} alt="" /></ImageButton>)}
+            {lost.map((p, i) => <span key={`lost-${i}`} className="thumb" data-state="gone" role="img" aria-label={`${p.type === 'image' ? p.name : ''}, gone from disk`}><Icon name="imageOff" size={20} /></span>)}
+          </div>
+        )}
+        {item.parts.map((p, i) => (p.type === 'text' ? <span key={i}>{p.text} </span> : <PartChip key={i} part={p} gone={goneOf(p)} />))}
       </div>
       {/* An answer to a card (KERNEL-838) is not a prompt the reader can edit, so it keeps Copy only. */}
       <MessageActions align="end" label="Message actions" copy={partsText(item.parts)} items={item.approvalId ? [] : [{ icon: 'pen', label: 'Edit', onClick: () => onEdit(partsText(item.parts)) }]}
@@ -195,7 +203,7 @@ interface FootProps { id: string; chatId: string; workspaceId: string; copy?: st
 /** Copy, Retry and the "..." menu that forks and, where a finished turn changed files, reverts them to that turn (KERNEL-766). `id` is the row Retry and the forks start from. Fork into new workspace only shows where the workspace has its own worktree. */
 function ReplyFoot({ id, chatId, workspaceId, copy, checkpointId, hasFiles, meta, onFork, onForkWorkspace }: FootProps) {
   const revertable = useRevertable(workspaceId, hasFiles ? checkpointId : undefined)
-  const forks: MessageAction[] = [{ icon: 'fork', label: 'Fork into new tab', busyLabel: 'Forking', onClick: () => onFork(id) }]
+  const forks: MessageAction[] = [{ icon: 'copy', label: 'Copy message', onClick: () => navigator.clipboard.writeText(copy ?? '') }, { icon: 'fork', label: 'Fork into new tab', busyLabel: 'Forking', onClick: () => onFork(id) }]
   if (onForkWorkspace) forks.push({ icon: 'branch', label: 'Fork into new workspace', busyLabel: 'Forking', onClick: () => onForkWorkspace(id) })
   if (revertable && checkpointId) forks.push(revertAction(workspaceId, checkpointId, 'Revert files to here'))
   return (
@@ -665,7 +673,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
         </TranscriptGlide.Provider>
       </div>
       {away && !empty && (newCount > 0
-        ? <Button icon="arrowDown" className="ws-jump new" aria-label={`Scroll to bottom, ${newCount} new`} onClick={() => owner.toEnd()}>{newCount} new</Button>
+        ? <Button icon="arrowDown" className="ws-jump new" aria-label={`Scroll to bottom, ${newCount} new ${newCount === 1 ? 'message' : 'messages'}`} onClick={() => owner.toEnd()}>{newCount} new {newCount === 1 ? 'message' : 'messages'}</Button>
         : <IconButton icon="arrowDown" label="Scroll to bottom" className="ws-jump" onClick={() => owner.toEnd()} />)}
     </div>
   )

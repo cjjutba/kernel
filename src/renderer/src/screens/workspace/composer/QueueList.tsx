@@ -33,7 +33,7 @@ const WAITING: Partial<Record<QueueReason, string>> = {
 export const canSendNow = (why?: QueueReason) => why !== 'offline' && why !== 'worktree'
 
 /**
- * Messages typed while the agent works, or held for another reason (`why`), docked to the top of the composer. They go out in
+ * Messages typed while the agent works, or held for another reason (`why`), in a tray above the composer. Only the oldest has Send now, since they go out in order. They go out in
  * order once nothing holds them. Edit one to pull it back into the box.
  */
 export function QueueList({ queue, why, held, running, sending, onEdit, onNow, onRemove, setupShown }: {
@@ -67,7 +67,7 @@ export function QueueList({ queue, why, held, running, sending, onEdit, onNow, o
         </div>
       )}
       <ul className="queue" aria-label="Queued messages">
-        {queue.map((q) => {
+        {queue.map((q, i) => {
           const text = lineOf(q.parts)
           const more = extras(q.parts)
           return (
@@ -78,7 +78,7 @@ export function QueueList({ queue, why, held, running, sending, onEdit, onNow, o
                   <span className="ellipsis">{text || (more ? 'Attachment' : '')}</span>
                 </button>
                 {more && <span className="queue-extra">{more}</span>}
-                {canSendNow(why) && (
+                {i === 0 && canSendNow(why) && (
                   <Button variant="ghost" className="queue-now" busy={sending === q.id} busyLabel="Sending" disabled={!!sending} data-tip={stops ? 'Stop this turn and send now' : 'Send now'} data-tip-kbd="⌘⇧↵" onClick={() => onNow(q)}>Send now</Button>
                 )}
                 <button type="button" className="queue-x" aria-label="Remove queued message" onClick={() => onRemove(q)}><Icon name="close" size={12} /></button>

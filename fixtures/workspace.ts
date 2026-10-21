@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { CriterionEvidence, EvidenceLink, PrEvidence, ChatPart, Notification, AccountProfile, MoveNotice, AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { CriterionEvidence, EvidenceLink, PrEvidence, ChatPart, Notification, AccountProfile, MoveNotice, AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, SharedAnchor, SharedComment, SharedFile, SharedVersion, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { describeTool } from '../src/main/services/approvals'
@@ -247,10 +247,10 @@ const pending = (kind: 'tool' | 'plan' | 'question' | 'agent', agentId: string, 
   ({ id: `ap-${kind}-${agentId}`, kind, source: 'sdk', projectId: ids.projectA, workspaceId: ids.table, agentId, status: 'pending', createdAt: at(10, 30), title: '', ...extra })
 
 /** Codex's model list as `model/list` returns it, for a shot whose chat runs on Codex. */
-const codexModels = [...['GPT-6-Astra', 'GPT-5.6-Sol', 'GPT-5.6-Terra', 'GPT-5.6-Luna'].map((label) => ({ label, legacy: false })), ...['GPT-5.5', 'GPT-5.4', 'GPT-5.3-Codex', 'GPT-5.2'].map((label) => ({ label, legacy: true }))].map(({ label, legacy }, i) => ({ provider: 'codex' as const, id: label.toLowerCase(), label, legacy, efforts: ['low', 'medium', 'high', 'xhigh', 'max'] as Effort[], defaultEffort: 'medium' as Effort, isDefault: i === 0 }))
+export const codexModels = [...['GPT-6-Astra', 'GPT-5.6-Sol', 'GPT-5.6-Terra', 'GPT-5.6-Luna'].map((label) => ({ label, legacy: false })), ...['GPT-5.5', 'GPT-5.4', 'GPT-5.3-Codex', 'GPT-5.2'].map((label) => ({ label, legacy: true }))].map(({ label, legacy }, i) => ({ provider: 'codex' as const, id: label.toLowerCase(), label, legacy, efforts: ['low', 'medium', 'high', 'xhigh', 'max'] as Effort[], defaultEffort: 'medium' as Effort, isDefault: i === 0 }))
 
 /** Settings with a role on Codex, so the picker offers both providers. */
-const codexRoleSettings = () => {
+export const codexRoleSettings = () => {
   const d = DEFAULT_SETTINGS('/Users/you')
   return { ...d, models: { ...d.models, roles: { ...d.models.roles, qa: { ...d.models.roles.qa, prefer: 'codex' as const, codex: { model: 'gpt-6-astra', effort: 'medium' as Effort } } } } }
 }
@@ -264,7 +264,7 @@ const folded = (prefix: string, tools: number, messages: number): ChatItem[] => 
   ...Array.from({ length: messages }, (_, i): ChatItem => ({ kind: 'thinking', id: `${prefix}-fm${i}`, ts: at(10, 28), text: 'Checking the next step.' }))
 ]
 
-const tool = (id: string, label: string, detail: string, extra: Partial<Extract<ChatItem, { kind: 'tool' }>> = {}): ChatItem =>
+export const tool = (id: string, label: string, detail: string, extra: Partial<Extract<ChatItem, { kind: 'tool' }>> = {}): ChatItem =>
   ({ kind: 'tool', id, ts: at(10, 28), toolUseId: `toolu_${id}`, name: 'Bash', label, detail, status: 'done', durationMs: 100, ...extra })
 
 /** Teng's snapshot-test turn, still going (WorkspaceRunning.png). Times count back from now so the clock reads 2m 14s. */
@@ -467,8 +467,8 @@ const codexPatch = (path: string, old: string[], next: string[], context = ['exp
   [`diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`, `@@ -10,${old.length + 1} +10,${next.length + 1} @@`, ` ${context[0]}`, ...old.map((l) => `-${l}`), ...next.map((l) => `+${l}`)].join('\n')
 
 /** The brief and the follow-up in the setup shots (KERNEL-430, KERNEL-1093): a teammate's task from the Lead's plan. */
-const JOURNEY = 'Run every step of KERNEL-31 on a fresh Mac account. File each failure as its own issue, then post one comment on KERNEL-232 with the results and shots.'
-const JOURNEY_TITLE = 'Clean-account journey on a fresh Mac user'
+export const JOURNEY = 'Run every step of KERNEL-31 on a fresh Mac account. File each failure as its own issue, then post one comment on KERNEL-232 with the results and shots.'
+export const JOURNEY_TITLE = 'Clean-account journey on a fresh Mac user'
 const setupAsk: QueuedMessage = { id: 'q-setup', chatId: ids.tableChat, ts: at(10, 0), parts: [{ type: 'text' as const, text: JOURNEY }] }
 const setupFollow: QueuedMessage = { id: 'q-follow', chatId: ids.tableChat, ts: at(10, 0, 40), parts: [{ type: 'text' as const, text: 'Also attach the screenshots to the issue.' }] }
 
@@ -617,9 +617,6 @@ function handoverSteps(): { label: string; events: PushEvent[] }[] {
   ]
 }
 
-/** Composer shots: the same screen, with the composer already holding something. */
-const composing = (composer: { parts: import('@shared/types').ChatPart[]; draft: string }, extra: Partial<Fixture> = {}) =>
-  scene(() => ({ ...extra, ui: { ...open, workspace: { right: 'changes', bottom: 'run', composer } } }))
 
 /**
  * Kernel's chat picked Bypass permissions on the current branch while Only in worktrees is on, so it runs as Accept edits (KERNEL-456).
@@ -631,33 +628,11 @@ const bypassPicked = (f: Fixture, menu?: 'mode') => ({
   ui: { route: { name: 'workspace' as const, workspaceId: ids.lead }, ...(menu ? { menu } : {}) }
 })
 
-/**
- * A chat with the rows Claude Code's /context lists, adding up to the 200k window. `messages` sets how full it is: 44k is 34%, 132k is 78%, 160k is 92%.
- * Past the 167k auto compact line there is no free space left and the buffer shrinks to what remains.
- */
-const contextChat = (f: Fixture, messages = 44_000) => {
-  const max = 200_000
-  const used = 3_200 + 11_800 + 6_400 + 2_600 + messages
-  const free = Math.max(0, max - used - 33_000)
-  return f.chats.map((c) => c.id === ids.tableChat ? {
-    ...c,
-    context: Math.round((used / max) * 100),
-    contextUsage: { used, max, rows: [
-      { name: 'System prompt', tokens: 3_200, kind: 'used' as const },
-      { name: 'System tools', tokens: 11_800, kind: 'used' as const },
-      { name: 'MCP tools', tokens: 6_400, kind: 'used' as const },
-      { name: 'Memory files', tokens: 2_600, kind: 'used' as const },
-      { name: 'Messages', tokens: messages, kind: 'used' as const },
-      { name: 'Free space', tokens: free, kind: 'free' as const },
-      { name: 'Autocompact buffer', tokens: max - used - free, kind: 'buffer' as const }
-    ] }
-  } : c)
-}
 
 const file = (path: string): FileEntry => ({ path, dir: false })
 /** A stand-in for a pasted screenshot, so hovering the image chip in WorkspacePaste shows a preview. */
-const pastedLog = Array.from({ length: 212 }, (_, i) => `2025-03-11T10:${String(i % 60).padStart(2, '0')}:07Z ${i % 9 === 4 ? 'ERROR invoices.list: relation "invoice_lines" does not exist' : `INFO  request ${1000 + i} GET /api/invoices 200 ${12 + (i % 7)}ms`}`).join('\n')
-const screenshot = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800"><rect width="1280" height="800" fill="#141518"/><rect width="240" height="800" fill="#1b1c20"/><rect x="300" y="60" width="520" height="22" rx="4" fill="#3a3c42"/><rect x="300" y="120" width="920" height="420" rx="10" fill="#1f2024" stroke="#2c2e33"/><rect x="330" y="160" width="400" height="14" rx="3" fill="#5a2a2a"/><rect x="330" y="196" width="760" height="12" rx="3" fill="#2f3136"/><rect x="330" y="224" width="680" height="12" rx="3" fill="#2f3136"/></svg>')}`
+export const pastedLog = Array.from({ length: 212 }, (_, i) => `2025-03-11T10:${String(i % 60).padStart(2, '0')}:07Z ${i % 9 === 4 ? 'ERROR invoices.list: relation "invoice_lines" does not exist' : `INFO  request ${1000 + i} GET /api/invoices 200 ${12 + (i % 7)}ms`}`).join('\n')
+export const screenshot = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800"><rect width="1280" height="800" fill="#141518"/><rect width="240" height="800" fill="#1b1c20"/><rect x="300" y="60" width="520" height="22" rx="4" fill="#3a3c42"/><rect x="300" y="120" width="920" height="420" rx="10" fill="#1f2024" stroke="#2c2e33"/><rect x="330" y="160" width="400" height="14" rx="3" fill="#5a2a2a"/><rect x="330" y="196" width="760" height="12" rx="3" fill="#2f3136"/><rect x="330" y="224" width="680" height="12" rx="3" fill="#2f3136"/></svg>')}`
 /** A deeper repo for the file trees (KERNEL-399): every git status, two compact folder chains (.github/workflows, lib/db) and many file types. */
 const treeChanges: ChangedFile[] = [
   { path: 'docs/ARCHITECTURE.md', status: 'M', added: 12, removed: 3 },
@@ -692,20 +667,11 @@ const imageDiffScene = (status: 'A' | 'M') => scene((f) => ({
   ui: { ...open, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.table]: { tab: 'diff:public/logo.png', files: [], diffs: ['public/logo.png'] } } }
 }))
 
-/** What @inv finds, in the order the canvas lists it. */
-/** What @src finds: the folder first, then the folders and files under it. */
-const mentionFolderTree: FileEntry[] = [{ path: 'src', dir: true }, { path: 'src/app', dir: true }, { path: 'src/app/invoices', dir: true }, ...['src/app/index.ts', 'src/app/invoices/table.tsx'].map(file)]
 
-/** KERNEL-750: rows from a reference folder carry the folder's name, which the menu shows where a repo file shows its folder. */
-const mentionReferenceTree: FileEntry[] = [{ path: '/Users/you/Projects/client-a-api/src/invoices/routes.ts', dir: false, reference: 'client-a-api' }, { path: '/Users/you/Projects/design-system/src/invoice-table.tsx', dir: false, reference: 'design-system' }, ...mentionFolderTree.slice(1, 2), file('src/app/invoices/table.tsx')]
 
 const mentionAgentTree: FileEntry[] = ['src/lib/money.ts', 'docs/journeys/clean-account.md'].map(file)
 
-const mentionTree: FileEntry[] = ['src/app/invoices/table.tsx', 'tests/invoices.spec.ts', 'src/pdf/invoice-pdf.ts', 'src/db/schema/invoices.ts', 'src/app/invoices/invoice-row.tsx', 'package.json'].map(file)
 
-const skills: Skill[] = [
-  ['plan', 'Plan before editing'], ['feature', 'Build a feature from a spec'], ['verify', 'Run tests and attach the output'], ['image', 'Generate or edit an image'], ['setup', 'Set up the project']
-].map(([name, description]) => ({ name, description, source: 'project' as const, enabled: true }))
 
 const hunk = (owner: Hunk['owner'], lines: string, added: number, removed: number): Hunk => ({ id: `src/lib/checkout.ts#${owner}#0`, path: 'src/lib/checkout.ts', owner, lines, added, removed, patch: '' })
 
@@ -1313,64 +1279,13 @@ const teamUpdatePrStates = (f: Fixture): Partial<Fixture> => {
   }
 }
 
-/** The invoice table's turns, newest first. */
-const checkpoints: Checkpoint[] = ([
-  ['4', 10, 31, 'Done. The table sorts by date, client and amount', [4, 412, 38]],
-  ['3', 10, 24, 'Added the empty and error states', [2, 88, 9]],
-  ['2', 10, 18, 'Sorting on the table header', [1, 96, 12]],
-  ['1', 10, 14, 'Read the plan and the current table', [0, 0, 0]],
-  ['0', 10, 12, 'Build T-14 from the plan', [0, 0, 0]]
-] as const).map(([id, h, m, title, [files, added, removed]]) => ({
-  id, workspaceId: ids.table, chatId: ids.tableChat, ts: at(h, m), title, stat: { files, added, removed },
-  ref: `refs/kernel/checkpoints/${ids.table}/${id}`, current: id === '4', ...(id === '0' ? { start: true } : {})
-}))
 
-/** KERNEL-766: the invoice table's chat with its checkpoints linked to the turns, and a later turn that is the current one. */
-const revertItems: ChatItem[] = [
-  ...tableItems.map((i): ChatItem => (i.kind === 'user' && i.id === 'u1' ? { ...i, checkpointId: '0' } : i.kind === 'result' && i.id === 'r1' ? { ...i, checkpointId: '3' } : i)),
-  { kind: 'user', id: 'u2', ts: at(10, 34), parts: [{ type: 'text', text: 'Also sort by status.' }] },
-  { kind: 'text', id: 'x2', ts: at(10, 35), text: 'Status sorts now, after amount.' },
-  { kind: 'result', id: 'r2', ts: at(10, 35), durationMs: 41_000, ok: true, checkpointId: '4', files: [{ path: 'src/app/invoices/table.tsx', status: 'M', added: 9, removed: 1 }] }
-]
-const revertPreviews: Record<string, CheckpointPreview> = {
-  '3': {
-    files: [
-      { path: 'src/app/invoices/table.tsx', status: 'M', added: 20, removed: 212 },
-      { path: 'src/app/invoices/empty-state.tsx', status: 'D', added: 0, removed: 64 },
-      { path: 'src/app/invoices/page.tsx', status: 'M', added: 9, removed: 18 },
-      { path: 'tests/invoices.spec.ts', status: 'D', added: 9, removed: 118 }
-    ],
-    stat: { files: 4, added: 38, removed: 412 }, commitsAhead: 0, pushed: false, conflicts: []
-  },
-  '2': {
-    files: [
-      { path: 'src/app/invoices/table.tsx', status: 'M', added: 32, removed: 96 },
-      { path: 'src/app/invoices/page.tsx', status: 'M', added: 9, removed: 18 }
-    ],
-    stat: { files: 2, added: 41, removed: 114 }, commitsAhead: 2, pushed: true, conflicts: []
-  },
-  '1': {
-    files: [
-      { path: 'src/app/invoices/table.tsx', status: 'M', added: 32, removed: 96 },
-      { path: 'src/app/invoices/page.tsx', status: 'M', added: 9, removed: 18 },
-      { path: 'src/app/invoices/columns.ts', status: 'M', added: 4, removed: 11 }
-    ],
-    stat: { files: 3, added: 45, removed: 125 }, commitsAhead: 2, pushed: true, conflicts: ['src/app/invoices/page.tsx', 'src/app/invoices/columns.ts']
-  }
-}
 const moveAccounts = (): AccountProfile[] => [
   { id: 'cli', provider: 'claude', label: 'Main account', email: 'main@example.com', plan: 'Claude Max', cli: true, auth: 'subscription', active: true, signedIn: true },
   { id: 'third', provider: 'claude', label: '3rd account', email: 'third@example.com', plan: 'Claude Pro', cli: false, auth: 'subscription', active: false, signedIn: true },
   { id: 'key', provider: 'claude', label: 'API key', cli: false, auth: 'apiKey', active: false, signedIn: true },
   { id: 'cli', provider: 'codex', label: 'cj@example.com', email: 'cj@example.com', plan: 'ChatGPT Plus', cli: true, auth: 'subscription', active: true, signedIn: true }
 ]
-const revertScene = (ui: Partial<Fixture['ui']>, prState?: Workspace['prState']) => scene((f) => ({
-  ...(prState && { workspaces: withWorkspace(f, ids.table, { ...pr, prTitle, prState }) }),
-  items: { [ids.tableChat]: revertItems },
-  checkpoints: { [ids.table]: checkpoints },
-  checkpointPreviews: { [ids.table]: revertPreviews },
-  ui: { ...open, workspace: { right: 'changes', bottom: 'run' }, ...ui }
-}))
 
 const tabsView = (tab: string) => ({ ...open, workspace: { right: 'changes', bottom: 'run' }, tabs: { [ids.table]: { tab, files: [] as string[], diffs: [] as string[] } } } as const)
 const extraChat = (id: string, title: string, kind: 'chat' | 'terminal' = 'chat'): Chat =>
@@ -2016,9 +1931,9 @@ const queued = (s: Partial<Fixture>): Partial<Fixture> => {
 // ---- KERNEL-1094, The agent works (Pen Part 7): Teng's clean-account journey in each moment of a turn. ----
 
 /** A time on the journey's day, 13:41 to 13:52 (the clocks the canvas shows). */
-const J = (m: number, s = 0) => at(13, m, s)
+export const J = (m: number, s = 0) => at(13, m, s)
 /** A time counted back from now, for a turn that is still running, so its clock reads what the shot says. */
-const ago = (secs: number) => Date.now() - secs * 1000
+export const ago = (secs: number) => Date.now() - secs * 1000
 
 /** The workspace Teng works in: made at 13:41, set up in 1:12, a task of the Lead's plan, with the rail's stages to read. */
 const JOURNEY_WS: Partial<Workspace> = {
@@ -2027,14 +1942,14 @@ const JOURNEY_WS: Partial<Workspace> = {
 }
 const JOURNEY_PROJECT: NonNullable<Fixture['projectSettings']> = { [ids.projectA]: { scripts: { setup: 'pnpm install' }, runScripts: [], files: { copy: [] }, workspace: {} } }
 
-const jBrief = (ts = J(43)): ChatItem => ({ kind: 'user', id: 'j-u', ts, parts: [{ type: 'text', text: JOURNEY }] })
-const jTool = (id: string, ts: number, command: string, description: string, extra: Partial<ToolItem> = {}): ChatItem =>
+export const jBrief = (ts = J(43)): ChatItem => ({ kind: 'user', id: 'j-u', ts, parts: [{ type: 'text', text: JOURNEY }] })
+export const jTool = (id: string, ts: number, command: string, description: string, extra: Partial<ToolItem> = {}): ChatItem =>
   tool(id, description, command, { ts, input: { command, description }, ...extra })
-const jRead = (ts = J(43, 5)): ChatItem => tool('j-read', 'Read', 'docs/qa/kernel-31.md', { name: 'Read', ts, durationMs: 80, input: { file_path: 'docs/qa/kernel-31.md' } })
-const jIssue = (ts = J(43, 12)): ChatItem => mcpCall('j-issue', 'linear', 'get_issue', { id: 'KERNEL-232' }, { ts, durationMs: 900, output: 'KERNEL-232  Clean-account journey on a fresh Mac user' })
+export const jRead = (ts = J(43, 5)): ChatItem => tool('j-read', 'Read', 'docs/qa/kernel-31.md', { name: 'Read', ts, durationMs: 80, input: { file_path: 'docs/qa/kernel-31.md' } })
+export const jIssue = (ts = J(43, 12)): ChatItem => mcpCall('j-issue', 'linear', 'get_issue', { id: 'KERNEL-232' }, { ts, durationMs: 900, output: 'KERNEL-232  Clean-account journey on a fresh Mac user' })
 const JOURNEY_PASS = ['✓ 1  installs from the DMG', '✓ 2  opens on New chat', '✓ 3  adds a project from GitHub', '✓ 4  sends the first brief', '✓ 5  approves the plan']
-const jRun15 = (ts = J(43, 20), extra: Partial<ToolItem> = {}): ChatItem => jTool('j-run15', ts, 'pnpm test:journey --steps 1-5', 'Run steps 1 to 5', { durationMs: 42_000, output: JOURNEY_PASS.join('\n'), ...extra })
-const jShots = (ts = J(44, 10), extra: Partial<ToolItem> = {}): ChatItem => jTool('j-shots', ts, 'pnpm shots --all', 'Capture every screen', { durationMs: 38_000, output: 'Captured 214 screens', ...extra })
+export const jRun15 = (ts = J(43, 20), extra: Partial<ToolItem> = {}): ChatItem => jTool('j-run15', ts, 'pnpm test:journey --steps 1-5', 'Run steps 1 to 5', { durationMs: 42_000, output: JOURNEY_PASS.join('\n'), ...extra })
+export const jShots = (ts = J(44, 10), extra: Partial<ToolItem> = {}): ChatItem => jTool('j-shots', ts, 'pnpm shots --all', 'Capture every screen', { durationMs: 38_000, output: 'Captured 214 screens', ...extra })
 const jEdit = (ts = J(46)): ChatItem => tool('j-edit', 'Edit journey.test.ts', 'test/journey.test.ts', {
   name: 'Edit', ts, durationMs: 120,
   input: { file_path: 'test/journey.test.ts', old_string: "  await shots(['Review'])", new_string: "  await shots(['Review', 'ReviewRc'])\n  expect(diff('Review', 'ReviewRc')).toBeLessThan(0.01)\n  expect(missing()).toEqual([])" }
@@ -2045,21 +1960,21 @@ const jWrite = (ts = J(46, 30)): ChatItem => tool('j-write', 'Create journey.ts'
 })
 const jTypes = (ts = J(47, 10)): ChatItem => jTool('j-types', ts, 'pnpm typecheck', 'Check types', { status: 'failed', durationMs: 6100, output: "Exit code 2\ntest/journey.test.ts(41,7): error TS2322: Type 'string' is not assignable to type 'number'." })
 const jRun6 = (ts = J(48), extra: Partial<ToolItem> = {}): ChatItem => jTool('j-run6', ts, 'pnpm test:journey --steps 6', 'Run step 6', { durationMs: 21_000, output: '✓ 6  compares the review screen', ...extra })
-const jSay = (id: string, ts: number, text: string): ChatItem => ({ kind: 'text', id, ts, text })
+export const jSay = (id: string, ts: number, text: string): ChatItem => ({ kind: 'text', id, ts, text })
 const jThink = (id: string, ts: number, text: string): ChatItem => ({ kind: 'thinking', id, ts, text })
-const jResult = (ts: number, ms: number, extra: Partial<Extract<ChatItem, { kind: 'result' }>> = {}): ChatItem => ({ kind: 'result', id: 'j-res', ts, durationMs: ms, ok: true, ...extra })
+export const jResult = (ts: number, ms: number, extra: Partial<Extract<ChatItem, { kind: 'result' }>> = {}): ChatItem => ({ kind: 'result', id: 'j-res', ts, durationMs: ms, ok: true, ...extra })
 const jFiles: ChangedFile[] = [{ path: 'test/journey.test.ts', status: 'M', added: 3, removed: 1 }, { path: 'fixtures/journey.ts', status: 'A', added: 64, removed: 0 }]
-const jReply = 'All six steps pass on a clean account. Step 6 needed a fixture for the release candidate\'s review screen, so I added one and a test that compares the two.'
+export const jReply = 'All six steps pass on a clean account. Step 6 needed a fixture for the release candidate\'s review screen, so I added one and a test that compares the two.'
 
 /** The turn at rest: Teng read the checklist and the issue, ran steps 1 to 5 and told you where it stands (7.1). */
-const jRest = (): ChatItem[] => [
+export const jRest = (): ChatItem[] => [
   jBrief(), jRead(), jIssue(), jRun15(),
   jSay('j-reply', J(49, 10), 'Steps 1 to 5 pass on a clean account. Step 6 compares the review screen with the release candidate, so it needs the full screenshot run before I can call it.'),
   jResult(J(49, 12), 372_000)
 ]
 
 /** The whole turn, finished: every kind of step, a failed one, thinking and the messages between (7.3 and 7.4). */
-const jDay = (): ChatItem[] => [
+export const jDay = (): ChatItem[] => [
   jBrief(), jThink('j-th1', J(43, 2), "Step 6 needs the release candidate's review screen, and the fixtures don't have one yet."), jRead(), jIssue(), jRun15(),
   jSay('j-s1', J(44, 5), 'Steps 1 to 5 pass. Capturing every screen next.'), jShots(), jEdit(), jWrite(),
   jThink('j-th2', J(47), 'The typecheck failure is in my own test. The threshold takes a number.'), jTypes(),
@@ -2067,13 +1982,13 @@ const jDay = (): ChatItem[] => [
   jSay('j-reply', J(49, 10), jReply), jResult(J(49, 12), 372_000, { files: jFiles })
 ]
 
-interface Works { running?: boolean; approvals?: Approval[]; placed?: Approval[]; ws?: Partial<Workspace>; chat?: Partial<Chat>; view?: Record<string, unknown>; panel?: boolean; toasts?: import('@shared/types').Toast[] }
+export interface Works { running?: boolean; approvals?: Approval[]; placed?: Approval[]; ws?: Partial<Workspace>; chat?: Partial<Chat>; view?: Record<string, unknown>; panel?: boolean; toasts?: import('@shared/types').Toast[] }
 
 /**
  * Teng's chat on the journey, with the Session rail beside it (the panel closed). `approvals` wait in the chat after `items`, `placed` are ones the items already hold,
  * and `running` is a turn still going.
  */
-function works(f: Fixture, items: ChatItem[], o: Works = {}): Partial<Fixture> {
+export function works(f: Fixture, items: ChatItem[], o: Works = {}): Partial<Fixture> {
   const s = scene2(f, { ...JOURNEY_WS, ...o.ws }, JOURNEY_TITLE, items, o.approvals ? { approvals: o.approvals } : {}, o.chat)
   const base = o.approvals ? s : noApprovals(s)
   return {
@@ -2324,17 +2239,6 @@ export const workspaceFixtures: Record<string, Fixture> = {
     { kind: 'user', id: 'qn-u2', ts: J(3, 0), parts: [{ type: 'text', text: 'And step 4.' }] }, jTool('qn-t2', J(3, 5), 'pnpm test:journey --steps 4', 'Run step 4', { durationMs: 40_000 }), jSay('qn-x2', J(3, 40), 'Step 4 passes as well.'), { kind: 'result', id: 'qn-r2', ts: J(3, 51), durationMs: 51_000, ok: true },
     { kind: 'user', id: 'qn-m2', ts: J(4), from: 'kernel', parts: [{ type: 'text', text: 'Kernel moved this chat to Work account after Main hit its limit. You are continuing on a different account, so check git status first.' }] }
   ])),
-  /** A long chat read from higher up, with the Scroll to bottom button over it (KERNEL-532). Scroll position is local to the transcript, so scripts/shots.ts scrolls it up before the shot. */
-  WorkspaceScrolledUp: scene(() => ({
-    items: { [ids.tableChat]: longChat },
-    ui: open
-  })),
-  /** A message just sent in a short chat (KERNEL-891): it appears under the earlier rows with the Working line under it, and the view stays at the end. The send is a chat.item event after the chat opens, which scripts/shots.ts delivers. */
-  WorkspaceJustSent: scene((f) => ({
-    items: { [ids.tableChat]: tableItems.slice(0, 1) },
-    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: open
-  })),
   /** A long chat right after a send (KERNEL-891): the message is the last row at the end of the thread with the Working line under it. scripts/shots.ts delivers the send after the chat opens at its end. */
   WorkspaceJustSentLong: scene((f) => ({
     items: { [ids.tableChat]: longChat },
@@ -2476,12 +2380,6 @@ export const workspaceFixtures: Record<string, Fixture> = {
     sharedData: sharedStills,
     ui: open
   })),
-  /** The Scroll to bottom button with a count (KERNEL-922): a long chat read from higher up while three messages and some steps arrive. scripts/shots.ts scrolls up and pushes them. */
-  ChatNewMessages: scene(() => ({ items: { [ids.tableChat]: longChat }, ui: open })),
-  // KERNEL-599: the chat rail. A teammate's chat read from its 14th message with the right panel hidden, the same with the list open, Kernel's chat with Team updates listed, and the chat at its
-  // end with the right panel open, where the rail takes the side padding. The scroll and the hover are local to the transcript and the rail, so scripts/shots.ts does them.
-  ChatRail: railScene(),
-  ChatRailOpen: railScene(),
   ChatRailLead: scene((f) => railLead(f)),
   // KERNEL-780: Hand off and Build here. Hand off is the default and is drawn as before, with the mode chip first in the composer.
   WorkspaceLeadHandOff: scene((f) => leadModeScene(f, { mode: 'handoff', items: lmReply('lm-a', 'Sean has it. I will tell you when the PR is ready.', 1) })),
@@ -2570,20 +2468,10 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { 'chat-copy': [userMsg('c1', 'Shorten the empty state copy.'), tool('c-t1', 'Read the empty state', 'cat src/app/invoices/empty-state.tsx', { name: 'Read' }), tool('c-t2', 'Edit the copy', 'sed -i empty-state.tsx'), { kind: 'text', id: 'c-reply:0', ts: at(10, 31), text: 'Changed it to "No invoices yet. Create your first one."' }, { kind: 'result', id: 'c-res', ts: at(10, 31), durationMs: 20_000, ok: true }] },
     ui: { ...tabsView('chat-copy'), menu: 'tab' }
   })),
-  // The "..." menu under Christian's summary, open: both forks (KERNEL-346). The time and the actions share the summary's last line.
-  WorkspaceReplyMenu: scene(() => ({ ui: { ...open, menu: 'reply:x1' } })),
-  // KERNEL-766: revert from the turn. Christian's summary has Revert files to here in its "..." menu, since a later turn is the current checkpoint. Choosing it opens the confirm with the files that change,
-  // and the same confirm for an earlier checkpoint adds the line about the commits made since.
-  WorkspaceRevertMenu: revertScene({ menu: 'reply:x1' }),
   // KERNEL-841: the choice of a chat that waits to move, before its next turn re-reads 310k tokens on another account. A card in the chat with numbered rows (KERNEL-1094). The key variant adds the price.
   ChatMoveNotice: scene((f) => ({ ...works(f, jRest(), { chat: { ranOn: 'cli' } }), accounts: moveAccounts(), moveNotices: { [ids.tableChat]: { kind: 'move', reason: 'account', from: 'cli', to: 'third', tokens: 310_000, keep: true } } })),
   ChatMoveNoticeApiKey: scene((f) => ({ ...works(f, jRest(), { chat: { ranOn: 'cli' } }), accounts: moveAccounts(), moveNotices: { [ids.tableChat]: { kind: 'move', reason: 'account', from: 'cli', to: 'key', tokens: 310_000, price: 4.7, keep: true } } })),
   SettingsAccountsMoves: scene(() => ({ accounts: moveAccounts(), ui: { route: { name: 'settings', page: 'accounts' } } })),
-  ConfirmRevert: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '3' } }),
-  ConfirmRevertCommits: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '2' } }),
-  // KERNEL-798: the same confirm once the PR is merged says main keeps the commits, and when main changed files the checkpoint changed too it names them.
-  ConfirmRevertMerged: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '2' } }, 'merged'),
-  ConfirmRevertConflicts: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '1' } }),
   // KERNEL-586: the card under a finished reply lists the files the turn created, edited or deleted, and each row opens that file's diff. The fold shows 5 of 12, the same chat without a reply
   // puts the card under the tool calls fold, and the last shot has one row hovered and one focused from the keyboard (the shot script presses Down to reach it).
   TurnFiles: turnFilesScene([
@@ -3194,7 +3082,6 @@ export const workspaceFixtures: Record<string, Fixture> = {
     const issue = { type: 'issue' as const, name: 'T-17', title: 'Email an invoice to the client from the row actions', url: 'https://linear.app/client-a/issue/T-17', source: 'linear' as const }
     return { ...g, ui: { ...g.ui!, workspace: { right: 'changes', bottom: 'run', composer: { parts: [issue, { type: 'text', text: ' ' }], draft: '' } } }, motion: { action: { hold: 'Open issue T-17, Email an invoice to the client from the row actions' }, ms: 500 } }
   }),
-  ChatComposer: scene(() => ({ ui: open })),
   // Shared files (KERNEL-305). The canvas draws them in Sean's invoice-pdf-renderer and in Kernel's chat. Which file a shot opens, and the
   // width, version menu or crash, is the shot's: WorkspaceSharedPhone, WorkspaceSharedVersions and WorkspaceSharedCrashed need a step (scripts/shots.ts).
   WorkspaceSharedCard: sharedTab(undefined, 2),
@@ -3368,201 +3255,6 @@ export const workspaceFixtures: Record<string, Fixture> = {
       { id: 't2', title: 'Copied', sub: 'Message copied to clipboard' }
     ] }
   }),
-  /** KERNEL-771: picking another model in a chat that has run a turn warns about the cache. Title only, up about 6s. */
-  WorkspaceModelSwitchToast: prScene('merged', [], {
-    prs: prInfo('merged'),
-    ui: { toasts: [{ id: 't1', title: 'Switching models mid-chat makes the next reply slower and uses more tokens.' }] }
-  }),
-  /** KERNEL-898: a sent message with a Linear chip that opens in Issues, a GitHub chip from another repo that opens the browser, and a chip with nowhere to open. The motion hovers the first. */
-  WorkspaceIssueChip: scene(() => ({
-    items: { [ids.tableChat]: [{ kind: 'user', id: 'ic-u1', ts: at(10, 27), parts: [
-      { type: 'text', text: 'Start from ' },
-      { type: 'issue', name: 'T-17', title: 'Email an invoice to the client from the row actions', url: 'https://linear.app/client-a/issue/T-17', source: 'linear' },
-      { type: 'text', text: ', and see ' },
-      { type: 'issue', name: '#9', title: 'Row actions menu clips on small screens', url: 'https://github.com/other/thing/issues/9', source: 'github' },
-      { type: 'text', text: ' and ' },
-      { type: 'issue', name: 'T-3', title: 'Old export bug', source: 'github' }
-    ] }] },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } },
-    motion: { action: { hold: 'Open issue T-17, Email an invoice to the client from the row actions' }, ms: 500 }
-  })),
-  WorkspaceIssuePreview: scene(() => ({
-    items: { [ids.tableChat]: [{ kind: 'user', id: 'ic-u1', ts: at(10, 27), parts: [
-      { type: 'text', text: 'Start from ' },
-      { type: 'issue', name: 'T-17', title: 'Email an invoice to the client from the row actions', url: 'https://linear.app/client-a/issue/T-17', source: 'linear' }
-    ] }] },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
-  })),
-  WorkspacePaste: composing({
-    parts: [
-      { type: 'text', text: 'Staging breaks on the invoices page. Here is the log ' },
-      { type: 'file', name: 'pasted_text_1.txt', lines: 212, text: pastedLog },
-      { type: 'text', text: ' and what I see ' },
-      { type: 'image', name: 'image.png', width: 1280, height: 800, dataUrl: screenshot }
-    ],
-    draft: ''
-  }),
-  WorkspacePasteImagePreview: composing({
-    parts: [
-      { type: 'text', text: 'Staging breaks on the invoices page. Here is the log ' },
-      { type: 'file', name: 'pasted_text_1.txt', lines: 212, text: pastedLog },
-      { type: 'text', text: ' and what I see ' },
-      { type: 'image', name: 'image.png', width: 1280, height: 800, dataUrl: screenshot }
-    ],
-    draft: ''
-  }),
-  WorkspacePasteTextPreview: composing({
-    parts: [
-      { type: 'text', text: 'Staging breaks on the invoices page. Here is the log ' },
-      { type: 'file', name: 'pasted_text_1.txt', lines: 212, text: pastedLog },
-      { type: 'text', text: ' and what I see ' },
-      { type: 'image', name: 'image.png', width: 1280, height: 800, dataUrl: screenshot }
-    ],
-    draft: ''
-  }),
-  /** KERNEL-824: an image chip then typed text, the line must be as tall as a plain one. */
-  WorkspacePasteAfter: composing({
-    parts: [{ type: 'image', name: 'image.png', width: 2486, height: 1349, dataUrl: screenshot }],
-    draft: 'eaeafe'
-  }),
-  /** KERNEL-824: chips and words over three lines, with a chip at the start and the end of a line. */
-  WorkspacePasteWrap: composing({
-    parts: [
-      { type: 'image', name: 'image.png', width: 1280, height: 800, dataUrl: screenshot },
-      { type: 'text', text: ' Staging breaks on the invoices page, the log is in ' },
-      { type: 'file', name: 'pasted_text_1.txt', lines: 212, text: pastedLog },
-      { type: 'text', text: ' and the screenshot of what I see is ' },
-      { type: 'image', name: 'image_2.png', width: 1280, height: 800, dataUrl: screenshot },
-      { type: 'text', text: ' so can you check the invoice table against both and tell me which query is slow before you change anything, then look at ' },
-      { type: 'file', name: 'pasted_text_2.txt', lines: 64, text: pastedLog },
-      { type: 'text', text: ' ' },
-      { type: 'image', name: 'image_3.png', width: 1280, height: 800, dataUrl: screenshot }
-    ],
-    draft: ''
-  }),
-  /** KERNEL-815: files dragged over the chat pane. scripts/shots.ts starts the drag, the overlay is local to the composer. */
-  ComposerDragOver: composing({ parts: [], draft: 'Can you check the invoice table against ' }),
-  /** KERNEL-815: three files dropped on the box while the images read. scripts/shots.ts holds the image reads, so the chips show as they land and Send waits. */
-  ComposerAttaching: composing({ parts: [], draft: 'Can you check the invoice table against ' }),
-  /** KERNEL-909: a PDF attached by path, with its type and size. */
-  ComposerFilePdf: composing({
-    parts: [
-      { type: 'text', text: 'Does the contract match the invoice terms? ' },
-      { type: 'file', name: 'Client-contract-2026.pdf', src: '/Users/cj/Documents/Client-contract-2026.pdf', size: 3_040_000 }
-    ],
-    draft: ''
-  }),
-  /** KERNEL-909: hover the chip for the full name, the type, the pages and the size. */
-  ComposerFileTip: composing({
-    parts: [
-      { type: 'text', text: 'Does the contract match the invoice terms? ' },
-      { type: 'file', name: 'Client-contract-2026.pdf', src: '/Users/cj/Documents/Client-contract-2026.pdf', size: 3_040_000, pages: 14 }
-    ],
-    draft: ''
-  }),
-  /** KERNEL-909: an image, a PDF and a zip in one message. */
-  ComposerFileMixed: composing({
-    parts: [
-      { type: 'image', name: 'image.png', width: 1280, height: 800, dataUrl: screenshot },
-      { type: 'text', text: ' ' },
-      { type: 'file', name: 'Client-contract-2026.pdf', src: '/Users/cj/Documents/Client-contract-2026.pdf', size: 3_040_000 },
-      { type: 'text', text: ' ' },
-      { type: 'file', name: 'exports-october.zip', src: '/Users/cj/Downloads/exports-october.zip', size: 48_500_000 },
-      { type: 'text', text: ' Compare these with the table.' }
-    ],
-    draft: ''
-  }),
-  /** KERNEL-1053: one chip of every kind, each icon in the color of its kind. Hover nothing, the last file chip is the unreadable one. */
-  ComposerChipKinds: composing({
-    parts: [
-  { type: 'image', name: 'image.png', width: 1280, height: 800, dataUrl: screenshot },
-  { type: 'file', name: 'Pasted text', text: pastedLog, lines: 212 },
-  { type: 'file', name: 'Client-contract-2026.pdf', src: '/Users/cj/Documents/Client-contract-2026.pdf', size: 3_040_000, kind: 'pdf' },
-  { type: 'file', name: 'brief.docx', src: '/Users/cj/Documents/brief.docx', size: 84_000, kind: 'doc' },
-  { type: 'file', name: 'invoices-q3.xlsx', src: '/Users/cj/Documents/invoices-q3.xlsx', size: 212_000, kind: 'sheet' },
-  { type: 'file', name: 'pitch.pptx', src: '/Users/cj/Documents/pitch.pptx', size: 5_400_000, kind: 'slides' },
-  { type: 'file', name: 'exports-october.zip', src: '/Users/cj/Downloads/exports-october.zip', size: 48_500_000, kind: 'archive' },
-  { type: 'file', name: 'standup.m4a', src: '/Users/cj/Music/standup.m4a', size: 2_300_000, kind: 'audio' },
-  { type: 'file', name: 'walkthrough.mov', src: '/Users/cj/Movies/walkthrough.mov', size: 18_200_000, kind: 'video' },
-  { type: 'file', name: 'notes.txt', src: '/Users/cj/Documents/notes.txt', size: 1_200, kind: 'text' },
-  { type: 'file', name: 'data.bin', src: '/Users/cj/Downloads/data.bin', size: 90_000, kind: 'binary' },
-  { type: 'file', name: 'brand-motion.mov', src: '/Users/cj/Movies/brand-motion.mov', path: '.kernel/attachments/brand-motion.mov', size: 18_200_000, kind: 'video', readable: false },
-  { type: 'file', name: 'src/app/invoices/table.tsx', path: 'src/app/invoices/table.tsx' },
-  { type: 'issue', name: 'KERNEL-429', title: 'A file icon that fails to load shows a broken image', source: 'linear' },
-  { type: 'issue', name: '#41', title: 'Invoice totals round wrong', source: 'github' },
-  { type: 'pr', name: '#162', number: 162, title: 'New chats focus the composer' },
-  { type: 'workspace', name: 'kernel-182-new-chats-focus', workspaceId: 'ws-182', branch: 'kernel-182-new-chats-focus', path: '/Users/cj/kernel/worktrees/kernel-182' },
-  { type: 'agent', name: 'Christian', agentId: 'christian' }
-].flatMap((p, i) => [...(i ? [{ type: 'text' as const, text: ' ' }] : []), p as import('@shared/types').ChatPart]),
-    draft: ''
-  }),
-  /** KERNEL-1053: the same chips on a sent message. */
-  ComposerChipKindsSent: scene(() => ({
-    items: { [ids.tableChat]: [{ kind: 'user', id: 'kinds-1', ts: at(10, 30), parts: [
-  { type: 'image', name: 'image.png', width: 1280, height: 800, dataUrl: screenshot },
-  { type: 'file', name: 'Pasted text', text: pastedLog, lines: 212 },
-  { type: 'file', name: 'Client-contract-2026.pdf', src: '/Users/cj/Documents/Client-contract-2026.pdf', size: 3_040_000, kind: 'pdf' },
-  { type: 'file', name: 'brief.docx', src: '/Users/cj/Documents/brief.docx', size: 84_000, kind: 'doc' },
-  { type: 'file', name: 'invoices-q3.xlsx', src: '/Users/cj/Documents/invoices-q3.xlsx', size: 212_000, kind: 'sheet' },
-  { type: 'file', name: 'pitch.pptx', src: '/Users/cj/Documents/pitch.pptx', size: 5_400_000, kind: 'slides' },
-  { type: 'file', name: 'exports-october.zip', src: '/Users/cj/Downloads/exports-october.zip', size: 48_500_000, kind: 'archive' },
-  { type: 'file', name: 'standup.m4a', src: '/Users/cj/Music/standup.m4a', size: 2_300_000, kind: 'audio' },
-  { type: 'file', name: 'walkthrough.mov', src: '/Users/cj/Movies/walkthrough.mov', size: 18_200_000, kind: 'video' },
-  { type: 'file', name: 'notes.txt', src: '/Users/cj/Documents/notes.txt', size: 1_200, kind: 'text' },
-  { type: 'file', name: 'data.bin', src: '/Users/cj/Downloads/data.bin', size: 90_000, kind: 'binary' },
-  { type: 'file', name: 'brand-motion.mov', src: '/Users/cj/Movies/brand-motion.mov', path: '.kernel/attachments/brand-motion.mov', size: 18_200_000, kind: 'video', readable: false },
-  { type: 'file', name: 'src/app/invoices/table.tsx', path: 'src/app/invoices/table.tsx' },
-  { type: 'issue', name: 'KERNEL-429', title: 'A file icon that fails to load shows a broken image', source: 'linear' },
-  { type: 'issue', name: '#41', title: 'Invoice totals round wrong', source: 'github' },
-  { type: 'pr', name: '#162', number: 162, title: 'New chats focus the composer' },
-  { type: 'workspace', name: 'kernel-182-new-chats-focus', workspaceId: 'ws-182', branch: 'kernel-182-new-chats-focus', path: '/Users/cj/kernel/worktrees/kernel-182' },
-  { type: 'agent', name: 'Christian', agentId: 'christian' }
-].flatMap((p, i) => [...(i ? [{ type: 'text' as const, text: ' ' }] : []), p as import('@shared/types').ChatPart]) }] },
-    ui: open
-  })),
-  /** KERNEL-909: a file type the agent has no way to open. Hover the chip for the tooltip. */
-  ComposerFileUnreadable: composing({
-    parts: [
-      { type: 'text', text: 'Keep this next to the build ' },
-      { type: 'file', name: 'brand-motion.mov', src: '/Users/cj/Movies/brand-motion.mov', path: '.kernel/attachments/brand-motion.mov', size: 18_200_000, kind: 'video', readable: false }
-    ],
-    draft: ''
-  }),
-  /** KERNEL-909: an old message whose file went with the archived workspace. */
-  ComposerFileGone: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { status: 'archived' }),
-    items: { [ids.tableChat]: [{ kind: 'user', id: 'gone-1', ts: at(10, 30), parts: [
-      { type: 'text', text: 'Does the contract match the invoice terms?' },
-      { type: 'file', name: 'Client-contract-2026.pdf', path: '.kernel/attachments/Client-contract-2026.pdf', size: 3_040_000, kind: 'pdf', readable: true, pages: 14 }
-    ] }] },
-    ui: open
-  })),
-  /** KERNEL-909: a video over the 50 MB cap is refused at once. */
-  ComposerFileCap: scene(() => ({ ui: { ...open, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: 'Can you watch this and tell me what breaks? ' } }, toasts: [{ id: 'cap', title: 'File is too large', sub: 'walkthrough-recording.mov is 1024 MB. Each file can be up to 50 MB.' }] } })),
-  WorkspaceContextRing: scene((f) => ({ chats: contextChat(f), ui: open })),
-  WorkspaceContextPopover: scene((f) => ({ chats: contextChat(f), ui: { ...open, workspace: { right: 'changes', bottom: 'run', contextOpen: true } } })),
-  /** KERNEL-334: the ring from 75% is amber. Not on the canvas, see docs/decisions/KERNEL-334.md. */
-  WorkspaceContextRingNear: scene((f) => ({ chats: contextChat(f, 132_000), ui: open })),
-  /** KERNEL-334: from 90% the ring and the popover's top meter are red. */
-  WorkspaceContextPopoverFull: scene((f) => ({ chats: contextChat(f, 160_000), ui: { ...open, workspace: { right: 'changes', bottom: 'run', contextOpen: true } } })),
-  WorkspaceMention: composing({ parts: [], draft: '@inv' }, { tree: { [ids.table]: mentionTree } }),
-  WorkspaceSlash: composing({ parts: [], draft: '/' }, { skills }),
-  // KERNEL-406: a role runs on Codex, so the picker offers both providers. This chat has started on Claude, so Codex is dimmed.
-  WorkspaceModelPicker: scene((f) => {
-    return {
-      settings: codexRoleSettings(),
-      chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-christian' } : c)),
-      models: { codex: codexModels },
-      ui: { ...open, menu: 'model' }
-    }
-  }),
-  // The picker with the Effort row's levels open to its right. The shot hovers the row.
-  WorkspaceModelPickerEffort: scene((f) => ({
-    settings: codexRoleSettings(),
-    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-christian' } : c)),
-    models: { codex: codexModels },
-    ui: { ...open, menu: 'model' }
-  })),
   // The picker with the cursor moved up one row by the arrow key.
   WorkspaceModelPickerKeys: scene((f) => ({
     settings: codexRoleSettings(),
@@ -3570,43 +3262,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
     models: { codex: codexModels },
     ui: { ...open, menu: 'model' }
   })),
-  // The picker of a chat that started on Codex: it opens on Codex and Claude is dimmed. The shot opens the Legacy models flyout.
-  WorkspaceModelPickerCodex: scene((f) => ({
-    settings: codexRoleSettings(),
-    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, provider: 'codex' as const, model: 'gpt-6-astra', effort: 'medium' as Effort, sessionId: 'session-christian' } : c)),
-    models: { codex: codexModels },
-    ui: { ...open, menu: 'model' }
-  })),
-  // KERNEL-987: the Legacy models row opens its older models in a flyout to the right. The shot clicks the row.
-  WorkspaceModelPickerLegacy: scene((f) => ({
-    settings: codexRoleSettings(),
-    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-christian' } : c)),
-    models: { codex: codexModels },
-    ui: { ...open, menu: 'model' }
-  })),
-  // KERNEL-987: a chat on a legacy model. The Legacy row names it and the cursor starts there. The shot opens the flyout, with the cursor on that model.
-  WorkspaceModelPickerLegacyChat: scene((f) => ({
-    settings: codexRoleSettings(),
-    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, model: 'claude-opus-4-8', sessionId: 'session-christian' } : c)),
-    models: { codex: codexModels },
-    ui: { ...open, menu: 'model' }
-  })),
   // KERNEL-987: the keyboard path. Down to the Legacy row, Right opens the flyout.
   WorkspaceModelPickerLegacyKeys: { ...scene((f) => ({ settings: codexRoleSettings(), chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-christian' } : c)), models: { codex: codexModels }, ui: { ...open, menu: 'model' } })), motion: { action: { press: ['ArrowDown', 'ArrowDown', 'ArrowRight'] }, ms: 600 } },
-  // Stars on two Claude models, then the Favorites tab.
-  WorkspaceModelPickerFavorites: scene((f) => ({
-    settings: codexRoleSettings(),
-    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-christian' } : c)),
-    models: { codex: codexModels },
-    ui: { ...open, menu: 'model' }
-  })),
-  // The other provider in a chat that has started: its rail icon is dimmed and the tooltip says why.
-  WorkspaceModelPickerLocked: scene((f) => ({
-    settings: codexRoleSettings(),
-    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-christian' } : c)),
-    models: { codex: codexModels },
-    ui: { ...open, menu: 'model' }
-  })),
   // KERNEL-746: in the Lead's chat @ offers the project's teammates above Files. A teammate's chat (WorkspaceMention) lists files only.
   ComposerMentionAgent: scene((f) => ({
     agents: { ...f.agents, [ids.projectA]: [...(f.agents[ids.projectA] ?? [team[0]]), agent('ivy', 'Ivy', 'QA', 'sonnet'), agent('rio', 'Rio', 'Platform', 'sonnet'), agent('theo', 'Theo', 'Review', 'sonnet'), agent('noor', 'Noor', 'Engine', 'opus')] },
@@ -3625,8 +3282,6 @@ export const workspaceFixtures: Record<string, Fixture> = {
     chats: f.chats.map((c) => (c.id === ids.leadChat ? { ...c, plan: false } : c)),
     ui: { route: { name: 'workspace', workspaceId: ids.lead } }
   })),
-  ComposerMentionFolders: composing({ parts: [], draft: '@src' }, { tree: { [ids.table]: mentionFolderTree } }),
-  ComposerMentionReference: composing({ parts: [], draft: '@invoice' }, { tree: { [ids.table]: mentionReferenceTree } }),
   ComposerModes: scene((f) => bypassPicked(f)),
   ComposerModesNarrow: scene((f) => bypassPicked(f)),
   // A Codex chat with a turn running: Auto can't run for Codex, and the Bypass pick waits on the turn.
@@ -3636,103 +3291,6 @@ export const workspaceFixtures: Record<string, Fixture> = {
   }),
   // KERNEL-751: a modal opened while the mode menu was open closes it, so nothing sits above the backdrop.
   ComposerModeMenuUnderModal: scene((f) => ({ ...bypassPicked(f, 'mode'), ui: { ...bypassPicked(f).ui, modal: { name: 'search' } } })),
-  WorkspaceQueued: scene((f) => ({
-    items: { [ids.tableChat]: queuedItems() },
-    queue: { [ids.tableChat]: [
-      { id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'text', text: 'Also add a loading skeleton to the table' }] },
-      { id: 'q2', chatId: ids.tableChat, ts: at(10, 31), parts: [{ type: 'text', text: 'Use the shared EmptyState component' }] }
-    ] },
-    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: open
-  })),
-  // KERNEL-869: the queue and the run mode could not be read, so one line above the box says so, with Retry, instead of an empty tray and the default mode.
-  WorkspaceComposerLoadFailed: scene((f) => ({
-    items: { [ids.tableChat]: queuedItems() },
-    queue: { [ids.tableChat]: [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'text', text: 'Also add a loading skeleton to the table' }] }] },
-    fails: { 'chats.queue': 'Kernel did not answer.', 'chats.queueReason': 'Kernel did not answer.', 'chats.runMode': 'Kernel did not answer.' },
-    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: open
-  })),
-  // KERNEL-869: Stop with a draft in the box and two messages queued. Stop spins and says Stopping while main answers, then the queued messages
-  // are in the box after the draft, in order, and the tray is gone.
-  WorkspaceStop: { ...scene((f) => ({
-    items: { [ids.tableChat]: queuedItems() },
-    queue: { [ids.tableChat]: [
-      { id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'text', text: 'Also add a loading skeleton to the table' }] },
-      { id: 'q2', chatId: ids.tableChat, ts: at(10, 31), parts: [{ type: 'text', text: 'Use the shared EmptyState component' }] }
-    ] },
-    lag: { 'chats.interrupt': 600 },
-    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', composer: { parts: [], draft: 'Keep the header sticky' } } }
-  })), motion: { action: { press: ['Meta+l', 'Escape'] }, ms: 1400, area: '.ws-main' } },
-  /** One follow-up behind a running turn: the tray has no "N queued" header. */
-  WorkspaceQueuedOne: scene((f) => ({
-    items: { [ids.tableChat]: queuedItems() },
-    queue: { [ids.tableChat]: [
-      { id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'text', text: 'Also add a loading skeleton to the table' }] }
-    ] },
-    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: open
-  })),
-  /** A multiline follow-up with a file and a skill: one truncated line, with the file counted. */
-  WorkspaceQueuedLong: scene((f) => ({
-    items: { [ids.tableChat]: queuedItems() },
-    queue: { [ids.tableChat]: [
-      { id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'skill', name: 'verify' }, { type: 'text', text: 'Check the Terminal tab for the same problem.\nThe console output is in the attached file, and the first run also printed a warning about the sort hook that I would like you to look at before the next change.' }, { type: 'file', name: 'pasted_text_1.txt', text: 'Terminal\n  Run\n  Run', lines: 14 }] },
-      { id: 'q2', chatId: ids.tableChat, ts: at(10, 31), parts: [{ type: 'image', name: 'image.png' }, { type: 'text', text: 'Use the shared EmptyState component' }] }
-    ] },
-    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: open
-  })),
-  /** A follow-up typed while the Mac is offline: the tray says so and has no Send now. */
-  WorkspaceQueuedOffline: scene((f) => {
-    const queue = [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'text' as const, text: 'Also add a loading skeleton to the table' }] }]
-    return {
-      queue: { [ids.tableChat]: queue },
-      push: [...f.push, { type: 'chat.queue', chatId: ids.tableChat, queue, why: 'offline' }],
-      ui: open
-    }
-  }),
-  /** A brief held because every agent slot is in use (KERNEL-273). Not on the canvas, see docs/decisions/KERNEL-273.md. */
-  WorkspaceQueuedCapacity: scene((f) => {
-    const queue = [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'text' as const, text: 'Build the loading skeleton from the plan' }] }]
-    return {
-      queue: { [ids.tableChat]: queue },
-      push: [...f.push, { type: 'chat.queue', chatId: ids.tableChat, queue, why: 'capacity' }],
-      ui: open
-    }
-  }),
-  /** A follow-up held while other chats move to a new account and re-read their history (KERNEL-1033). */
-  WorkspaceQueuedMoving: scene((f) => {
-    const queue = [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'text' as const, text: 'Add a loading skeleton to the table' }] }]
-    return {
-      queue: { [ids.tableChat]: queue },
-      push: [...f.push, { type: 'chat.queue', chatId: ids.tableChat, queue, why: 'moving' }],
-      ui: open
-    }
-  }),
-  /** A brief Kernel handed off with wait_for, held until Sean's PR merges, with Send now to start it sooner (KERNEL-259, KERNEL-361). */
-  WorkspaceQueuedMerge: scene((f) => {
-    const queue = [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 2), from: 'lead' as const, parts: [{ type: 'text' as const, text: 'Build the invoice table on top of the new schema' }] }]
-    const schema = withWorkspace(f, ids.schema, { prNumber: 43, prUrl: 'https://github.com/cjjutba/client-a/pull/43', prState: 'open' })
-    return {
-      workspaces: withWorkspace({ ...f, workspaces: schema }, ids.table, { stat: undefined, waitsFor: { on: [ids.schema], held: true } }),
-      items: { [ids.tableChat]: [{ kind: 'note', id: 'n1', ts: at(10, 2), text: 'Waiting for PR #43 by Sean to merge. Kernel sends this brief then. Send now starts it sooner.', refs: [{ text: 'PR #43 by Sean', workspaceId: ids.schema }] }] },
-      queue: { [ids.tableChat]: queue },
-      // A held brief has no run script and no changes yet (KERNEL-259).
-      changes: { ...f.changes, [ids.table]: [] },
-      push: [...f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'), { type: 'chat.queue', chatId: ids.tableChat, queue, why: 'merge' }],
-      ui: open
-    }
-  }),
-  /** Sean's PR #43 with Christian's T-14 brief held until it merges: the line above the box names Christian's workspace and opens it. */
-  WorkspaceWaitedOn: scene((f) => {
-    const schema = withWorkspace(f, ids.schema, { prNumber: 43, prUrl: 'https://github.com/cjjutba/client-a/pull/43', prState: 'open', prTitle: 'feat(invoices): schema and migrations' })
-    return {
-      workspaces: withWorkspace({ ...f, workspaces: schema }, ids.table, { stat: undefined, source: { kind: 'issue', id: 'T-14', title: 'Invoice table' }, waitsFor: { on: [ids.schema], held: true } }),
-      ui: { route: { name: 'workspace', workspaceId: ids.schema } }
-    }
-  }),
   /** 11.12: an edit with two hunks: Codex's patch for one file, each hunk under its own header. The shot opens the row. */
   WorkspaceHunks: scene((f) => works(f, [
     jBrief(),

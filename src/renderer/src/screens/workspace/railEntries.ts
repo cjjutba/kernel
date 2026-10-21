@@ -4,7 +4,7 @@ import { userView } from './sender'
 import { cardData } from './cards/teamUpdate'
 
 /** One thing the chat rail lists: a message the user sent, or in the Lead's chat a Team update. `more` counts the update's rows after the first. */
-export interface RailEntry { id: string; label: string; more: number; update: boolean }
+export interface RailEntry { id: string; label: string; more: number; update: boolean; /** When it was sent, which the list and the preview show as a clock time. */ ts?: number }
 
 /** The rail is hidden until the chat has this many entries to list. */
 export const RAIL_MIN = 2
@@ -18,6 +18,9 @@ const BOTTOM_PX = 12
 const LABEL_MAX = 160
 
 type UserItem = Extract<ChatItem, { kind: 'user' }>
+
+/** A clock time as the rail shows it, 13:41. */
+export const railTime = (ts: number | undefined) => (ts === undefined ? '' : new Date(ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))
 
 /** The first line of what the user wrote, or the name of the first chip when they sent only a file or an image. */
 function messageLabel(item: UserItem): string {
@@ -66,9 +69,9 @@ export function railEntries(items: ChatItem[], lead: boolean): RailEntry[] {
     const view = userView(item)
     if (view === 'update') {
       const u = lead ? updateLabel(item) : undefined
-      if (u) out.push({ id: item.id, label: u.label, more: u.more, update: true })
+      if (u) out.push({ id: item.id, label: u.label, more: u.more, update: true, ts: item.ts })
     } else if (view === 'bubble' && !instructionOf(item)) {
-      out.push({ id: item.id, label: messageLabel(item), more: 0, update: false })
+      out.push({ id: item.id, label: messageLabel(item), more: 0, update: false, ts: item.ts })
     }
   }
   return out
@@ -88,7 +91,7 @@ export function entryInView(tops: number[], atBottom: boolean): number {
 }
 
 /** The same entries again, so the rail keeps the list it has while a streamed reply redraws the transcript. */
-export const sameEntries = (a: RailEntry[], b: RailEntry[]) => a.length === b.length && a.every((e, i) => e.id === b[i].id && e.label === b[i].label && e.more === b[i].more && e.update === b[i].update)
+export const sameEntries = (a: RailEntry[], b: RailEntry[]) => a.length === b.length && a.every((e, i) => e.id === b[i].id && e.label === b[i].label && e.more === b[i].more && e.update === b[i].update && e.ts === b[i].ts)
 
 /** What a key does to the list: open or move the active row, jump to it, or close. Nothing for a key the rail leaves alone. */
 export function railKey(key: string, s: { open: boolean; active: number; count: number }): { open: boolean; active: number; jump?: boolean } | undefined {

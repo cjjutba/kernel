@@ -81,6 +81,7 @@
 .popover[data-side='top'] { top: auto; bottom: calc(100% + var(--menu-gap)); }
 /* The one tooltip (Tooltips.tsx). Fixed at 0,0 and moved into place with a transform once measured. */
 .tooltip { position: fixed; top: 0; left: 0; z-index: var(--z-tooltip); max-width: 280px; padding: 4px 8px; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--surface-2); color: var(--ink-2); font-size: var(--fs-meta); line-height: 16px; pointer-events: none; }
+.tooltip[data-mono] { font-family: var(--mono); }
 .tooltip-kbd { margin-left: 8px; font: var(--fs-chip) var(--mono); color: var(--muted); }
 /* With a hint: the text is a mono line (a branch, which can be long) and the hint a muted line under it (HeaderBranchTooltip). */
 .tooltip[data-hint] { display: flex; flex-direction: column; gap: 2px; width: max-content; max-width: min(560px, calc(100vw - 12px)); padding: 6px 9px; overflow-wrap: anywhere; font: var(--fs-chip)/16px var(--mono); color: var(--ink-2); }

@@ -1,16 +1,13 @@
 import { createContext, useContext, useEffect, useRef, useState, type ButtonHTMLAttributes } from 'react'
 import { createPortal } from 'react-dom'
-import type { ChatPart, FileKind, Project, ProjectTracker } from '@shared/types'
+import type { ChatPart, GithubIssueDetail, LinearIssueDetail, Project, ProjectTracker } from '@shared/types'
 import { call } from '../../../api'
 import { actions, useStore } from '../../../store'
 import { ServiceMark } from '../../../icons'
 import { issueFromPart, issueOpen, issueUrl, type IssueTarget } from '../issueKey'
+import { detailKey, peekDetail, setDetail } from '../../issues/cache'
 import { FileIcon } from '../../../components/FileIcon'
-import { AgentAvatar, Icon, Modal, type IconName } from '../../../ui'
-
-const KIND_LABELS: Record<FileKind, string> = {
-  pdf: 'PDF', doc: 'Document', sheet: 'Spreadsheet', slides: 'Slides', archive: 'Archive', audio: 'Audio', video: 'Video', image: 'Image', text: 'Text', binary: 'File'
-}
+import { AgentAvatar, Icon, Modal, Spinner, type IconName } from '../../../ui'
 
 /** The size of a file as a person reads it: 812 KB, 2.9 MB. */
 export function fileSize(bytes: number): string {
@@ -20,17 +17,10 @@ export function fileSize(bytes: number): string {
   return `${mb < 100 ? mb.toFixed(1) : Math.round(mb)} MB`
 }
 
-/** An attached file's type: its short extension in capitals (PDF, ZIP), else what it was found to be, else File. */
-function typeLabel(p: Extract<ChatPart, { type: 'file' }>): string {
-  const ext = /\.([a-z0-9]{1,5})$/i.exec(p.name)?.[1]
-  return ext ? ext.toUpperCase() : p.kind ? KIND_LABELS[p.kind] : 'File'
-}
+/** An attached file: it came from disk (`src`) or was copied to the workspace with a size. Pasted text, folders and @ files are not. */
+const isAttachment = (p: ChatPart) => p.type === 'file' && !p.dir && (!!p.src || (p.size !== undefined && !p.lines))
 
-/** An attached file: it came from disk (`src`) or was copied to the workspace with a size. Pasted text and @ files are not. */
-const isAttachment = (p: ChatPart) => p.type === 'file' && (!!p.src || (p.size !== undefined && !p.lines))
-
-const CANT_OPEN = "The agent can't open this file type"
-const GONE = 'No longer available. The workspace was archived.'
+const GONE = 'Gone from disk'
 const NAME_MAX = 20
 
 /** A long name cut in the middle, so the extension and the end of the name stay: Client-contr…2026.pdf. */
@@ -41,43 +31,63 @@ export function middleCut(name: string, max = NAME_MAX): string {
   return `${name.slice(0, max - 1 - tail.length)}…${tail}`
 }
 
+/** A path as a person reads it: the home folder is a tilde. */
+export const tildePath = (path: string) => path.replace(/^\/Users\/[^/]+\//, '~/')
+
 /**
- * What an attached file's chip shows and says. The chip itself carries the size, dimmed when the agent can't open the file and
- * struck through when it is gone. Everything else, the full name, the type, a PDF's pages and the status, is in the tooltip.
+ * What an attached file's token shows and says: its name and size, and in the tooltip its path. A file that is gone from disk
+ * says so in place of its size and keeps its place (a draft that came back after the file went).
  */
-export function fileView(p: ChatPart, gone?: boolean): { label: string; size: string; tip: string; hint: string; state?: 'unreadable' | 'gone' } | undefined {
+export function fileView(p: ChatPart, gone?: boolean): { label: string; size: string; tip: string; state?: 'gone' } | undefined {
   if (p.type !== 'file' || !isAttachment(p)) return undefined
-  const state = gone ? 'gone' : p.readable === false ? 'unreadable' : undefined
-  const details = [typeLabel(p), ...(p.pages ? [`${p.pages} ${p.pages === 1 ? 'page' : 'pages'}`] : []), ...(p.size !== undefined ? [fileSize(p.size)] : [])].join(' · ')
-  return {
-    label: middleCut(p.name), size: p.size !== undefined ? fileSize(p.size) : '', tip: p.name, state,
-    hint: state ? `${state === 'gone' ? GONE : CANT_OPEN}\n${details}` : details
+  return { label: middleCut(p.name), size: gone ? GONE : p.size !== undefined ? fileSize(p.size) : '', tip: tildePath(p.src ?? p.path ?? p.name), state: gone ? 'gone' : undefined }
+}
+
+/** Pasted text: a `file` part with its text and no path. A file with a path (an @ file, a picked file or a hunk) is not one. */
+export type TextPart = Extract<ChatPart, { type: 'file' }> & { text: string }
+export const isPastedText = (p: ChatPart): p is TextPart => p.type === 'file' && !p.path && !!p.text
+
+/** An @ file from the repo: it sits in the text as a compact chip, where every other attachment is a token. */
+const isRepoFile = (p: ChatPart) => p.type === 'file' && !p.dir && !!p.path && !isAttachment(p) && !isPastedText(p)
+
+/** A skill or an @ file is a compact chip inside its line. Every other attachment is a 24px token. */
+export const isToken = (p: ChatPart) => p.type !== 'text' && !['repo', 'skill'].includes(tokenKind(p))
+
+/** What a token's icon follows, for `data-kind`: the part's type, with pasted text, folders, attachments and @ files apart. */
+export const tokenKind = (p: ChatPart): string => (p.type === 'file' ? (isPastedText(p) ? 'paste' : p.dir ? 'folder' : isRepoFile(p) ? 'repo' : 'file') : p.type)
+
+/**
+ * A token's inside: the icon, then the name and its meta (DESIGN.md, Attaching files). An image is its mini thumbnail, an attached file or folder its Material icon,
+ * pasted text a document glyph, an issue or a pull request its mark with the key in mono and the title, a workspace its branch, an agent its avatar.
+ * `pending` is a file still being read, which shows the loader in the icon's place and "Attaching" for its meta. `gone` is a file that left the disk.
+ */
+export function TokenBody({ part, gone, pending }: { part: ChatPart; gone?: boolean; pending?: boolean }) {
+  if (part.type === 'text') return null
+  if (part.type === 'image') {
+    const meta = gone ? GONE : pending ? 'Attaching' : part.width && part.height ? `${part.width}×${part.height}` : ''
+    return (
+      <>
+        <span className="tok-mini" data-gone={gone || undefined} aria-hidden="true">
+          {pending ? <Spinner label={null} pattern="arrow-down" /> : gone ? <Icon name="fileX" size={13} /> : part.dataUrl ? <img src={part.dataUrl} alt="" /> : <FileIcon path={part.name} size={14} />}
+        </span>
+        <span className="chip-name ellipsis">{part.name}</span>
+        {meta && <span className="chip-meta">{meta}</span>}
+      </>
+    )
   }
+  if (part.type === 'issue' || part.type === 'pr') {
+    return <>{part.type === 'issue' ? <ServiceMark name={part.source} size={12} /> : <Icon name="pr" size={12} />}<span className="chip-key">{part.name}</span><span className="chip-name ellipsis">{part.title}</span></>
+  }
+  if (part.type === 'skill') return <><span aria-hidden="true" className="muted">/</span><span className="chip-name">{part.name}</span></>
+  if (part.type === 'agent') return <><AgentAvatar name={part.name} size={14} /><span className="chip-name">{part.name}</span></>
+  if (part.type === 'workspace') return <><Icon name="branch" size={12} /><span className="chip-name ellipsis">{part.name}</span></>
+  if (isPastedText(part)) return <><Icon name="doc" size={13} /><span className="chip-name">Pasted text</span>{part.lines ? <span className="chip-meta">{part.lines} lines</span> : null}</>
+  if (isRepoFile(part)) return <><FileIcon path={part.path ?? part.name} size={14} /><span className="chip-name">{part.name.split('/').pop()}</span></>
+  if (part.type === 'file' && part.dir) return <><FileIcon path={part.path ?? part.name} dir size={16} /><span className="chip-name ellipsis">{part.name}</span></>
+  const view = fileView(part, gone)
+  if (part.type === 'file') return <><FileIcon path={part.name} size={16} /><span className="chip-name ellipsis">{view?.label ?? part.name}</span>{view?.size ? <span className="chip-meta">{view.size}</span> : null}</>
+  return null
 }
-
-/** A short label after a chip's name: lines of a pasted text, the type and size of an attached file, the size of an image, or a linked issue's or pull request's title. */
-function chipMeta(p: ChatPart): string {
-  if (p.type === 'file' && isAttachment(p)) return [typeLabel(p), ...(p.pages ? [`${p.pages} ${p.pages === 1 ? 'page' : 'pages'}`] : []), ...(p.size !== undefined ? [fileSize(p.size)] : [])].join(' · ')
-  if (p.type === 'file' && p.lines && !p.path) return `${p.lines} lines`
-  if (p.type === 'image' && p.width && p.height) return `${p.width}×${p.height}`
-  if (p.type === 'issue' || p.type === 'pr') return p.title
-  return ''
-}
-
-/** The icon for a chip's kind: an image, a linked issue or workspace, else a file. */
-export const chipIcon = (p: ChatPart): IconName => (p.type === 'image' ? 'image' : p.type === 'issue' ? 'link' : p.type === 'pr' ? 'pr' : p.type === 'workspace' ? 'branch' : p.type === 'agent' ? 'user' : 'doc')
-
-/** A chip's icon. An image and a file from the repo (an @ file, a picked file or a hunk) show their VS Code icon, an issue its tracker's mark, an agent its avatar, the rest the glyph for their kind (KERNEL-399, KERNEL-1053). */
-export function ChipIcon({ part }: { part: ChatPart }) {
-  if (part.type === 'file' && isAttachment(part)) return <Icon name={part.readable === false ? 'eyeoff' : 'doc'} size={12} />
-  if (part.type === 'image') return <FileIcon path={part.name} size={14} />
-  if (part.type === 'issue') return <ServiceMark name={part.source} size={12} />
-  if (part.type === 'agent') return <AgentAvatar name={part.name} size={14} />
-  return part.type === 'file' && (part.path || part.src) ? <FileIcon path={part.path ?? part.name} dir={part.dir} size={14} /> : <Icon name={chipIcon(part)} size={12} />
-}
-
-/** What a chip's icon color follows, for `data-file-kind`: pasted text, or an attached file's kind. The rest take their color from `data-kind`. */
-export const chipFileKind = (p: ChatPart): string | undefined => (isPastedText(p) ? 'paste' : p.type === 'file' && isAttachment(p) ? (p.kind ?? 'binary') : undefined)
 
 /** A pull request chip's state for its icon color: merged or closed when a workspace of ours holds that PR, else open. */
 export function usePrState(p: ChatPart): 'merged' | 'closed' | undefined {
@@ -105,10 +115,6 @@ export function HoverPreview({ at, className, children }: { at: DOMRect; classNa
   return createPortal(<div className={`peek-frame ${className}`} style={previewPlace(at)} aria-hidden="true">{children}</div>, document.body)
 }
 
-/** Pasted text: a `file` part with its text and no path. A file with a path (an @ file, a picked file or a hunk) is not one. */
-export type TextPart = Extract<ChatPart, { type: 'file' }> & { text: string }
-export const isPastedText = (p: ChatPart): p is TextPart => p.type === 'file' && !p.path && !!p.text
-
 /** What clicking a pasted text chip does. The workspace opens the text in a tab; without one it opens in a modal. */
 export const OpenText = createContext<((text: TextPart) => void) | null>(null)
 
@@ -118,8 +124,7 @@ const PREVIEW_CHARS = 1200
 const head = (text: string) => text.slice(0, PREVIEW_CHARS).split('\n').slice(0, PREVIEW_LINES).join('\n')
 
 /**
- * A chip's name and icon as a button: hovering or focusing it shows a preview, clicking opens it.
- * The chip itself still shows an icon, never a thumbnail (D-062).
+ * A token's name and icon as a button: hovering or focusing it shows a preview, clicking opens it. An image's token shows its picture at 16px (KERNEL-1095).
  */
 function PreviewButton({ name, preview, previewClass, modal, modalWidth, onOpen, plain, children, ...rest }: {
   name: string; preview: React.ReactNode; previewClass: string; modal?: React.ReactNode; modalWidth?: number; onOpen: ((e: React.MouseEvent) => void) | null
@@ -166,7 +171,7 @@ export function ImageButton({ image, children, ...rest }: { image: ImagePart } &
   const open = useContext(OpenImage)
   return (
     <PreviewButton
-      name={image.name} previewClass="img-preview" preview={<img src={image.dataUrl} alt="" />}
+      name={image.name} previewClass="img-preview" preview={<><img src={image.dataUrl} alt="" /><div className="img-preview-meta"><span className="mono">{image.name}</span><span>{[image.width && image.height ? `${image.width}×${image.height}` : '', fileSize(Math.round(image.dataUrl.length * 0.75))].filter(Boolean).join(' · ')}</span></div></>}
       modalWidth={960} modal={<div className="img-modal"><img src={image.dataUrl} alt={image.name} /></div>}
       onOpen={open && (() => open(image))} {...rest}
     >
@@ -180,7 +185,7 @@ export function TextButton({ paste, children, ...rest }: { paste: TextPart } & B
   const open = useContext(OpenText)
   return (
     <PreviewButton
-      name={paste.name} previewClass="txt-preview" preview={<pre>{head(paste.text)}</pre>}
+      name={paste.name} previewClass="txt-preview" preview={<><pre>{head(paste.text)}</pre>{paste.lines ? <p className="txt-preview-n">{paste.lines} lines</p> : null}</>}
       modalWidth={720} modal={<pre className="txt-modal selectable mono" tabIndex={0}>{paste.text}</pre>}
       onOpen={open && (() => open(paste))} {...rest}
     >
@@ -201,7 +206,46 @@ export function followIssue(target: IssueTarget, url: string | undefined, e: { m
   else if (target.kind === 'url') void call('system.openExternal', { url: target.url })
 }
 
-/** An issue chip as a preview button: hovering shows its key and title, clicking opens it in Issues or the browser. With nowhere to open it is a span that still previews. */
+/** What an issue's preview shows beyond its key and title, read when the preview opens: the state, the first words of the description, who has it and its labels. */
+interface IssueFacts { state?: string; text: string; who?: string; labels: string[] }
+
+/** A markdown description as plain words for a two line preview. */
+const plainWords = (md: string) => md.replace(/```[\s\S]*?```/g, ' ').replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[#>*_`~-]+/g, ' ').replace(/\s+/g, ' ').trim()
+
+/** Reads the issue's detail from the tracker, once per preview, and keeps what the Issues screen already read. A read that fails leaves the preview with its key and title. */
+function useIssueFacts(issue: IssuePart, projectId?: string): IssueFacts | undefined {
+  const key = detailKey(issue.source, projectId ?? '', issue.name)
+  const read = (v: unknown): IssueFacts => {
+    if (issue.source === 'linear') { const d = v as LinearIssueDetail; return { state: d.state.name, text: plainWords(d.description), who: d.assignee?.name, labels: d.labels } }
+    const d = v as GithubIssueDetail
+    return { text: plainWords(d.body), who: d.assignees[0] ?? d.author, labels: d.labels }
+  }
+  const [facts, setFacts] = useState<IssueFacts | undefined>(() => { const hit = peekDetail<unknown>(key); return hit ? read(hit.value) : undefined })
+  useEffect(() => {
+    if (facts || (issue.source === 'github' && !projectId)) return
+    let live = true
+    const call_ = issue.source === 'linear' ? call('linear.issue', { id: issue.name }) : call('github.issue', { projectId: projectId!, id: issue.name })
+    void call_.then((d) => { setDetail(key, d); if (live) setFacts(read(d)) }).catch(() => undefined)
+    return () => { live = false }
+  }, [])
+  return facts
+}
+
+/** The card an issue token shows on hover: the tracker's mark and key, its state, the title, the words under it and who has it. */
+function IssuePeek({ issue, hint, projectId }: { issue: IssuePart; hint: string; projectId?: string }) {
+  const facts = useIssueFacts(issue, projectId)
+  return (
+    <>
+      <div className="issue-preview-head"><ServiceMark name={issue.source} size={12} /><span className="issue-preview-key">{issue.name}</span>{facts?.state && <span className="issue-preview-state">{facts.state}</span>}</div>
+      <p className="issue-preview-title">{issue.title}</p>
+      {facts?.text && <p className="issue-preview-body">{facts.text}</p>}
+      {(facts?.who || facts?.labels.length) ? <div className="issue-preview-meta">{facts.who && <><AgentAvatar name={facts.who} size={14} /><span>{facts.who}</span></>}{facts.labels.length > 0 && <span className="issue-preview-labels">{facts.labels.join(', ')}</span>}</div> : null}
+      {hint && !facts && <p className="issue-preview-hint">{hint}</p>}
+    </>
+  )
+}
+
+/** An issue chip as a preview button: hovering shows the issue, clicking opens it in Issues or the browser. With nowhere to open it is a span that still previews. */
 export function IssueButton({ issue, children, ...rest }: { issue: IssuePart } & ButtonHTMLAttributes<HTMLButtonElement>) {
   const { project, tracker } = useContext(OpenIssue)
   const ref = issueFromPart(issue)
@@ -210,11 +254,7 @@ export function IssueButton({ issue, children, ...rest }: { issue: IssuePart } &
   return (
     <PreviewButton
       name={issue.name} aria-label={`${target.kind === 'none' ? 'Issue' : 'Open issue'} ${issue.name}, ${issue.title}`} previewClass="issue-preview" plain={target.kind === 'none'}
-      preview={<>
-        <div className="issue-preview-head"><span className="issue-preview-key">{issue.name}</span><span>{issue.source === 'github' ? 'GitHub issue' : 'Linear issue'}</span></div>
-        <p className="issue-preview-title">{issue.title}</p>
-        {hint && <p className="issue-preview-hint">{hint}</p>}
-      </>}
+      preview={<IssuePeek issue={issue} hint={hint} projectId={project?.id} />}
       onOpen={target.kind === 'none' ? null : (e) => followIssue(target, issueUrl(ref, project), e, issue.name)} {...rest}
     >
       {children}
@@ -222,26 +262,52 @@ export function IssueButton({ issue, children, ...rest }: { issue: IssuePart } &
   )
 }
 
-/** One attachment in a composer: pasted text, an image, a file, a skill, or a linked issue or workspace. Every composer draws them the same way, with an icon for the kind. */
-export function ComposerChip({ part, entering, gone, onRemove }: { part: ChatPart; /** An attached file that no longer exists. */ gone?: boolean; /** A chip that just landed, which fades in. */ entering?: boolean; onRemove: () => void }) {
+/** What a token's styles read: its kind, a pull request's state, and whether its file is gone or still being read. */
+export function tokenAttrs(part: ChatPart, o: { gone?: boolean; pending?: boolean; prState?: 'merged' | 'closed' } = {}) {
+  return { 'data-kind': tokenKind(part), 'data-pr-state': o.prState, 'data-state': o.gone ? 'gone' : o.pending ? 'pending' : undefined }
+}
+
+/** A token's button, when it has something to open: an image its picture, pasted text its words, an issue its page. The rest is the body alone. */
+function TokenOpen({ part, className, children }: { part: ChatPart; className: string; children: React.ReactNode }) {
+  if (part.type === 'image' && part.dataUrl) return <ImageButton image={{ ...part, dataUrl: part.dataUrl }} className={className}>{children}</ImageButton>
+  if (isPastedText(part)) return <TextButton paste={part} className={className}>{children}</TextButton>
+  if (part.type === 'issue') return <IssueButton issue={part} className={className}>{children}</IssueButton>
+  return <>{children}</>
+}
+
+/**
+ * One attachment in a composer, a token in the text where the caret was: pasted text, an image, a file or folder, a skill, or a linked issue, pull request or workspace.
+ * Every composer draws them the same way, 24px tall with the icon of its kind. Images also show as thumbnails above the text (`Thumbs`).
+ */
+export function ComposerChip({ part, entering, gone, pending, onRemove }: { part: ChatPart; /** An attached file that no longer exists. */ gone?: boolean; /** A file still being read. */ pending?: boolean; /** A chip that just landed, which fades in. */ entering?: boolean; onRemove: () => void }) {
   const prState = usePrState(part)
   if (part.type === 'text') return null
   const label = part.type === 'skill' ? `/${part.name}` : part.name
   const view = fileView(part, gone)
-  const meta = view ? view.size : chipMeta(part)
-  const body = (
-    <>
-      <ChipIcon part={part} />
-      <span className="chip-name ellipsis" style={{ maxWidth: 220 }}>{view ? view.label : label}</span>
-      {meta && <span className="chip-meta ellipsis" style={{ maxWidth: 220 }}>{meta}</span>}
-    </>
-  )
   return (
-    <span className="chip cmp-chip" data-tip={view?.tip} data-tip-hint={view?.hint} data-state={view?.state} data-file-kind={chipFileKind(part)} data-pr-state={prState} data-entering={entering || undefined} data-kind={part.type === 'skill' || part.type === 'image' || part.type === 'issue' || part.type === 'pr' || part.type === 'workspace' || part.type === 'agent' ? part.type : 'file'}>
-      {part.type === 'image' && part.dataUrl ? <ImageButton image={{ ...part, dataUrl: part.dataUrl }} className="chip-open">{body}</ImageButton>
-        : isPastedText(part) ? <TextButton paste={part} className="chip-open">{body}</TextButton>
-        : part.type === 'issue' ? <IssueButton issue={part} className="chip-open">{body}</IssueButton> : body}
+    <span className="chip cmp-chip" data-tip={view?.tip} data-tip-side="above" data-tip-mono={view ? '' : undefined} data-entering={entering || undefined} {...tokenAttrs(part, { gone, pending, prState })}>
+      <TokenOpen part={part} className="chip-open"><TokenBody part={part} gone={gone} pending={pending} /></TokenOpen>
       <button type="button" className="chip-x" aria-label={`Remove ${label}`} onClick={onRemove}><Icon name="close" size={12} /></button>
     </span>
+  )
+}
+
+/**
+ * The thumbnails across the top of a composer: one 64px square for each image in the message, with a button that takes it out. An image still being read is a dark
+ * square with the loader, and one that left the disk a quiet square with its glyph. Clicking one opens it, and hovering shows it larger. The tokens in the text are the same images.
+ */
+export function Thumbs({ images, onRemove }: { images: { id: string; part: Extract<ChatPart, { type: 'image' }>; pending?: boolean; gone?: boolean }[]; onRemove: (id: string) => void }) {
+  if (!images.length) return null
+  return (
+    <div className="cmp-thumbs" role="list" aria-label="Attached images">
+      {images.map(({ id, part, pending, gone }) => (
+        <div key={id} className="cmp-thumb" role="listitem" data-state={gone ? 'gone' : pending ? 'pending' : undefined}>
+          {part.dataUrl && !gone
+            ? <ImageButton image={{ ...part, dataUrl: part.dataUrl }} className="cmp-thumb-open"><img src={part.dataUrl} alt="" /></ImageButton>
+            : <span className="cmp-thumb-open" aria-hidden="true">{pending ? <Spinner label={null} pattern="arrow-down" /> : <Icon name="imageOff" size={20} />}</span>}
+          <button type="button" className="cmp-thumb-x" aria-label={`Remove ${part.name}`} onClick={() => onRemove(id)}><Icon name="close" size={12} /></button>
+        </div>
+      ))}
+    </div>
   )
 }

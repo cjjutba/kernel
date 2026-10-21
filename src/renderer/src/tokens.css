@@ -81,15 +81,8 @@
   --term-magenta: #b9a3f5;
   --term-cyan: #5ec8d8;
   --term-white: #e0e0e0;
-  --kind-image: #4cb782;
-  --kind-text: #6ea8fe;
-  --kind-pdf: #f06363;
-  --kind-doc: #6ea8fe;
-  --kind-sheet: #4cb782;
-  --kind-slides: #f0954a;
-  --kind-archive: #939393;
-  --kind-media: #ee7fb4;
   --kind-branch: #5ec8d8;
+  --thumb-x: rgba(0, 0, 0, 0.7);
 }
 [data-theme='light'] {
   color-scheme: light;
@@ -163,15 +156,8 @@
   --term-magenta: #6b4bd0;
   --term-cyan: #0b6f80;
   --term-white: #4a4d54;
-  --kind-image: #166a45;
-  --kind-text: #1f5fbf;
-  --kind-pdf: #b32e2e;
-  --kind-doc: #1f5fbf;
-  --kind-sheet: #166a45;
-  --kind-slides: #a84a00;
-  --kind-archive: #676767;
-  --kind-media: #a8246b;
   --kind-branch: #0b6f80;
+  --thumb-x: rgba(0, 0, 0, 0.7);
 }
 /* macOS Increase contrast (KERNEL-575). Each text tier takes the value of the tier above it and ink goes to full black or white. Dividers
    reach 2:1 and every other line 3:1, and the lines draw as one set. The focus ring is near solid. */

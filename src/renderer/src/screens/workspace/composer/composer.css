@@ -3,16 +3,21 @@
 .composer-inner { position: relative; max-width: 760px; margin: 0 auto; }
 /* The box sits recessed on the chat (KERNEL-322). Its children sit above the plan glow, which is
    its ::before, so they are positioned with no z-index: the model, + and context popovers still open past the box. */
-.cmp { --cmp-pad-top: 12px; position: relative; display: flex; flex-direction: column; gap: 6px; padding: var(--cmp-pad-top) 12px 10px; border-radius: var(--r-lg); border: 1px solid var(--line-2); background: var(--input-bg); }
+.cmp { --cmp-pad-top: 13px; position: relative; display: flex; flex-direction: column; gap: 10px; padding: var(--cmp-pad-top) 10px 11px 14px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--input-bg); }
 .cmp > * { position: relative; }
-.cmp:focus-within { border-color: var(--focus); }
-/* The body turns selection off, and a contenteditable needs it back. The box border shows focus, as it did for the textarea. */
-.cmp-input { position: relative; min-height: 34px; max-height: 168px; overflow-y: auto; color: var(--ink-2); font-size: var(--fs-chat); line-height: 24px; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; user-select: text; }
+/* The border is --line-3 whether the box is focused or not, and only plan mode takes another color (KERNEL-1095). The caret shows focus. The body turns selection off, and a contenteditable needs it back. */
+.cmp-input { position: relative; min-height: 32px; max-height: 168px; overflow-y: auto; color: var(--ink); font-size: var(--fs-chat); line-height: 24px; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; user-select: text; }
 .cmp-input:focus-visible { outline-style: none; }
 .cmp-field { position: relative; }
-.cmp-hint { position: absolute; top: 0; right: 0; font-size: var(--fs-meta); line-height: 24px; color: var(--muted); white-space: nowrap; pointer-events: none; user-select: none; }
+/* A box with a token has lines 30px apart, so the 24px tokens of two lines don't touch. The 3px the first and last line gain top and bottom are taken back, so one line of tokens is as tall as one line of words. */
+.cmp-field[data-tokens] { margin: -3px 0; }
+.cmp-field[data-tokens] .cmp-input { min-height: 38px; line-height: 30px; }
+/* The hint sits on the first line while the box is empty, and on the last line once there is a draft. */
+.cmp-hint { position: absolute; top: 5px; right: 0; font-size: var(--fs-badge); line-height: 14px; color: var(--muted); white-space: nowrap; pointer-events: none; user-select: none; }
+.cmp-field[data-draft] .cmp-hint { top: auto; bottom: 5px; }
+.cmp-field[data-draft][data-tokens] .cmp-hint { bottom: 8px; }
 .cmp-field[data-hint] .cmp-input[data-empty]::before { max-width: calc(100% - 96px); }
-.cmp-input[data-empty]::before { content: attr(data-placeholder); position: absolute; color: var(--muted); pointer-events: none; }
+.cmp-input[data-empty]::before { content: attr(data-placeholder); position: absolute; color: var(--muted); font-size: var(--fs-ui); pointer-events: none; }
 .cmp-input[contenteditable='false'] { cursor: default; }
 .cmp-foot { gap: 8px; }
 /* The run settings are one group: the model with its effort beside it, and the permission mode, split by a hairline. The model name never shrinks. */
@@ -35,9 +40,9 @@
 .cmp-where-chip { max-width: 180px; font-size: var(--fs-code); }
 .cmp-where-chip > svg:first-child { color: var(--muted); }
 .cmp-foot .menu-note { min-width: 0; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* The agent is its name and role in a pill, with no letter tile and no divider after it. The role stays muted: faint is about 3.4:1 on the box. */
-.cmp-agent { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 22px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: var(--r-pill); font-size: var(--fs-code); color: var(--ink-2); white-space: nowrap; }
-.cmp-name, .cmp-role { overflow: hidden; text-overflow: ellipsis; }
+/* The agent is its gradient avatar and its name, with no border and no role (KERNEL-1095). */
+.cmp-agent { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 22px; margin-right: 4px; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--ink-2); white-space: nowrap; }
+.cmp-name { overflow: hidden; text-overflow: ellipsis; }
 /* Its own padding is its hover fill, so it pulls left to sit 12px after the pill, as the canvas draws. */
 .cmp-model { margin-left: -8px; padding: 0 8px; color: var(--ink-2); gap: 6px; }
 /* At size 11 the glyph has about 3px of air each side of its box. Pull it in so the gap before it matches the gap before the effort label (canvas: 8px). */
@@ -49,85 +54,110 @@
 .cmp-mode > svg:first-child { color: var(--muted); }
 .cmp-mode[data-mode='plan'], .cmp-mode[data-mode='plan'] > svg { color: var(--plan); }
 /* Send and stop are circles. Send turns ink when there is something to send; its color changes fast so it never looks unsure. */
-.icon-btn.send { width: 28px; height: 28px; border-radius: 50%; transition: background-color var(--dur-base) ease-out, color var(--dur-base) ease-out; }
+.icon-btn.send { width: 24px; height: 24px; margin-left: 6px; border-radius: 50%; transition: background-color var(--dur-base) ease-out, color var(--dur-base) ease-out; }
 .icon-btn.send[data-ready='true'] { background: var(--ink); color: var(--on-ink); }
 .icon-btn.send:not([data-ready='true']) { background: var(--surface-3); }
 .icon-btn.send:disabled { cursor: default; }
-.icon-btn.send.stop { background: transparent; border: 1px solid var(--line-3); }
-.icon-btn.send.stop:hover { background: var(--surface-3); }
-.icon-btn.stop span { width: 9px; height: 9px; border-radius: calc(var(--r-2xs) - 1px); background: var(--ink); }
+.icon-btn.send.stop { background: var(--ink); color: var(--on-ink); }
+.icon-btn.send.stop:disabled { background: var(--surface-3); color: var(--ink-3); opacity: 1; }
+.stop-pill { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 14px 0 10px; border-radius: var(--r-pill); background: var(--surface-3); color: var(--ink-3); font-size: var(--fs-ui); }
+.icon-btn.stop span { width: 9px; height: 9px; border-radius: calc(var(--r-2xs) - 1px); background: var(--on-ink); }
 
 .composer-inner { display: flex; flex-direction: column; gap: 10px; }
 .cmp-box { position: relative; }
-/* A chip sits in the line like a word (draft.tsx). It is 2px shorter than the 24px line and pinned to the top of it with a 1px margin, which centers it without "middle" adding sub-pixels to the line, so a line with a chip is as tall as plain text. The side margin is about a space. */
-.cmp-input .cmp-chip { height: 22px; margin: 1px 4px 0; vertical-align: top; white-space: nowrap; cursor: default; }
-.cmp-chip { gap: 6px; padding: 0 5px 0 8px; font: var(--fs-chip) var(--mono); }
-.cmp-chip .chip-meta { color: var(--muted); }
-/* Attached files (KERNEL-909): a monochrome icon, and the status as a dim or a strike, never as text */
-/* An icon's color follows what the chip is, never its status (KERNEL-1053). A gone or unreadable chip goes back to muted. Sent messages' chips (.msg-chip) read the same variable. */
+/* Every attachment is a token in the text, at the caret (KERNEL-1095): 24px tall, a --surface-3 fill and a --line-3 outline, radius 6, the icon of its kind, its name and its meta.
+   In a box with tokens the lines are 30px apart (.cmp-field[data-tokens]), and a token sits on the line's middle. */
+.cmp-input .cmp-chip { margin: 0 2px; vertical-align: middle; white-space: nowrap; cursor: default; }
+.chip.cmp-chip { position: relative; gap: 6px; height: 24px; padding: 0 8px 0 7px; border: 1px solid var(--line-3); border-radius: var(--r-xs); font: var(--fs-ui) var(--font); color: var(--ink-2); }
+.chip.cmp-chip[data-kind='image'], .chip.cmp-chip[data-kind='file'], .chip.cmp-chip[data-kind='folder'] { padding-left: 4px; }
+.cmp-chip .chip-name, .msg-chip .chip-name { min-width: 0; max-width: 220px; color: var(--ink-2); }
+.cmp-chip .chip-meta, .msg-chip .chip-meta { max-width: 220px; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-meta); color: var(--muted); }
+/* An issue's or a pull request's key is in mono, quieter than its title. */
+.cmp-chip .chip-key, .msg-chip .chip-key { flex-shrink: 0; font: var(--fs-chip) var(--mono); color: var(--ink-3); }
+/* The icon follows what the token is and never its status. The pull request's glyph is green while it is open, muted when closed and purple when merged. A workspace is teal. An issue's mark and the rest stay muted. */
 .cmp-chip, .msg-chip { --kind: var(--muted); }
-.cmp-chip[data-kind='image'], .msg-chip[data-kind='image'] { --kind: var(--kind-image); }
-.cmp-chip[data-file-kind='paste'], .msg-chip[data-file-kind='paste'] { --kind: var(--kind-text); }
-.cmp-chip[data-file-kind='pdf'], .msg-chip[data-file-kind='pdf'] { --kind: var(--kind-pdf); }
-.cmp-chip[data-file-kind='doc'], .msg-chip[data-file-kind='doc'] { --kind: var(--kind-doc); }
-.cmp-chip[data-file-kind='sheet'], .msg-chip[data-file-kind='sheet'] { --kind: var(--kind-sheet); }
-.cmp-chip[data-file-kind='slides'], .msg-chip[data-file-kind='slides'] { --kind: var(--kind-slides); }
-.cmp-chip[data-file-kind='archive'], .msg-chip[data-file-kind='archive'] { --kind: var(--kind-archive); }
-.cmp-chip[data-file-kind='audio'], .msg-chip[data-file-kind='audio'], .cmp-chip[data-file-kind='video'], .msg-chip[data-file-kind='video'] { --kind: var(--kind-media); }
-.cmp-chip[data-kind='issue'], .msg-chip[data-kind='issue'] { --kind: var(--kind-doc); }
 .cmp-chip[data-kind='pr'], .msg-chip[data-kind='pr'] { --kind: var(--pr-ready-text); }
 .cmp-chip[data-pr-state='closed'], .msg-chip[data-pr-state='closed'] { --kind: var(--muted); }
 .cmp-chip[data-pr-state='merged'], .msg-chip[data-pr-state='merged'] { --kind: var(--pr-merged-text); }
 .cmp-chip[data-kind='workspace'], .msg-chip[data-kind='workspace'] { --kind: var(--kind-branch); }
-.cmp-chip[data-state], .msg-chip[data-state] { --kind: var(--muted); }
-.cmp-chip.chip > svg, .cmp-chip.chip > .chip-open > svg, .msg-chip > svg { color: var(--kind); }
-.cmp-chip[data-state='unreadable'] { opacity: 0.6; }
-.cmp-chip[data-state='gone'] .chip-name { color: var(--muted); text-decoration: line-through; }
-.chip-open { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; font: inherit; }
+.cmp-chip[data-kind='issue'], .msg-chip[data-kind='issue'] { --kind: var(--ink-3); }
+.cmp-chip.chip > svg, .cmp-chip.chip > .chip-open > svg, .msg-chip > svg, .tok-mini svg { color: var(--kind); }
+/* An image's picture at 16px. A file that is being read has the loader there, and one that left the disk a glyph. */
+.tok-mini { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 16px; height: 16px; overflow: hidden; border: 1px solid var(--line-2); border-radius: var(--r-2xs); color: var(--muted); }
+.tok-mini[data-gone] { border-color: transparent; }
+.tok-mini img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.tok-mini .file-icon { margin: 0; }
+/* A skill and an @ file are compact: 18px, mono, no outline. They name something in the text and carry nothing. */
+.chip.cmp-chip[data-kind='repo'], .chip.cmp-chip[data-kind='skill'] { height: 18px; gap: 4px; padding: 0 6px 0 5px; border-color: transparent; border-radius: var(--r-2xs); font: var(--fs-code) var(--mono); color: var(--ink); }
+.cmp-chip[data-kind='repo'] .chip-name, .cmp-chip[data-kind='skill'] .chip-name { color: var(--ink); }
+/* A token has no remove button in view: Backspace takes it like a character, and an image's thumbnail has its own. Pointing at it or tabbing to it turns its icon into one, so no meta is covered. */
+.cmp-chip .chip-x { position: absolute; top: 3px; left: 6px; width: 18px; height: 18px; border-radius: var(--r-2xs); background: var(--surface-3); opacity: 0; }
+.chip.cmp-chip[data-kind='image'] .chip-x, .chip.cmp-chip[data-kind='file'] .chip-x, .chip.cmp-chip[data-kind='folder'] .chip-x { left: 3px; }
+.cmp-chip[data-kind='repo'] .chip-x, .cmp-chip[data-kind='skill'] .chip-x { top: 0; left: 3px; width: 16px; height: 16px; }
+.cmp-chip:hover .chip-x, .cmp-chip:focus-within .chip-x { opacity: 1; }
+.chip-open { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; font: inherit; color: inherit; }
+.cmp-chip[data-kind='repo'] .chip-open, .cmp-chip[data-kind='skill'] .chip-open { gap: 4px; }
+/* The thumbnails across the top of the box: 64px, one for each image, with a button that takes it out. */
+.cmp-thumbs { display: flex; flex-wrap: wrap; gap: 8px; }
+.cmp-thumb { position: relative; width: 64px; height: 64px; }
+.cmp-thumb-open { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; padding: 0; overflow: hidden; border: 1px solid var(--line-3); border-radius: var(--r); background: var(--surface); color: var(--muted); }
+.cmp-thumb-open:hover, .cmp-thumb-open:focus-visible { border-color: var(--ink-3); }
+.cmp-thumb-open img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.cmp-thumb[data-state='pending'] .cmp-thumb-open { background: var(--canvas); }
+.cmp-thumb-x { position: absolute; top: 4px; right: 4px; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 1px solid var(--line-3); border-radius: var(--r-xs); background: var(--thumb-x); color: var(--on-solid); }
+.cmp-thumb-x:hover { border-color: var(--ink-3); }
 /* Attaching files (KERNEL-815): the chip landing, and the drop overlay over the chat pane (draft.tsx) */
 .cmp-chip[data-entering] { animation: chip-in var(--dur-base) var(--ease-enter); }
 @keyframes chip-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .cmp-chip[data-entering] { animation: none; } }
 .lead-new { position: relative; }
-.cmp[data-drop] { border-color: var(--line-3); }
 .drop-veil { position: absolute; inset: 0; z-index: var(--z-veil); padding: 12px; background: color-mix(in srgb, var(--surface) 92%, transparent); pointer-events: none; }
-.drop-frame { display: flex; align-items: center; justify-content: center; height: 100%; border: 1px dashed var(--line-3); border-radius: var(--r-lg); color: var(--ink-2); font-size: var(--fs-chat); font-weight: var(--fw-medium); }
-/* Hover previews (Chip.tsx HoverPreview): every kind wears .peek-frame, the landing page's demo bezel at its small size without the drop shadows. A 1px outer edge
-   lit along the top and fading to the line color down the sides (::before), a 3px glow centered on the top edge (::after, the recipe of the resize edge in
-   resize.css), and a faint lift toward the top of the glass. The kind's class sets size and content. The frame's padding is 6px, so each kind's max size is 480x320 minus it. */
-.peek-frame { --edge-glow: color-mix(in srgb, var(--ink) 45%, transparent); position: fixed; z-index: var(--z-preview); box-sizing: border-box; padding: 6px; border-radius: calc(var(--r-sm) + 6px); pointer-events: none;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--ink) 5%, transparent), transparent 22%), linear-gradient(180deg, var(--surface-2), var(--surface) 40%, var(--canvas)); }
-.peek-frame::before { content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--ink) 34%, transparent), color-mix(in srgb, var(--ink) 12%, transparent) 14%, var(--line-3) 50%, var(--line-3) 100%);
-  mask: linear-gradient(black 0 0) content-box exclude, linear-gradient(black 0 0); }
-.peek-frame::after { content: ''; position: absolute; top: -2px; left: 18px; right: 18px; height: 3px; pointer-events: none;
-  background: radial-gradient(ellipse closest-side at 50% 50%, var(--edge-glow) 0%, var(--edge-glow) 25%, transparent 100%); }
-.img-preview { display: flex; }
-/* The picture sits in the bezel behind a thin dark gasket, an outline and not a shadow. */
-.img-preview img { display: block; max-width: 468px; max-height: 308px; border-radius: var(--r-sm); outline: 1px solid color-mix(in srgb, var(--canvas) 85%, transparent); outline-offset: 0; }
-.txt-preview { display: flex; width: 480px; max-height: 320px; }
-.txt-preview pre { flex: 1; min-width: 0; max-height: 308px; box-sizing: border-box; margin: 0; padding: 4px 6px; overflow: hidden; font: var(--fs-meta)/18px var(--mono); color: var(--ink-2); white-space: pre;
+.drop-frame { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; height: 100%; border: 1px dashed var(--line-3); border-radius: var(--r-lg); color: var(--ink-2); }
+.drop-ico { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin-bottom: 6px; border: 1px solid var(--line-3); border-radius: 50%; background: var(--surface-3); color: var(--ink-2); }
+.drop-title { font-size: var(--fs-chat); font-weight: var(--fw-medium); color: var(--ink); }
+.drop-sub { font-size: var(--fs-ui); color: var(--muted); }
+/* Hover previews (Chip.tsx HoverPreview): every kind wears .peek-frame, a popover card: --surface, a --line-3 outline, radius 10 and 8px of padding (Pen 8.10). The kind's class sets size and content. Its max size is 480 by 320. */
+.peek-frame { position: fixed; z-index: var(--z-preview); box-sizing: border-box; padding: 8px; border: 1px solid var(--line-3); border-radius: var(--r); background: var(--surface); pointer-events: none; }
+.img-preview { display: flex; flex-direction: column; gap: 8px; }
+.img-preview img { display: block; max-width: 440px; max-height: 300px; border: 1px solid var(--line-2); border-radius: var(--r-xs); }
+.img-preview-meta, .txt-preview-n { display: flex; margin: 0; justify-content: space-between; gap: 16px; padding: 0 2px; font-size: var(--fs-meta); color: var(--muted); }
+.img-preview-meta .mono { color: var(--ink-2); }
+.txt-preview { display: flex; flex-direction: column; gap: 6px; width: 440px; max-height: 320px; }
+.txt-preview pre { flex: 1; min-width: 0; max-height: 280px; box-sizing: border-box; margin: 0; padding: 4px 6px 0; overflow: hidden; font: var(--fs-meta)/20px var(--mono); color: var(--muted); white-space: pre;
   -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 36px), transparent); mask-image: linear-gradient(to bottom, black calc(100% - 36px), transparent); }
-.issue-preview { width: max-content; max-width: 360px; padding: 10px 12px; }
-.issue-preview-head { display: flex; align-items: baseline; gap: 8px; font-size: var(--fs-meta); line-height: 18px; color: var(--muted); }
-.issue-preview-key { font: var(--fs-meta)/18px var(--mono); color: var(--ink); }
-.issue-preview-title { margin: 2px 0 0; font-size: var(--fs-ui); line-height: 18px; color: var(--ink-2); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+.txt-preview-n { padding: 0 6px 2px; }
+.issue-preview { display: flex; flex-direction: column; gap: 4px; width: 380px; max-width: calc(100vw - 16px); padding: 12px 14px; }
+.issue-preview-head { display: flex; align-items: center; gap: 8px; font-size: var(--fs-meta); line-height: 16px; color: var(--ink-3); }
+.issue-preview-key { font: var(--fs-chip)/16px var(--mono); color: var(--ink-3); }
+.issue-preview-state { margin-left: auto; color: var(--muted); }
+.issue-preview-title { margin: 4px 0 0; font-size: var(--fs-chat); font-weight: var(--fw-semibold); line-height: var(--lh-snug); color: var(--ink); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+.issue-preview-body { margin: 0; font-size: var(--fs-ui); line-height: var(--lh-ui); color: var(--muted); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+.issue-preview-meta { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: var(--fs-meta); color: var(--ink-3); }
+.issue-preview-labels { margin-left: 4px; color: var(--muted); }
 .issue-preview-hint { margin: 6px 0 0; font-size: var(--fs-meta); line-height: 16px; color: var(--muted); }
 .txt-modal { margin: 0 16px 16px; padding: 12px; max-height: calc(100vh - 260px); overflow: auto; border-radius: var(--r-sm); border: 1px solid var(--line); background: var(--surface-3); font-size: var(--fs-code); line-height: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .img-modal { display: flex; justify-content: center; padding: 0 16px 16px; }
 .img-modal img { display: block; max-width: 100%; max-height: calc(100vh - 260px); border-radius: var(--r-sm); }
 
-.cmp-ac { position: absolute; left: 0; bottom: calc(100% + var(--menu-gap)); z-index: var(--z-popover); width: 420px; max-width: 100%; padding: 6px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }
-.cmp-ac p { margin: 2px 8px 6px; font-size: var(--fs-meta); color: var(--muted); }
-.cmp-ac p.cmp-ac-none { margin: 6px 8px; }
-.cmp-ac-row + p { margin-top: 10px; }
-.cmp-ac-row { display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: var(--fs-ui); text-align: left; }
-.cmp-ac-row[aria-selected='true'] { background: var(--hover); }
-.cmp-ac-row .file-icon { flex-shrink: 0; margin-right: -4px; }
+/* The @ and / menus open over the word being typed (AutoMenu.tsx): 8px above it and 10px before it, 440px wide, and they may cover the box. Rows are 32px, and a skill takes two lines. */
+.cmp-ac { position: absolute; left: 0; bottom: calc(100% + var(--menu-gap)); z-index: var(--z-popover); display: flex; flex-direction: column; gap: 1px; width: 440px; max-width: calc(100vw - 48px); padding: 4px; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--surface); }
+.cmp-ac-head { margin: 0; padding: 6px 10px 4px; font-size: var(--fs-chip); font-weight: var(--fw-medium); color: var(--muted); }
+.cmp-ac-none { margin: 0; padding: 6px 10px; font-size: var(--fs-meta); color: var(--muted); }
+.cmp-ac-sep { height: 1px; margin: 4px 0; background: var(--line-2); }
+.cmp-ac-row { display: flex; align-items: center; gap: 10px; width: 100%; height: 32px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: var(--fs-ui); text-align: left; }
+.cmp-ac-row[aria-selected='true'] { background: var(--surface-3); }
+.cmp-ac-row[aria-selected='true'] .mono { color: var(--ink); }
+.cmp-ac-row .file-icon { flex-shrink: 0; }
 .cmp-ac-row .mono { font-size: var(--fs-code); flex-shrink: 0; }
 .cmp-ac-row .cmp-ac-name { flex-shrink: 0; font-size: var(--fs-ui); color: var(--ink); }
-.cmp-ac-row .agent-avatar { flex-shrink: 0; margin-right: -2px; }
-.cmp-ac-row .sub { flex: 1; min-width: 0; color: var(--muted); }
+.cmp-ac-row .agent-avatar { flex-shrink: 0; }
+.cmp-ac-row .sub { flex: 1; min-width: 0; font-size: var(--fs-meta); color: var(--muted); }
+.cmp-ac-go { display: inline-flex; flex-shrink: 0; margin-left: auto; color: var(--muted); }
+.cmp-ac-row[data-two] { align-items: flex-start; height: auto; min-height: 50px; padding: 8px 10px; }
+.cmp-ac-skill { display: inline-flex; flex-shrink: 0; margin-top: 3px; color: var(--muted); }
+.cmp-ac-tx { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cmp-ac-tx .sub { flex: none; line-height: 16px; }
+.cmp-ac-foot { display: flex; align-items: center; gap: 7px; margin-top: 4px; padding: 7px 10px 4px; border-top: 1px solid var(--line-2); font-size: var(--fs-meta); color: var(--muted); }
 .cmp-pop { left: 0; bottom: calc(100% + var(--menu-gap)); }
 /* Model and effort (D-093, KERNEL-1111): 300px, search and the provider segments on top, the list, the Effort track, then the footer. */
 .model-pop { display: flex; flex-direction: column; width: 300px; padding: 0; background: var(--surface); }
@@ -202,14 +232,17 @@
 .pick-hint { display: inline-flex; align-items: center; gap: 8px; }
 
 /* Permission mode (ComposerModeMenu.png, KERNEL-573): the model picker's width, two lines a row, and the picked row keeps the menu's selected fill. */
-.mode-pop { width: 360px; background: var(--surface-2); }
+.mode-pop { width: 340px; background: var(--surface); }
+/* The + menu's shortcuts sit in a small keycap, as the Permission mode menu's foot does. */
+.cmp-plus .menu-kbd { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border: 1px solid var(--line-3); border-radius: var(--r-2xs); font: var(--fs-badge) var(--mono); color: var(--muted); }
 .mode-row + .mode-row { margin-top: 2px; }
-.mode-head { margin: 0; padding: 8px 10px 6px; font-size: var(--fs-meta); line-height: 16px; color: var(--muted); }
-.mode-pop .mode-row { align-items: flex-start; height: auto; padding: 8px 10px; }
+.mode-head { margin: 0; padding: 6px 10px 4px; font-size: var(--fs-chip); font-weight: var(--fw-medium); line-height: 15px; color: var(--muted); }
+.mode-pop .mode-row { align-items: flex-start; height: auto; padding: 7px 10px; }
 .mode-row > svg:first-child { margin-top: 2px; }
 .mode-row > svg:last-child:not(:first-child) { margin-top: 3px; }
 .mode-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.mode-t { font-size: var(--fs-ui); font-weight: var(--fw-medium); line-height: 20px; color: var(--ink); }
+.mode-t { font-size: var(--fs-ui); line-height: 17px; color: var(--ink-2); }
+.mode-row[aria-checked='true'] .mode-t { color: var(--ink); }
 .mode-d { font-size: var(--fs-meta); line-height: var(--lh-snug); color: var(--muted); }
 .mode-d[data-why] { color: var(--ink-3); }
 .mode-row[data-off] .mode-t { color: var(--muted); }
@@ -238,23 +271,21 @@
 .link-none .btn { margin-left: 10px; }
 .link-foot { display: flex; align-items: center; justify-content: space-between; height: 44px; padding: 0 8px 0 14px; border-top: 1px solid var(--card-line); font-size: var(--fs-meta); color: var(--muted); }
 
-/* The queue docks to the box's top edge as one unit: the tray takes the box's top corners and the box squares where they meet. */
-.queue-tray { margin-bottom: -10px; border: 1px solid var(--line-2); border-bottom: 0; border-radius: var(--r-lg) var(--r-lg) 0 0; background: var(--input-bg); font-size: var(--fs-ui); }
-.queue-tray + .cmp-box .cmp { border-top-left-radius: 0; border-top-right-radius: 0; }
-.queue-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 8px 12px 2px 14px; color: var(--muted); font-size: var(--fs-meta); }
+/* The queue tray (KERNEL-1095) is its own card above the box, 8px from it: a --surface fill, a --line-3 outline and 32px rows. Only the oldest row has Send now, since messages go out in order. */
+.queue-tray { margin-bottom: -2px; padding: 4px; border: 1px solid var(--line-3); border-radius: var(--r-md); background: var(--surface); font-size: var(--fs-ui); }
+.queue-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 6px 8px 4px; color: var(--muted); font-size: var(--fs-meta); }
 .queue-why { min-width: 0; }
 .queue-why .note-ref { padding: 0; border: 0; background: transparent; font: inherit; color: var(--ink-2); cursor: pointer; }
 .queue-count { flex-shrink: 0; margin-left: auto; }
-.queue { margin: 0; padding: 0; list-style: none; }
+.queue { display: flex; flex-direction: column; gap: 1px; margin: 0; padding: 0; list-style: none; }
 .queue-row { display: grid; grid-template-rows: 1fr; }
-.queue-row + .queue-row { border-top: 1px solid var(--line-2); }
-.queue-row-in { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 0; overflow: hidden; padding: 5px 8px 5px 14px; }
+.queue-row-in { display: flex; align-items: center; gap: 9px; min-width: 0; min-height: 0; height: 32px; overflow: hidden; padding: 0 6px 0 8px; border-radius: var(--r-sm); }
 .queue-icon { display: inline-flex; flex-shrink: 0; color: var(--faint); }
 .queue-text { flex: 1 1 0; min-width: 0; display: flex; padding: 4px 0; border: 0; background: transparent; color: var(--ink-2); font: inherit; text-align: left; }
 .queue-text:hover { color: var(--ink); }
 .queue-text .ellipsis { min-width: 0; }
 .queue-extra { flex-shrink: 0; color: var(--muted); font-size: var(--fs-meta); }
-.queue-now { flex-shrink: 0; height: 24px; padding: 0 8px; font-size: var(--fs-meta); color: var(--muted); }
+.queue-now { flex-shrink: 0; height: 24px; padding: 0 8px; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--ink-3); }
 .queue-now:hover:not(:disabled) { color: var(--ink); }
 .queue-x { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: var(--r-xs); background: transparent; color: var(--muted); }
 .queue-x:hover { color: var(--ink); }
@@ -316,7 +347,7 @@
 .cmp:has(> .cmp-planbar) { padding-top: 0; animation: cmp-pad-shut var(--plan-dur) var(--ease-plan) both; }
 @keyframes cmp-pad-shut { from { padding-top: var(--cmp-pad-top); } to { padding-top: 0; } }
 /* It mounts when a plan arrives: it opens over --plan-dur, then one soft light crosses it over 1.6s, behind its buttons. Done by 2.1s. The sweep is an accent, so it keeps its own length like the breathing loop. */
-.cmp-planbar { display: flex; align-items: center; gap: 6px; margin: 0 -12px 6px; padding: 7px 8px 7px 12px; overflow: hidden; border-bottom: 1px solid color-mix(in srgb, var(--plan) 24%, transparent); border-radius: calc(var(--r-lg) - 1px) calc(var(--r-lg) - 1px) 0 0; background: color-mix(in srgb, var(--plan) 8%, transparent); animation: planbar-in var(--plan-dur) var(--ease-plan) both; }
+.cmp-planbar { display: flex; align-items: center; gap: 6px; margin: 0 -10px 6px -14px; padding: 7px 8px 7px 14px; overflow: hidden; border-bottom: 1px solid color-mix(in srgb, var(--plan) 24%, transparent); border-radius: calc(var(--r-md) - 1px) calc(var(--r-md) - 1px) 0 0; background: color-mix(in srgb, var(--plan) 8%, transparent); animation: planbar-in var(--plan-dur) var(--ease-plan) both; }
 .cmp-planbar > * { position: relative; }
 .cmp-planbar::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(100deg, transparent 10%, color-mix(in srgb, var(--plan) 2%, transparent) 25%, color-mix(in srgb, var(--plan) 7%, transparent) 38%, color-mix(in srgb, var(--plan) 12%, transparent) 50%, color-mix(in srgb, var(--plan) 7%, transparent) 62%, color-mix(in srgb, var(--plan) 2%, transparent) 75%, transparent 90%); transform: translateX(-100%); opacity: 0; animation: planbar-sweep var(--dur-sweep) var(--ease-sweep) var(--plan-dur) both; }
 @keyframes planbar-in { from { max-height: 0; opacity: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; border-bottom-width: 0; } to { max-height: 44px; opacity: 1; } }
@@ -340,17 +371,18 @@
 .ctx-full .ctx-arc { stroke: var(--del-fill); }
 .ctx-pop.ctx-near > .meter span { background: var(--needs-fill); }
 .ctx-pop.ctx-full > .meter span { background: var(--del-fill); }
-.ctx-pop { width: 330px; display: flex; flex-direction: column; gap: 10px; font-size: var(--fs-code); }
+.ctx-ring[aria-expanded='true'] { background: var(--surface-3); color: var(--ink); }
+.ctx-pop { width: 308px; display: flex; flex-direction: column; gap: 12px; padding: 12px 14px; font-size: var(--fs-code); }
+.ctx-pop > .meter { height: 4px; }
 .ctx-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .ctx-title { color: var(--ink); font-weight: var(--fw-medium); }
-.ctx-rows { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.ctx-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 4px; align-items: baseline; color: var(--ink-2); }
-.ctx-row .meter { grid-column: 1 / -1; height: 3px; }
-.ctx-n { text-align: right; font-variant-numeric: tabular-nums; }
-.ctx-rest .ctx-n { color: inherit; }
+.ctx-rows { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.ctx-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; color: var(--ink-2); }
+.ctx-row[data-rest] { color: var(--muted); }
+.ctx-n { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .ctx-empty { margin: 0; }
-.ctx-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 10px; border-top: 1px solid var(--line-2); }
-.ctx-foot p { margin: 0; flex: 1; min-width: 0; }
+.ctx-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ctx-foot p { margin: 0; flex: 1; min-width: 0; line-height: var(--lh-snug); }
 .ctx-foot .btn { flex-shrink: 0; }
 
 
@@ -378,8 +410,6 @@
 .where-open { position: absolute; top: 50%; right: 36px; display: none; transform: translateY(-50%); background: var(--surface-2); }
 .where-open .kbd { border: 0; background: transparent; }
 .where-branch:hover .where-open, .where-branch:focus-within .where-open { display: inline-flex; }
-/* An issue or pull request chip: its key in mono, its title in the normal font. */
-.cmp-chip[data-kind='issue'] .chip-meta, .cmp-chip[data-kind='pr'] .chip-meta { font: var(--fs-meta) var(--font); }
 
 /* What the Lead chat still owes, above the box (KERNEL-792). */
 .open-items { display: flex; flex-direction: column; border: 1px solid var(--line-3); border-radius: var(--r-sm); font-size: var(--fs-code); }
