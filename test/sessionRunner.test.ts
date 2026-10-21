@@ -562,7 +562,7 @@ describe('Approve and carry out (KERNEL-67, one-lead-chat)', () => {
     expect(lead.append).toContain(LEAD_RULE)
     expect(LEAD_RULE).toContain('mcp__kernel__create_workspace')
     // KERNEL-129: what the rule asks of the Lead beyond the hand-off.
-    for (const part of ['never yourself', 'Team update', 'Never leave a teammate waiting', 'mcp__kernel__ask_user', 'and the details', 'Call teammates by name', 'one or two short lines', 'without workspace ids', 'tell the user']) expect(LEAD_RULE).toContain(part)
+    for (const part of ['never yourself', 'Team update', 'Never leave a teammate waiting', 'mcp__kernel__ask_user', 'and the details', 'call teammates by name', 'one or two short lines', 'without workspace ids', 'tell the user']) expect(LEAD_RULE).toContain(part)
     const builder = (await setup('acceptEdits', { agent: sean })).options.systemPrompt as { append: string }
     expect(builder.append).not.toContain(LEAD_RULE)
   })

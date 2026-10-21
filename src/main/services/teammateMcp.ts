@@ -50,7 +50,7 @@ export function teammateTools(d: TeammateToolDeps) {
   return [
     tool('wait_for_merge', "Tell Kernel you can't go on until another teammate's pull request merges. Kernel messages you when it merges, so end your turn right after.", {
       on: z.string().min(1).describe('What you wait for: a PR number like "#164", an issue key like "PROJ-197", or a workspace id'),
-      why: z.string().optional().describe('What you need from it, in a sentence. The Lead reads it')
+      why: z.string().optional().describe('What you need from it. The Lead reads it')
     }, async ({ on, why }) => {
       const refuse = (m: string) => ({ ...text(`Not set: ${m}`), isError: true })
       try {
@@ -71,18 +71,18 @@ export function teammateTools(d: TeammateToolDeps) {
         return text(`Kernel will message you when ${what} merges. End your turn now.`)
       } catch (e) { return refuse(e instanceof Error ? e.message : String(e)) }
     }),
-    tool('ask_lead', "Ask the Lead a question you can't answer from your brief, such as a choice between two designs or what is in scope. Kernel passes it on and the Lead's answer arrives as a message, so end your turn right after.", {
-      question: z.string().min(1).describe('The question, in one or two sentences the Lead can answer without opening your workspace'),
-      options: z.array(z.string().min(1)).optional().describe('The answers you see, if there are a few, for example ["Keep drafts per tab", "One draft per chat"]')
+    tool('ask_lead', "Ask the Lead a question your brief doesn't answer. The answer arrives as a message, so end your turn right after.", {
+      question: z.string().min(1).describe('One or two sentences the Lead can answer without opening your workspace'),
+      options: z.array(z.string().min(1)).optional().describe('The answers you see, if there are a few')
     }, async ({ question, options }) => {
       if (!question.trim()) return { ...text('Not sent: the question is empty.'), isError: true }
       d.ask(question, options)
       return text('Kernel passed your question to the Lead. End your turn now. The answer arrives as a message.')
     }),
-    tool('propose_handoff', 'Propose that another teammate takes part of your work, when it belongs to their role rather than your task. The Lead asks the user, and a workspace starts only if the user agrees. Carry on with your own work.', {
-      agent: z.string().min(1).describe('The id or name of the teammate who should take it, from the team in your brief'),
-      task: z.string().min(1).describe('The task in one line, as a title the Lead can hand off'),
-      why: z.string().min(1).describe("Why it belongs to them rather than you, in a sentence")
+    tool('propose_handoff', 'Propose that another teammate takes part of your work that belongs to their role. The Lead asks the user, and a workspace starts only if they agree. Carry on with your own work.', {
+      agent: z.string().min(1).describe('The teammate\'s id or name, from the team in your brief'),
+      task: z.string().min(1).describe('One line, as a hand-off title'),
+      why: z.string().min(1).describe("Why it belongs to them, in a sentence")
     }, async ({ agent, task, why }) => {
       const refuse = (m: string) => ({ ...text(`Not proposed: ${m}`), isError: true })
       try {

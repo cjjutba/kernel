@@ -5,7 +5,7 @@ import { isLeadWorkspace } from '@shared/leadWorkspace'
 import { blockedWhy, headBlockers, notMergeable, reviewsText } from '@shared/merge'
 import { isReviewer, RESERVED_AGENT_IDS, takesTasks } from '@shared/team'
 import { bus } from '../bus'
-import { kernelServer } from './kernelServer'
+import { kernelServer, LEAD_ALWAYS_LOADED } from './kernelServer'
 import { canOpenPr, type AccountSignIn } from './agentTools'
 import { agentFromFile, hireDefaults, renderAgentFile } from './agents'
 import { CARRY_OUT } from './handoff'
@@ -150,9 +150,9 @@ export const IMAGES_MAX = 3
 
 /** The `images` argument of create_workspace and message_agent (KERNEL-658). */
 const imagesArg = z.array(z.union([
-  z.object({ path: z.string().describe('The file\'s path in .kernel/attachments/, as the user\'s message names it') }),
+  z.object({ path: z.string().describe('Path in .kernel/attachments/, as the user\'s message names it') }),
   // An image a teammate shared, at the version the Team update names (KERNEL-659).
-  z.object({ shared: z.string().describe('The id of an image a teammate shared, as the Team update names it'), version: z.number().int().describe('Which version of it to pass on') })
+  z.object({ shared: z.string().describe('Id of the shared image, as the Team update names it'), version: z.number().int().describe('Which version') })
 ])).optional()
 type ImageArg = { path: string } | { shared: string; version: number }
 
@@ -173,7 +173,7 @@ export function signInNote(agent: string, account: string, servers: AccountSignI
 }
 
 /** What the `images` argument says, for both tools. */
-const IMAGES_DESCRIBE = 'Images and files the teammate needs to act on, at most 3 in all: a screenshot, PDF or any other file the user attached in this chat by its path in .kernel/attachments/, or an image a teammate shared by its id and version from the Team update. Kernel copies each into the teammate\'s workspace and names it in their chat. Leave out files that don\'t change what the teammate does'
+const IMAGES_DESCRIBE = 'Files the teammate needs, at most 3: one the user attached in this chat, by its path in .kernel/attachments/, or an image a teammate shared, by its id and version from the Team update. Kernel copies each into the teammate\'s workspace. Leave out files that don\'t change the work'
 
 /**
  * The images a create_workspace or message_agent call passes on, in the order given, or why one can't go (KERNEL-658,
@@ -395,7 +395,7 @@ export const SAVE_SCRIPTS_QUESTION = 'Save these scripts to .kernel/settings.loc
 const SAVE = 'Save'
 
 /** What the Lead's server tells the model, next to the tools (one-lead-chat). */
-export const LEAD_INSTRUCTIONS = 'You lead a team of agents in Kernel, and this chat has a folder of its own where you may change files. For each request, answer, do the work yourself when it is one PR in one lane and short, hand it to teammates with create_workspace when it has parallel pieces, other lanes or long work, or do your small part and hand off the rest. While the chat is in plan mode, plan first and ask for approval with request_plan_approval: the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat, each with 2 to 5 testable acceptance criteria. Name a CI check for a criterion (check, with the exact check name) only when a green run of that check really proves it; the reviewer judges every other criterion, and a check named only in a criterion\'s words decides nothing. Once the user approves, carry the plan out in the same turn. With plan mode off, answer a question, opinion or report and stop, with no closing offer or question. For work that needs several teammates, say who gets what in one yes-or-no question and create the workspaces once they agree. Answer a reply that also asks questions, changes scope or only agrees with the idea, then ask once. Before you hand off work that depends on your own uncommitted edits, commit them and pass your branch as base_ref, or open your PR first. When your own work is for a tracker issue, call link_issue before the first push. File and edit tracker issues with the tracker\'s own tools or file_issue. A task that needs another task\'s PR merged first takes wait_for, and wait_for_merge sets or ends a wait later. Follow up with message_agent. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use. Merge ready PRs with merge_workspace only when the user asks; it says when merging is off. When the user asks for a PR to be reviewed, call create_workspace with review_of and the project\'s reviewer from list_agents (Kernel\'s own reviewer counts); Kernel starts its own review round for a PR with no review. Never offer to create a reviewer agent. When the user says to go past a review\'s blockers, call overrule_blockers.'
+export const LEAD_INSTRUCTIONS = 'You lead a team of agents in Kernel, and may change files in the folder this chat works in. For each request, answer, do the work yourself when it stays in one area, takes about an hour and has no parallel pieces, hand it to teammates with create_workspace, or do the quick part yourself and hand off the rest. While the chat is in plan mode, plan first and call request_plan_approval: the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat, each with 2 to 5 testable acceptance criteria. Once the user approves, carry the plan out in the same turn. With plan mode off, answer a question, opinion or report and stop, with no closing offer or question. One clear ask is a go-ahead for work you do yourself or give to one teammate. For two or more teammates, say who gets what in one yes-or-no question and create the workspaces once they agree. Answer a reply that also asks questions, changes scope or only agrees with the idea, then ask once. Before you hand off work that depends on your uncommitted edits, commit them and pass your branch as base_ref, or open your PR first. Call link_issue before your first push when your work builds a tracker issue. File and edit tracker issues with the tracker\'s own tools or file_issue. A task that needs another task\'s PR merged first takes wait_for. Use say for a short status line on your card in the sidebar. Archive or merge only when the user asks. When the user asks for a PR to be reviewed, call create_workspace with review_of and the project\'s reviewer from list_agents, and never offer to create a reviewer agent. When the user says to go past a review\'s blockers, call overrule_blockers.'
 
 /**
  * The workspace a reviewer's base names: the Lead sometimes starts a review from the reviewed branch with base_ref instead
@@ -415,7 +415,7 @@ export function reviewedByBase(agent: AgentDef | undefined, baseRef: string | un
  * The Lead proposes a plan, waits for the user to approve it, then creates one workspace per task.
  */
 export function kernelMcpServer(d: KernelToolDeps) {
-  return kernelServer(kernelTools(d), LEAD_INSTRUCTIONS)
+  return kernelServer(kernelTools(d), LEAD_INSTRUCTIONS, { loaded: LEAD_ALWAYS_LOADED })
 }
 
 /** The Lead's tools, apart from the server so tests can call them. */
@@ -490,18 +490,18 @@ export function kernelTools(d: KernelToolDeps) {
    */
   const goAheadOf = (quote: string | undefined): string | undefined => quote?.trim() || undefined
   return [
-    tool('list_agents', 'List the agents in this project with their roles. Helpers, which don\'t take tasks, come as one line of names.', {}, async () => text(agentList(await d.agents()))),
-    tool('list_workspaces', 'List open workspaces in this project: id, agent, branch, PR state, "yours" for the ones you handed off in this chat, and "open" for a question, blockers or a proposed hand-off you haven\'t acted on.', {}, async () => {
+    tool('list_agents', 'List the team with roles. Helpers, which take no tasks, come as one line of names.', {}, async () => text(agentList(await d.agents()))),
+    tool('list_workspaces', 'List open workspaces: id, agent, branch, PR state, "yours" for work you handed off in this chat, and "open" for a question, blockers or proposed hand-off you haven\'t acted on.', {}, async () => {
       const all = d.workspaces()
       const list = all.filter((w) => w.status !== 'archived')
       const marks = d.openMarks?.()
       return text(list.map((w) => `${w.id} · ${w.agentId} · ${w.branch} · PR ${w.prState}${w.prNumber ? ' #' + w.prNumber : ''}${w.prBlocked ? ` (GitHub blocks the merge: ${blockedWhy[w.prBlocked]})` : ''}${reviewKinds(w)}${waits(w, all)}${owner(w)}${marks?.get(w.id) ?? ''}`).join('\n') || 'No open workspaces.')
     }),
-    tool('request_plan_approval', 'Show a plan to the user and wait for approval. Only while the chat is in plan mode. With plan mode off it refuses, and you ask in the chat before handing off. Put the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat. Returns "approved" with what to do next, or the requested changes.', {
-      title: z.string().describe('Short plan title, for example "T-15 Export invoices as PDF"'),
-      plan: z.string().describe('The full plan as markdown: context, approach, files, checks. The tasks go in steps, not here'),
-      steps: z.array(z.union([z.string(), z.object({ task: z.string().describe('"<task> · <owner>": a teammate\'s name, or "Kernel" for work you do yourself'), criteria: z.array(z.union([z.string(), z.object({ text: z.string().describe('The criterion'), check: z.string().optional().describe('The exact name of the CI check that proves this criterion. Leave it out unless a green check really proves it') })])).describe('2 to 5 testable acceptance criteria: what must be true for the task to be done. A plain string, or { text, check } when one CI check decides it') })])).min(1)
-        .describe('One entry per task: { task: "<task> · <owner>", criteria: [...] }, with 2 to 5 testable criteria each. Name an owner on every step, "Kernel" for your own. The user can change owners before approving. create_workspace puts the criteria in the teammate\'s brief')
+    tool('request_plan_approval', 'Show a plan to the user and wait for approval. Only while the chat is in plan mode. With plan mode off it refuses, and you ask in the chat before handing off. Put the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat. Returns "approved" with the next step, or the requested changes.', {
+      title: z.string().describe('Short plan title'),
+      plan: z.string().describe('Context, approach, files and checks, as markdown. Tasks go in steps'),
+      steps: z.array(z.union([z.string(), z.object({ task: z.string().describe('"<task> · <owner>": a teammate\'s name, or "Kernel" for your own'), criteria: z.array(z.union([z.string(), z.object({ text: z.string().describe('What must be true'), check: z.string().optional().describe('Exact CI check name, only when a green run of it proves the criterion. The reviewer judges the rest') })])).describe('2 to 5 testable criteria: a string, or { text, check }') })])).min(1)
+        .describe('One per task: { task: "<task> · <owner>", criteria }. Name an owner on every step, "Kernel" for your own. The user can change owners before approving. create_workspace puts the criteria in the teammate\'s brief')
     }, async ({ title, plan, steps }, extra) => {
       // The chat's plan toggle decides, so a plan never shows with Copy and Approve in a chat that isn't planning (KERNEL-176).
       if (!d.planMode?.()) return { ...text(PLAN_MODE_OFF), isError: true }
@@ -519,8 +519,8 @@ export function kernelTools(d: KernelToolDeps) {
     tool('ask_user', 'Ask the user a short question, optionally with options. Waits for the answer.', {
       question: z.string(),
       options: z.array(z.union([z.string(), z.object({ label: z.string(), description: z.string().optional(), recommended: z.boolean().optional() })])).optional()
-        .describe(`Each option: label is the answer in a few words (${LABEL_MAX} characters at most), description says what it means or why. Set recommended: true on the option you recommend instead of writing it in the text`),
-      about: z.array(z.string()).optional().describe("When the question settles a teammate's question or a proposed hand-off, the ids of those workspaces, or of the agents, from list_workspaces")
+        .describe(`label: the answer in a few words (${LABEL_MAX} characters at most). description: what it means. Mark your pick with recommended: true`),
+      about: z.array(z.string()).optional().describe("Ids from list_workspaces of the teammate questions or proposed hand-offs this settles")
     }, async ({ question, options, about }, extra) => {
       const asked = options?.map((o) => (typeof o === 'string' ? { label: o } : o))
       // A paragraph in a label squeezes the card's answer row, so the explanation has to go in description (KERNEL-415).
@@ -533,19 +533,19 @@ export function kernelTools(d: KernelToolDeps) {
       if (!decision) return text('No answer yet.')
       return text(decision.behavior === 'answer' ? decision.text : decision.behavior)
     }),
-    tool('create_workspace', 'Create a workspace for one task and hand it to an agent. The agent starts right away while the setup script runs alongside, or, with wait_for, once those PRs merge. A setup that fails never stops it.', {
-      agent: z.string().describe('Agent id from list_agents, for example "christian"'),
-      title: z.string().describe('Task title, used to name the branch'),
+    tool('create_workspace', 'Create a workspace for one task and hand it to an agent. It starts at once, or with wait_for once those PRs merge, and a failing setup script never stops it.', {
+      agent: z.string().describe('Agent id from list_agents'),
+      title: z.string().describe('Task title, which names the branch'),
       brief: z.string().describe('Everything the agent needs: goal and files. The plan step\'s criteria are added for you'),
       mode: z.enum(['worktree', 'current']).optional(),
-      base_ref: z.string().optional().describe("A branch to start from instead of the default branch, for example this chat's own branch when the task needs commits that aren't merged yet"),
-      branch: z.string().optional().describe('Only when the user asked for a particular branch name. Left out, Kernel names it from the issue key and title, for example fix/kernel-267-review-cant-start-reviewed-branch'),
-      issue: z.string().optional().describe('The key of the issue this task builds, as the project\'s tracker shows it, for example "PROJ-83" or "#41". Kernel links the workspace to it, names the branch after it unless you pass branch, puts the issue in the brief, and moves it to In Progress where the tracker has that state'),
-      review_of: z.string().optional().describe("For a review: the id of the workspace whose work to review. The reviewer's worktree starts from that workspace's branch, and the reviewer reports back with submit_review"),
-      wait_for: z.array(z.string()).optional().describe('For a task that needs other tasks merged first: the ids of their workspaces (a PR number like "#164" or an issue key works too). Kernel creates the worktree and runs setup now, holds the brief, and sends it from the new base once every one of them has merged'),
-      user_asked: z.boolean().optional().describe("Set to true only when the user explicitly asked for more teammate workspaces than the project's limit allows. Left out, create_workspace refuses once the limit is reached"),
-      confirm: z.boolean().optional().describe('Set to true only after the user said to start anyway, when create_workspace warned that someone else may already be on the issue. Left out, Kernel checks for a branch on the remote, an open PR or another assignee first'),
-      go_ahead: z.string().optional().describe("The user's words that asked for this hand-off, for example \"hand it to Kai\". Kept as the record of the go-ahead. Optional"),
+      base_ref: z.string().optional().describe("Start from this branch instead of the default, for example this chat's own when the task needs its unmerged commits"),
+      branch: z.string().optional().describe('Leave out unless the user names a branch. Kernel names it from the issue key and title'),
+      issue: z.string().optional().describe('Key of the issue this task builds, as the tracker shows it ("PROJ-83", "#41"). Kernel links the workspace, names the branch after it, puts the issue in the brief and moves it to In Progress where the tracker has that state'),
+      review_of: z.string().optional().describe("For a review: the workspace to review. The reviewer starts from its branch and reports with submit_review"),
+      wait_for: z.array(z.string()).optional().describe('Workspaces that must merge first, by id, PR number ("#164") or issue key. Kernel sets up now, holds the brief, and sends it from the new base once they merge'),
+      user_asked: z.boolean().optional().describe("Only when the user asked for more teammate workspaces than the project's limit. Otherwise it refuses at the limit"),
+      confirm: z.boolean().optional().describe('Only after the user said to start anyway, when it warned that someone else may be on the issue'),
+      go_ahead: z.string().optional().describe("The user's words that asked for this hand-off, kept as the record"),
       images: imagesArg.describe(IMAGES_DESCRIBE)
     }, async ({ agent, title, brief, mode, base_ref, branch, issue, review_of: askedReview, wait_for, user_asked, confirm, go_ahead, images }) => {
       // An agent the team doesn't have used to fall back to the Lead, whose work never reports back (KERNEL-119).
@@ -633,9 +633,9 @@ export function kernelTools(d: KernelToolDeps) {
       const signIn = await signInLine(pick, true)
       return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.${stale}${waiting}${queued ? ` ${queued}` : ''}${wait_for?.length ? '' : blocked(ws, team, pick, !!queued)}${unchecked}${signIn}${left ? ` ${left} Tell the user.` : ''}`)
     }),
-    tool('wait_for_merge', "Make a teammate wait for other workspaces' PRs to merge, or stop waiting. Replaces any earlier wait. A teammate whose brief hasn't gone out gets it once they merge; one that already started is told to bring its branch up to date with them. An empty list ends the wait and sends a held brief now.", {
+    tool('wait_for_merge', "Make a teammate wait for other workspaces' PRs to merge. Replaces an earlier wait. A held brief goes out when they merge, and a teammate that started is told to update its branch. An empty list ends the wait and sends a held brief now.", {
       workspace_id: z.string().describe('The workspace that waits, from list_workspaces'),
-      on: z.array(z.string()).describe('The ids of the workspaces whose PRs it waits for (a PR number like "#164" or an issue key works too). Empty to stop waiting')
+      on: z.array(z.string()).describe('Ids, PR numbers ("#164") or issue keys it waits for. Empty to stop waiting')
     }, async ({ workspace_id, on }) => {
       const refuse = (why: string) => ({ ...text(`Not set: ${why}`), isError: true })
       if (!d.setWait) return refuse('waiting is not available here.')
@@ -660,10 +660,10 @@ export function kernelTools(d: KernelToolDeps) {
       const label = labels(left, team)
       return text(`${already}${after.waitsFor?.held ? `${name} waits for ${label} to merge, and Kernel sends the brief then. Tell the user that merging it starts ${name}.` : `${name} waits for ${label} to merge, and Kernel tells ${name} to bring its branch up to date with it then. Tell the user that merging it moves ${name} on.`}`)
     }),
-    tool('message_agent', 'Send a follow-up message into an existing workspace chat. In a review workspace that runs more than one kind of review, name the kind in review.', {
+    tool('message_agent', 'Send a message into a workspace chat, and tell the user what you sent. If it did not send, fix the workspace id or tell the user instead of resending. Never resend a limited teammate\'s queued messages.', {
       workspace_id: z.string(), text: z.string(),
       images: imagesArg.describe(IMAGES_DESCRIBE),
-      review: z.string().optional().describe('In a review workspace, the kind of review whose chat gets the message, as list_workspaces shows them: "code", "security" or "ux". Needed when it runs more than one')
+      review: z.string().optional().describe('Review kind ("code", "security", "ux") whose chat gets it. Needed when the workspace runs more than one')
     }, async ({ workspace_id, text: t, images, review }) => {
       const attached = await loadImages(d, images)
       if ('refusal' in attached) return { ...text(`Not sent: ${attached.refusal}`), isError: true }
@@ -681,8 +681,8 @@ export function kernelTools(d: KernelToolDeps) {
       const signIn = await signInLine(to, false)
       return text(`${from ? `${r.note} This workspace was handed off in the Lead chat "${from}", so its updates go there, not here.` : r.note}${signIn}`)
     }),
-    tool('archive_workspace', 'Archive workspaces whose work is done. Skips the Lead\'s own workspace, any with an agent still working, an open PR or uncommitted changes. The user can restore them from History.', {
-      workspace_ids: z.array(z.string()).min(1).describe('Workspace ids from list_workspaces')
+    tool('archive_workspace', 'Archive finished workspaces. Skips yours, any with an agent working, an open PR or uncommitted changes. The user can restore them from History.', {
+      workspace_ids: z.array(z.string()).min(1).describe('Workspace ids')
     }, async ({ workspace_ids }) => {
       const lines: string[] = []
       // One id at a time, so a skip or a failed archive doesn't stop the rest (D-090).
@@ -705,8 +705,8 @@ export function kernelTools(d: KernelToolDeps) {
       }
       return text(lines.join('\n'))
     }),
-    tool('merge_workspace', "Merge workspaces' pull requests, only when the user's own message asks. A review's id merges the PR it reviewed. Each merge needs what Settings, Pull requests asks for, such as passing checks and the reviewer's approval, and no blockers from a reviewer on its latest commit that the user didn't overrule. A PR that can't merge is skipped with the reason.", {
-      workspace_ids: z.array(z.string()).min(1).describe('Workspace ids from list_workspaces')
+    tool('merge_workspace', "Merge pull requests, only when the user's own message asks. A review's id merges the PR it reviewed. Each merge needs what Settings, Pull requests asks for and no blockers on the latest commit that the user didn't overrule. A PR that can't merge is skipped with the reason.", {
+      workspace_ids: z.array(z.string()).min(1).describe('Workspace ids')
     }, async ({ workspace_ids }) => {
       // Both gates hold here: mcp__kernel__* tools are auto-allowed, and the Lead's tools are built once per session (D-008).
       if (!d.mergeWorkspace || !d.leadMerge?.()) return { ...text(MERGE_OFF), isError: true }
@@ -744,9 +744,9 @@ export function kernelTools(d: KernelToolDeps) {
       }
       return text(lines.join('\n'))
     }),
-    tool('overrule_blockers', "Overrule the blockers the reviews found on a pull request's latest commit, when the user wants to go past them. A review's id overrules on the PR it reviewed. Until a new commit, a merge goes ahead without Merge anyway, and the new commit's reviews count again. Auto-merge never merges past an overrule.", {
-      workspace_id: z.string().describe('Workspace id from list_workspaces'),
-      note: z.string().optional().describe("Why, in a line, as the user put it")
+    tool('overrule_blockers', "Overrule the blockers on a pull request's latest commit, when the user wants to go past them. A review's id works on the PR it reviewed. It holds until a new commit, and auto-merge never merges past it.", {
+      workspace_id: z.string().describe('Workspace id'),
+      note: z.string().optional().describe("Why, as the user put it")
     }, async ({ workspace_id, note }) => {
       const refuse = (why: string) => ({ ...text(why), isError: true })
       if (!d.overrule) return refuse('Not overruled: overruling is not available here.')
@@ -764,13 +764,13 @@ export function kernelTools(d: KernelToolDeps) {
         return refuse(`Not overruled: ${firstLine(e instanceof Error ? e.message : String(e))}`)
       }
     }),
-    tool('read_plans', 'Read the plans approved in every tab of this chat, newest first: the tab, when it was approved and the plan.', {}, async () => {
+    tool('read_plans', 'Read the plans approved in every tab of this chat, newest first. Other tabs may have approved plans you haven\'t seen.', {}, async () => {
       const plans = d.plans?.() ?? []
       if (!plans.length) return text('No plan has been approved in this chat yet.')
       return text(plans.map((p) => `Approved in the tab "${p.tab}" at ${new Date(p.at).toISOString()}:\n${p.plan}`).join('\n\n'))
     }),
-    tool('link_issue', 'Link this chat\'s own work to a tracker issue. Before the first push the branch is renamed after the issue, after it only the link changes. Name the issue in the PR body so it closes on merge.', {
-      issue: z.string().min(1).max(80).describe('The issue key, for example "KERNEL-760" or "#41"')
+    tool('link_issue', 'Link your own work to a tracker issue. Call it before your first push when your work builds one: until a push the branch is renamed after the issue. Name the issue in the PR body so it closes on merge.', {
+      issue: z.string().min(1).max(80).describe('The issue key ("KERNEL-760", "#41")')
     }, async ({ issue }) => {
       if (!d.linkIssue) return { ...text('Not linked: this chat can\'t link an issue.'), isError: true }
       try {
@@ -780,12 +780,12 @@ export function kernelTools(d: KernelToolDeps) {
         return { ...text(`Not linked: ${firstLine(e instanceof Error ? e.message : String(e))}`), isError: true }
       }
     }),
-    tool('file_issue', "File a new issue in this project's tracker, or change one by its key in issue: its title, description or state, or add a comment. This is how you file, edit, comment on and move tracker issues, the /issue flow's included.", {
-      issue: z.string().optional().describe('The key of the issue to change, for example "PROJ-83" or "#41". Left out, a new issue is filed'),
-      title: z.string().optional().describe('The title. A new issue needs one'),
-      description: z.string().optional().describe('The description in markdown. On an existing issue it replaces the old one'),
-      state: z.string().optional().describe('With issue: the state to move it to, by its name in the tracker, for example "In Review", or "open" or "closed" where issues only open and close'),
-      comment: z.string().optional().describe('With issue: a comment to add, in markdown'),
+    tool('file_issue', "File a new issue in the project's tracker, or with issue change one: its title, description or state, or add a comment. File, edit, comment on and move tracker issues with this or the tracker's own tools.", {
+      issue: z.string().optional().describe('Key of the issue to change ("PROJ-83", "#41"). Left out, a new issue is filed'),
+      title: z.string().optional().describe('A new issue needs one'),
+      description: z.string().optional().describe('Markdown. On an existing issue it replaces the old one'),
+      state: z.string().optional().describe('With issue: the state to move it to, by its tracker name ("In Review"), or "open" or "closed" where issues only open and close'),
+      comment: z.string().optional().describe('With issue: a comment, in markdown'),
     }, async ({ issue, title, description, state, comment }) => {
       const refuse = (why: string) => ({ ...text(`Not filed: ${why}`), isError: true })
       if (!d.tracker) return refuse('filing issues is not available here.')
@@ -846,7 +846,7 @@ export function kernelTools(d: KernelToolDeps) {
         asked.patch.scripts?.setup ? 'Workspaces already open keep the old setup until the user clicks Run setup in each.' : ''
       ].filter(Boolean).join(' '))
     }),
-    tool('create_agent', 'Create a new agent by proposing its file. The user approves it and picks who gets it: just them (~/.claude/agents on their Mac, in every project) or the team (a pull request that adds .claude/agents/<id>.md). Set scope only when the user said which. Leave tools out for the role\'s defaults: Read, Grep and Glob for a reviewer, and Read, Edit, Write, Bash, Grep and Glob for everyone else. An agent takes tasks only when its tools include Bash, and Edit or Write. Name each MCP server it needs in tools, as mcp__<server>.', {
+    tool('create_agent', 'Propose a new agent\'s file. The user approves it and picks who gets it: just them (~/.claude/agents, every project) or the team (a PR that adds .claude/agents/<id>.md). Set scope only when the user said which. Leave tools out for the role\'s defaults (Read, Grep, Glob for a reviewer, plus Edit, Write, Bash for everyone else). An agent takes tasks only with Bash and Edit or Write. Name each MCP server it needs as mcp__<server>.', {
       id: z.string().regex(/^[a-z][a-z0-9-]*$/), description: z.string(), prompt: z.string(),
       model: z.string().optional(), tools: z.array(z.string()).optional(), role: z.string().optional(),
       scope: z.enum(['me', 'team']).optional()

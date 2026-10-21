@@ -293,6 +293,12 @@ describe("the repo's PR conventions (KERNEL-468)", () => {
     }
   })
 
+  it("puts the three parts inside the template's matching sections instead of three headings on top (lean-lead-prompt)", () => {
+    expect(PR_BODY_SHAPE).toContain("put each part inside the template's matching section and add no headings on top")
+    expect(PR_BODY_SHAPE).toContain('With no PR template, make them the headings')
+    expect(createPrText({ template: '.github/pull_request_template.md' })).toContain("put each part inside the template's matching section")
+  })
+
   it('has the generic texts Settings, Pull requests shows, word for word (KERNEL-564)', () => {
     const opening = "Your project instructions and the repo's own docs on pull requests come first. Where they differ from these steps, follow them."
     const last = "If a step fails and you can't fix it, stop and say what failed."

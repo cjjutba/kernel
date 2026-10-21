@@ -1,7 +1,7 @@
 import type { AgentDef, Chat, Workspace } from '@shared/types'
 import { reviewTools } from '../services/reviewMcp'
 import { teammateTools } from '../services/teammateMcp'
-import { kernelServer } from '../services/kernelServer'
+import { kernelServer, LEAD_ALWAYS_LOADED } from '../services/kernelServer'
 import { sharedTools } from '../services/sharedMcp'
 import { issueTools } from '../services/issueMcp'
 import { LEAD_SHARING_RULE, SHARE_RULE, TEAMMATE_RULE } from '../services/handoff'
@@ -34,9 +34,9 @@ export class Tools extends Feature {
     return of(ws) ?? (ws?.reviewOf ? of(this.store.workspace(ws.reviewOf)) : undefined)
   }
 
-  /** The `kernel` server for a session, with the tools `toolsFor` gives the agent. The Lead's carries its instructions. */
+  /** The `kernel` server for a session, with the tools `toolsFor` gives the agent. The Lead's carries its instructions, and only its most used tools in the prompt (lean-lead-prompt). */
   mcpFor(ws: Workspace, agent: AgentDef | undefined, chat: Chat) {
-    return { kernel: kernelServer(this.toolsFor(ws, agent, chat), agent?.lead ? LEAD_INSTRUCTIONS : undefined) }
+    return { kernel: kernelServer(this.toolsFor(ws, agent, chat), agent?.lead ? LEAD_INSTRUCTIONS : undefined, agent?.lead ? { loaded: LEAD_ALWAYS_LOADED } : {}) }
   }
 
   /**

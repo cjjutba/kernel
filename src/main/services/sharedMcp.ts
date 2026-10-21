@@ -9,7 +9,7 @@ export interface SharedToolDeps {
 
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
 
-export const SHARE_DESCRIPTION = `Share a file with the user. Kernel keeps a copy of each version and puts a card for it in this chat, which the user opens in a tab. It takes HTML, images (PNG, JPEG, GIF, WebP, SVG), PDF and Markdown. HTML must be one self-contained file: inline the CSS and JS, put images in as data: URLs, and load nothing from the network, because the preview has no network. Save files under ${SHARED_DIR}/ in your workspace, which git ignores. Share the same path again after changes to add a version.`
+export const SHARE_DESCRIPTION = `Share a file with the user as a card in this chat, which they open in a tab. Takes HTML, images (PNG, JPEG, GIF, WebP, SVG), PDF and Markdown. HTML must be one self-contained file: inline the CSS and JS and use data: URLs for images, since the preview has no network. Save files under ${SHARED_DIR}/ in your workspace, which git ignores. Share the same path again to add a version.`
 
 /** The warning added when an HTML file's outside references won't load in the preview. */
 export const outsideNote = (n: number) => `${n === 1 ? '1 reference' : `${n} references`} to other files or the network won't load: the preview has no network. Inline the CSS and JS and use data: URLs for images, then share it again.`
@@ -18,9 +18,9 @@ export const outsideNote = (n: number) => `${n === 1 ? '1 reference' : `${n} ref
 export function sharedTools(d: SharedToolDeps) {
   return [
     tool('share_file', SHARE_DESCRIPTION, {
-      path: z.string().describe(`The file to share, relative to your workspace, for example "${SHARED_DIR}/checkout.html"`),
-      title: z.string().optional().describe("What the card calls it. Left out, Kernel uses the HTML's <title>, the Markdown's first # heading, or the file name"),
-      note: z.string().optional().describe('One line on what changed in this version')
+      path: z.string().describe(`Path relative to your workspace, for example "${SHARED_DIR}/checkout.html"`),
+      title: z.string().optional().describe("The card's title. Left out: the HTML's <title>, the Markdown's first # heading, or the file name"),
+      note: z.string().optional().describe('What changed in this version, in one line')
     }, async ({ path, title, note }) => {
       try {
         const r = await d.share({ path, title, note })

@@ -57,13 +57,13 @@ export function briefParts(brief: string, issue: TrackerIssue, kind: TrackerKind
 }
 
 /** get_issue's description, which names no tracker, since the tools are built before the project's tracker is known. */
-export const GET_ISSUE = "Read an issue from this project's issue tracker: its title, description and latest comments. Left out, key is the issue this workspace builds. No tracker MCP server is needed."
+export const GET_ISSUE = "Read an issue from the project's tracker: title, description and latest comments. Left out, key is the issue this workspace builds."
 
 /** get_issue, which every agent gets (KERNEL-473), apart from the server so tests can call it. Read-only. */
 export function issueTools(d: IssueToolDeps) {
   return [
     tool('get_issue', GET_ISSUE, {
-      key: z.string().optional().describe('The issue\'s key as the tracker shows it, like "PROJ-83" or "#41". Left out, the issue this workspace builds')
+      key: z.string().optional().describe('The issue key ("PROJ-83", "#41"). Left out, the issue this workspace builds')
     }, async ({ key }) => {
       const refuse = (why: string) => ({ ...text(`Not read: ${why}`), isError: true })
       const id = key?.trim() || d.issueKey()
