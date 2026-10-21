@@ -1,0 +1,8 @@
+{"provider":"claude","scenario":"interrupt","description":"The user stops a turn while a command runs. Claude Code ends it with an error result that Kernel hides."}
+{"dir":"out","query":{"model":"claude-sonnet-5-5"}}
+{"dir":"out","user":{"text":"Run the whole suite"}}
+{"dir":"in","msg":{"type":"system","subtype":"init","uuid":"i1","session_id":"sess-1","apiKeySource":"none","permissionMode":"acceptEdits","model":"claude-sonnet-5-5","mcp_servers":[],"tools":["Read","Bash"]}}
+{"dir":"in","msg":{"type":"assistant","uuid":"a1","session_id":"sess-1","parent_tool_use_id":null,"message":{"id":"m1","role":"assistant","model":"claude-sonnet-5-5","content":[{"type":"tool_use","id":"tu1","name":"Bash","input":{"command":"sleep 30"}}],"stop_reason":"tool_use"}}}
+{"dir":"out","interrupt":true}
+{"dir":"in","msg":{"type":"user","uuid":"u1","session_id":"sess-1","parent_tool_use_id":null,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu1","is_error":true,"content":"Interrupted"}]}}}
+{"dir":"in","msg":{"type":"result","subtype":"error_during_execution","uuid":"r1","session_id":"sess-1","is_error":true,"duration_ms":400,"duration_api_ms":300,"num_turns":1,"errors":[]}}
