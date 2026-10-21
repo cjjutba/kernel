@@ -1,10 +1,12 @@
 import { stat } from 'node:fs/promises'
 import { join, relative } from 'node:path'
-import type { Decision } from '@shared/types'
+import type { Approval, Decision } from '@shared/types'
 import type { Handlers } from '../kernel'
 import { settledAs, type Typed } from '../services/approvals'
 import { bannerSound } from '../services/notifications'
-import { planChanges } from '../services/handoff'
+import { ownerLines, planChanges } from '../services/handoff'
+import { ownerOf } from '@shared/planOwners'
+import { takesTasks } from '@shared/team'
 import { attachmentNote, planExists, saveAttachments, savePlan } from '../services/plans'
 import { Feature } from './feature'
 
@@ -55,8 +57,12 @@ export class Inbox extends Feature {
     // Kernel's message names the approval and stays hidden. The user's answer is its own row (KERNEL-836).
     let typed: Typed | undefined
     if (decision.behavior === 'allow') {
-      this.sessions.placeAnswer(settledAs(a, decision))
-      await this.sessions.planApproved(chat.id, { queue: true, restarted: true, approvalId: id })
+      decision = await this.cleanOwners(a, decision)
+      const settled = settledAs(a, decision)
+      this.sessions.placeAnswer(settled)
+      const agents = a.projectId && settled.steps?.length ? await this.k.team.agents(a.projectId) : []
+      const owners = settled.steps?.length ? ownerLines(settled.steps, (agentId) => agents.find((x) => x.id === agentId)?.name ?? agentId) : undefined
+      await this.sessions.planApproved(chat.id, { queue: true, restarted: true, approvalId: id, owners })
     } else {
       const saved = await this.withAttachments(id, decision)
       decision = saved.decision
@@ -66,6 +72,19 @@ export class Inbox extends Feature {
       await this.sessions.send(chat.id, [{ type: 'text', text: planChanges(notes, a.planFile) }], { from: 'kernel', approvalId: id })
     }
     return this.approvals.settle(id, decision, typed)!
+  }
+
+  /**
+   * An approved plan's owners, kept to the ids that can take a step: a teammate who takes tasks in the plan's project, or null
+   * for Kernel. Anything else, and any owner past the plan's last step, leaves that step with the owner the Lead proposed
+   * (plan-step-owners).
+   */
+  private async cleanOwners(a: Approval | undefined, decision: Decision): Promise<Decision> {
+    if (decision.behavior !== 'allow' || decision.owners === undefined) return decision
+    const steps = a?.kind === 'plan' ? a.steps : undefined
+    if (!a || !steps?.length || !a.projectId || !Array.isArray(decision.owners)) { const { owners: _drop, ...rest } = decision; return rest }
+    const team = new Set((await this.k.team.agents(a.projectId)).filter((x) => takesTasks(x) && !x.lead).map((x) => x.id))
+    return { ...decision, owners: steps.map((s, i) => { const o = (decision.owners as unknown[])[i]; return o === null || (typeof o === 'string' && team.has(o)) ? o : ownerOf(s) }) }
   }
 
   handlers() {
@@ -79,6 +98,7 @@ export class Inbox extends Feature {
       'approvals.list': async ({ projectId }) => this.store.approvals({ projectId }),
       'approvals.decide': async ({ id, decision }) => {
         if (this.approvals.waitingPlan(id)) return this.answerPlan(id, decision)
+        decision = await this.cleanOwners(this.store.approval(id), decision)
         // Request changes keeps what the user typed and attached, without the lines Kernel adds for the images.
         const saved = await this.withAttachments(id, decision)
         const a = this.approvals.decide(id, saved.decision, saved.typed)

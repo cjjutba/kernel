@@ -8,7 +8,7 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { tempRepo, freePort } from './helpers'
-import { BLOCKER_RULE, CARRY_OUT, forProvider, LEAD_RULE, LEAD_SHARING_RULE, reviewRule, SETUP_LINE, TEAMMATE_RULE } from '../src/main/services/handoff'
+import { BLOCKER_RULE, CARRY_OUT, CARRY_OUT_OWNED, forProvider, LEAD_RULE, LEAD_SHARING_RULE, reviewRule, SETUP_LINE, TEAMMATE_RULE } from '../src/main/services/handoff'
 import { reviewTools } from '../src/main/services/reviewMcp'
 import { reviewPolicyOf } from '../src/main/services/settings'
 import { kindsFor } from '../src/main/services/lenses'
@@ -257,7 +257,7 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     expect(await planSaved()).toBe('.kernel/plans/plan.md')
     k.approvals.decide(plans()[0].id, { behavior: 'allow' })
     // The Lead still has the plan in context, so the note names no file. The settled card says it, so the chat adds no note.
-    expect(((await asked).content[0] as { text: string }).text).toBe(`Plan approved.\n\n${CARRY_OUT}`)
+    expect(((await asked).content[0] as { text: string }).text).toBe(`Plan approved.\n\nWho does each step:\n1. Symlink node_modules: hand it to Sean\n\n${CARRY_OUT_OWNED}`)
     expect(k.store.items(chat.id).filter((i) => i.kind === 'note')).toEqual([])
   })
 
