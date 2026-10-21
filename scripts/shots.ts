@@ -589,6 +589,32 @@ const windowAt = (w: number) => async (page: Page, app: ElectronApplication) => 
   await page.waitForTimeout(400)
 }
 
+// A long Settings page drawn at its full length: the window grows to the height of the page's scroll box, so nothing is cut (Redesign 15).
+async function windowFull(page: Page, app: ElectronApplication) {
+  const h = await page.locator('.set-scroll').evaluate((el) => el.scrollHeight + (window.innerHeight - el.clientHeight))
+  await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.w, size.h), { w: WIDTH, h })
+  await page.waitForTimeout(400)
+}
+
+// SettingsPRsInstructions is Create PR's sheet with a space added at the end of its text and left, so the footer says Saved (Redesign 15).
+async function editInstructions(page: Page) {
+  await page.getByRole('button', { name: 'Edit the Create PR instructions' }).click()
+  const field = page.getByRole('textbox', { name: 'Create PR' })
+  await field.press('Control+End')
+  await field.pressSequentially(' ')
+  await field.evaluate((el) => el.blur())
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
+// SettingsBigTerminalPreset is Add command with a name and a command typed (Redesign 15).
+async function addCommand(page: Page) {
+  await page.getByRole('button', { name: 'Add command' }).click()
+  await page.getByRole('textbox', { name: 'Name' }).fill('Dev server logs')
+  await page.getByRole('textbox', { name: 'Command' }).fill('tail -f logs/dev.log')
+  await page.waitForTimeout(300)
+}
+
 // SettingsPRsSaving, Saved and Clamped are Size limit typed and left (KERNEL-721). The note is local to the field. Saving holds main's answer back.
 async function leaveSizeLimit(page: Page, text: string) {
   const field = page.getByRole('textbox', { name: 'Size limit' })
@@ -838,6 +864,10 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceScrollComposerQueueMotion: (page) => focusComposer(page),
   WorkspaceScrollTurnFoldMotion: scrollUp,
   WorkspaceScrollPlanRoundTripReducedMotion: async (page) => { await reducedMotion(page); await toEnd(page) },
+  SettingsGit: windowFull,
+  SettingsPRs: windowFull,
+  SettingsPRsInstructions: editInstructions,
+  SettingsBigTerminalPreset: addCommand,
   SettingsPRsSaving: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsSaved: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsSavedLight: (page) => leaveSizeLimit(page, '600'),

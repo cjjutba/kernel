@@ -13,11 +13,11 @@
 /* A review that is off keeps its settings in view, quieter, and can't be edited until it is on. */
 .rv-off .rv-line { opacity: 0.5; }
 
-/* A whole number beside its unit */
+/* A whole number and its unit in one box: 400 lines. The box lights up with the field (Redesign 15). */
 .rv-number { flex-shrink: 0; display: flex; align-items: center; gap: 8px; }
-.rv-number input { width: 76px; height: 30px; box-sizing: border-box; padding: 0 10px; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--panel); color: var(--ink-2); font: var(--fs-code) var(--mono); text-align: right; outline: none; user-select: text; }
-.rv-number input:focus { border-color: var(--line-3); }
-.rv-number input:disabled { color: var(--muted); }
+.rv-box { display: flex; align-items: center; gap: 6px; height: 30px; box-sizing: border-box; padding: 0 10px; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--canvas); }
+.rv-box input { min-width: 3ch; padding: 0; border: 0; background: transparent; color: var(--ink-2); font: var(--fs-code) var(--font); field-sizing: content; text-align: left; user-select: text; }
+.rv-box input:disabled { color: var(--muted); }
 .rv-unit { font-size: var(--fs-code); color: var(--muted); }
 
 

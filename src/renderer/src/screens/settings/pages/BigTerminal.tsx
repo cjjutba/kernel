@@ -1,21 +1,22 @@
-import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { KNOWN_CLIS, type AppSettings, type TerminalPreset } from '@shared/types'
 import { getState } from '../../../store'
 import { selectedPreset, useTerminalPresets } from '../../../terminalPresets'
 import './system.css'
-import { Button, Icon, Modal, Toggle, useBusy } from '../../../ui'
+import { Button, Icon, LoadingRow, Modal, Toggle, useBusy, type MenuEntry } from '../../../ui'
 import { appliesTo, Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
+import { RowMenu } from './RowMenu'
 
 type Custom = AppSettings['terminal']['custom'][number]
 
-/** The line under a preset's name. Skipping prompts follows "Terminal tabs only in worktrees". A CLI Kernel found on the PATH says so. */
-const describe = (p: TerminalPreset, onlyInWorktrees: boolean): string => {
-  if (!p.builtin) return 'Custom command.'
-  if (p.id === 'claude') return 'In the workspace folder.'
-  if (p.id === 'claude-skip') return onlyInWorktrees ? 'Worktrees only.' : 'Any workspace, your current branch included.'
-  if (p.id === 'shell') return 'Your login shell.'
-  return 'Found on your PATH.'
+/** The command a preset types, in mono under its name. The shell has no command of its own, so it says so. */
+const commandOf = (p: TerminalPreset): string => p.command ?? 'Your login shell'
+
+/** What a built-in preset adds to its command: Skipping prompts follows "Terminal tabs only in worktrees". A custom command has nothing to add. */
+const noteOf = (p: TerminalPreset, onlyInWorktrees: boolean): string | undefined => {
+  if (p.id === 'claude-skip') return onlyInWorktrees ? 'Worktrees only' : 'Any workspace, your current branch included'
+  return undefined
 }
 
 /** A custom command's id: its name as a slug. The prefix keeps it clear of the built-in and CLI ids, which main would refuse. */
@@ -37,18 +38,19 @@ export function BigTerminal({ s }: { s: AppSettings }) {
   return (
     <>
       <Page title="Big terminal" desc="A full terminal as a chat tab, for running Claude Code or Codex by hand.">
-        <Section label="Tab">
+        <Section title="Tab">
           <Row id="big-terminal-tab" label="Big terminal tab" desc="Opens in the workspace folder."><Toggle label="Big terminal tab" checked={t.enabled} onChange={(v) => set({ enabled: v })} /></Row>
           <Row id="terminal-only-worktrees" setting="terminal.onlyInWorktrees" label="Terminal tabs only in worktrees" desc="Never on your current branch."><Toggle label="Terminal tabs only in worktrees" checked={t.onlyInWorktrees} onChange={(v) => set({ onlyInWorktrees: v })} /></Row>
         </Section>
         <Section
           title="New tab opens"
-          action={<Button disabled={!presets} onClick={() => setEditing('new')}>Add command</Button>}
+          note="A new tab runs the one marked Default."
+          action={<Button icon="plus" disabled={!presets} onClick={() => setEditing('new')}>Add command</Button>}
           footnote={`The + menu in the tab strip opens a Terminal tab with this preset. ${appliesTo('terminal.preset')}.`}
         >
           {presets
             ? <PresetList presets={presets} selected={selected} onlyInWorktrees={t.onlyInWorktrees} onPick={(id) => set({ preset: id })} onEdit={(id) => setEditing(t.custom.find((c) => c.id === id) ?? null)} onRemove={(id) => { const c = t.custom.find((x) => x.id === id); if (c) remove(c) }} />
-            : <div className="set-empty">Looking for presets</div>}
+            : <LoadingRow what="presets" inline />}
         </Section>
       </Page>
       {editing && <PresetForm s={s} presets={presets ?? []} custom={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />}
@@ -56,38 +58,25 @@ export function BigTerminal({ s }: { s: AppSettings }) {
   )
 }
 
-/** One preset is selected. Arrow keys move the selection and the focus, and only the selected one is in the tab order. */
+/** One preset is the default: the one a new tab runs. Its row says so, and the menu at the end of any other row makes it the default. A custom command can also be edited or removed there. */
 function PresetList({ presets, selected, onlyInWorktrees, onPick, onEdit, onRemove }: { presets: TerminalPreset[]; selected?: string; onlyInWorktrees: boolean; onPick: (id: string) => void; onEdit: (id: string) => void; onRemove: (id: string) => void }) {
-  const radios = useRef<(HTMLButtonElement | null)[]>([])
-  const onKey = (e: KeyboardEvent, i: number) => {
-    const step = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 0
-    if (!step) return
-    e.preventDefault()
-    const next = (i + step + presets.length) % presets.length
-    onPick(presets[next].id)
-    radios.current[next]?.focus()
-  }
   return (
-    <div role="radiogroup" aria-label="New tab preset">
-      {presets.map((p, i) => {
+    <div role="list" aria-label="New tab presets">
+      {presets.map((p) => {
         const on = p.id === selected
+        const note = noteOf(p, onlyInWorktrees)
+        const items: MenuEntry[] = [
+          ...(on ? [] : [{ id: 'default', label: 'Make default', onSelect: () => onPick(p.id) }]),
+          ...(p.builtin ? [] : [{ id: 'edit', label: 'Edit', onSelect: () => onEdit(p.id) }, { id: 'remove', label: 'Remove', danger: true, onSelect: () => onRemove(p.id) }])
+        ]
         return (
-          <div key={p.id} className="set-row set-preset sys-preset set-hoverable" onClick={() => onPick(p.id)}>
-            <button
-              ref={(el) => { radios.current[i] = el }} type="button" role="radio" className="set-radio" aria-checked={on} aria-label={p.name} tabIndex={on ? 0 : -1} aria-describedby={`preset-desc-${p.id}`}
-              onClick={(e) => { e.stopPropagation(); onPick(p.id) }} onKeyDown={(e) => onKey(e, i)}
-            >{on && <Icon name="check" size={12} />}</button>
-            <div className="set-text">
-              <span className={['set-label', !p.builtin && 'mono'].filter(Boolean).join(' ')} title={p.command ?? undefined}>{p.name}</span>
-              <span id={`preset-desc-${p.id}`} className="set-desc">{describe(p, onlyInWorktrees)}</span>
-            </div>
-            {!p.builtin && (
-              <span className="set-acts" onClick={(e) => e.stopPropagation()}>
-                <Button variant="ghost" aria-label={`Edit ${p.name}`} onClick={() => onEdit(p.id)}>Edit</Button>
-                <Button variant="ghost" aria-label={`Remove ${p.name}`} onClick={() => onRemove(p.id)}>Remove</Button>
-              </span>
-            )}
-          </div>
+          <Row
+            key={p.id} className="sys-preset" lead={<span className="sys-glyph" aria-hidden="true"><Icon name="term" size={16} /></span>}
+            label={p.name} desc={<><span className="sys-cmd">{commandOf(p)}</span>{note && <span className="sys-cmd-note">{note}</span>}</>}
+          >
+            {on && <span className="sys-pill">Default</span>}
+            {items.length > 0 && <RowMenu label={`More for ${p.name}`} items={items} />}
+          </Row>
         )
       })}
     </div>
@@ -124,7 +113,7 @@ function PresetForm({ s, presets, custom, onClose }: { s: AppSettings; presets: 
   }
   return (
     <Modal
-      title={custom ? `Edit ${custom.name}` : 'Add custom command'}
+      title={custom ? `Edit ${custom.name}` : 'Add command'}
       onClose={onClose}
       width={480}
       top={200}
@@ -138,7 +127,7 @@ function PresetForm({ s, presets, custom, onClose }: { s: AppSettings; presets: 
         <p className="set-help">A new tab types this into your login shell, in the workspace folder. The + menu lists it by name.</p>
         <div className="set-field">
           <label htmlFor="terminal-preset-name">Name</label>
-          <input id="terminal-preset-name" className="input" autoComplete="off" spellCheck={false} maxLength={40} placeholder="Dev server logs" value={name} aria-invalid={shown && !!problem} aria-describedby="terminal-preset-name-note" onChange={(e) => { setName(e.target.value); setFailed(null) }} />
+          <input id="terminal-preset-name" className="input set-text-input" autoComplete="off" spellCheck={false} maxLength={40} placeholder="Dev server logs" value={name} aria-invalid={shown && !!problem} aria-describedby="terminal-preset-name-note" onChange={(e) => { setName(e.target.value); setFailed(null) }} />
           {shown && problem
             ? <span id="terminal-preset-name-note" role="alert" className="set-error">{problem}</span>
             : <span id="terminal-preset-name-note" className="set-help">The tab is called Terminal ({trimmed || 'name'}).</span>}

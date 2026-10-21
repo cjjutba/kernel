@@ -8,11 +8,30 @@
 /* Pull requests: the user's own paths in mono, the locked built-in ones as written */
 .sys-paths .set-tag:not([data-locked]) > span:first-child { font-family: var(--mono); }
 .sys-state { font-size: var(--fs-code); color: var(--muted); }
+/* An instruction a project or you changed: a small filled tag in place of the word Default. */
+.sys-state[data-custom] { padding: 1px 6px; border-radius: var(--r-xs); background: var(--surface-3); font-size: var(--fs-badge); color: var(--ink-3); }
+/* Under Merge method: a project that sets its own says which, with a link to where. */
+.sys-override { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0 5px; color: var(--ink-3); }
+.sys-override .link-button { display: inline-flex; align-items: center; gap: 4px; }
+/* A boxed field that fits its text: the worktree location and the branch name patterns (Settings, Git and worktrees). */
+.set-inline.set-boxed.sys-field { width: auto; min-width: 8ch; field-sizing: content; padding: 0 10px; border-radius: var(--r-sm); background: var(--canvas); color: var(--ink-2); font: var(--fs-code) var(--mono); text-align: left; }
+.set-inline.set-boxed.sys-field:focus { background: var(--canvas); }
+.btn.sys-path { background: var(--canvas); color: var(--ink-2); font: var(--fs-code) var(--mono); }
+.btn.sys-path:hover:not(:disabled) { background: var(--canvas); color: var(--ink); }
+/* A section's note sits at the right end of its heading row, over the card's edge, and an action follows it. */
+.set-section-note { margin-left: auto; }
+.set-section-note + .set-section-act { margin-left: 0; }
+/* The sheet that edits a PR instruction: what sends it, then the text. */
+.sys-sheet { display: flex; flex-direction: column; gap: 14px; }
+.sys-sheet-lead { margin: 0; font-size: var(--fs-ui); line-height: var(--lh); color: var(--ink-2); }
 
-/* Big terminal: a preset row is one radio target, its Edit and Remove show on hover */
-.sys-preset { cursor: pointer; }
+/* Big terminal: a preset row has a terminal glyph, its name and command, a Default pill on the one a new tab runs and a menu (Redesign 15) */
+.sys-preset { flex-wrap: nowrap; }
 .sys-preset .set-text { flex: 1 1 200px; }
-.sys-preset .set-label.mono { font: var(--fs-code) var(--mono); }
+.sys-glyph { width: 30px; height: 30px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-sm); background: var(--surface-3); color: var(--ink-2); }
+.sys-cmd { font-family: var(--mono); }
+.sys-cmd-note::before { content: '\00b7'; margin: 0 6px; }
+.sys-pill { flex-shrink: 0; padding: 1px 8px; border-radius: var(--r-pill); border: 1px solid var(--line-3); font-size: var(--fs-chip); color: var(--ink-3); }
 
 /* About: the Version card, as a row in the card with the app's own icon */
 .sys-about { display: flex; align-items: center; gap: 16px; padding: 18px 16px; }
