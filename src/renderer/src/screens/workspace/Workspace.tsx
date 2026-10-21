@@ -14,7 +14,6 @@ import { ChatTabs, diffTab, fileTab } from './ChatTabs'
 import { FileLinkScope } from './fileLinks'
 import { bringBoxOnAsk, leadHasNoChat, newChatOnScreen, showsNewChat } from './leadNoChat'
 import { bottomKindOf } from './bottomSplit'
-import { leadNewKey } from '../../components/sidebar/slots'
 import { NewChatHeader, NewChatTab, OneRowHeader } from './NewChatBar'
 import { NewLeadChat } from './NewLeadChat'
 import { nextTab } from './nextTab'
@@ -264,7 +263,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   // other. Neither is Focus mode (KERNEL-1096).
   const rail = railWanted && !newChatShown
   const focus = !sidebar && !panels && !rail
-  const tabsRow = alone ? <NewChatTab focusIn={workspaceId} /> : (
+  const tabsRow = alone ? <NewChatTab /> : (
     <ChatTabs
       inline note={label} branch={isLead && ws.lead && ws.mode === 'worktree' && ws.branch !== 'HEAD' ? ws.branch : undefined} tip={isLead ? undefined : ws.branch}
       workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} noChat={noChat} onNewChat={showNew} chats={chats} files={files} diffs={diffs} shared={shared}
@@ -345,7 +344,7 @@ export function LeadNewScreen({ projectId, source, picks }: { projectId: string;
   const project = useStore((s) => s.projects.find((r) => r.id === projectId))
   return (
     <div className="panel ws-panel">
-      <NewChatHeader project={project} focusIn={leadNewKey(projectId)} />
+      <NewChatHeader project={project} />
       <section aria-label="Agent" className="ws-main">
         <div className="col grow" style={{ minHeight: 0 }}><NewLeadChat projectId={projectId} source={source} picks={picks} /></div>
       </section>
