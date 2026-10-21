@@ -1,14 +1,17 @@
 import type { DiffStat, Workspace } from '@shared/types'
+import type { SpinnerPattern } from '../../ui/dotPatterns'
+import { reviewStages, type PrButton, type PrFacts, type PrTitle } from './pr/prStage'
 import { clock } from './setupClock'
 
 /**
  * Where an agent's session stands, as the stages the Session rail lists (KERNEL-1094): briefed, set up, building, reviewed, merged. Every stage comes from what the workspace
  * records, never from a timer: when it was made, how its setup run ended, whether the agent is working or waiting on you, and what became of its pull request.
- * `done` draws a plain green check, `failed` a plain red x, `current` a ring in ink and `pending` a faint one.
+ * `done` draws a plain green check, `failed` a plain red x, `current` a ring in ink and `pending` a faint one. The pull request's stages add a loader (`busy`), an hourglass for what
+ * waits on someone else (`wait`), a closed pull request (`closed`) and the merge glyph in purple, which is for merged only (`merged`) (KERNEL-1097).
  */
-export type StageMark = 'done' | 'current' | 'pending' | 'failed'
+export type StageMark = 'done' | 'current' | 'pending' | 'failed' | 'busy' | 'wait' | 'closed' | 'merged'
 
-export type StageId = 'briefed' | 'setup' | 'building' | 'review' | 'merged'
+export type StageId = 'briefed' | 'setup' | 'building' | 'review' | 'reviewed' | 'merged' | 'archive'
 
 export interface Stage {
   id: StageId
@@ -24,6 +27,12 @@ export interface Stage {
   busy?: boolean
   /** What the agent changed, once it has: drawn as "2 files +67 -1" under Built. */
   stat?: DiffStat
+  /** The dot loader that leads the line under the label, for a pull request that checks or resolves. */
+  loader?: SpinnerPattern
+  /** The branch a local merge goes into, as a `→ main` pill at the right of the label. */
+  pill?: string
+  /** What the stage lets you do: one or two buttons under its line. */
+  buttons?: PrButton[]
 }
 
 export interface StageInput {
@@ -36,6 +45,8 @@ export interface StageInput {
   doing?: string
   /** Whether the project has a setup script. A workspace without one is ready as soon as its worktree is. */
   hasSetup?: boolean
+  /** What the pull request's stages need beyond the workspace. Without it the rail draws the quiet stages it drew before the pull request had any. */
+  pr?: PrFacts
 }
 
 /** The setup stage: the worktree being made, the script running, how it ended, or no script at all. */
@@ -62,13 +73,22 @@ function briefedSub(ws: Workspace): string {
   return 'You briefed it'
 }
 
-/** The five stages of a workspace, in order. */
+/**
+ * The stages of a workspace, in order: briefed, set up, building or built, then the pull request's own (Review, Merged and once merged Archive). The work counts as built
+ * once its pull request is open, or once the agent is idle with changes to open one with.
+ */
 export function sessionStages(input: StageInput): Stage[] {
+  return sessionView(input).stages
+}
+
+/** The stages, and what the title bar says about the pull request while the rail is hidden. */
+export function sessionView(input: StageInput): { stages: Stage[]; title?: PrTitle } {
   const { ws, running, waiting, doing } = input
   const merged = ws.prState === 'merged'
   const hasPr = !!ws.prNumber || (ws.prState !== 'none' && ws.prState !== 'creating')
-  const built = merged || hasPr
   const stat = ws.stat && ws.stat.files > 0 ? ws.stat : undefined
+  // The agent finished a turn with changes in the tree: they are what a pull request opens with. A pull request being created is built already.
+  const built = merged || hasPr || ws.prState === 'creating' || input.pr?.pending === 'create' || (!!input.pr && !running && !waiting && !!stat)
   const briefed: Stage = { id: 'briefed', label: 'Briefed', mark: 'done', sub: briefedSub(ws), at: ws.createdAt }
   const setup = setupStage(input)
   // The agent works alongside setup, so the stage that follows is current whatever setup says, until a pull request is open.
@@ -79,11 +99,6 @@ export function sessionStages(input: StageInput): Stage[] {
       : running
         ? { id: 'building', label: 'Building', mark: 'current', sub: doing ?? 'Working' }
         : { id: 'building', label: 'Building', mark: 'current', ...(stat ? { stat } : { sub: 'Waiting for a message' }) }
-  const review: Stage = merged
-    ? { id: 'review', label: 'Reviewed', mark: 'done', sub: ws.prNumber ? `#${ws.prNumber} was reviewed` : 'The pull request was reviewed' }
-    : hasPr
-      ? { id: 'review', label: 'Review', mark: 'current', sub: ws.prNumber ? `#${ws.prNumber} is ${ws.prState === 'closed' ? 'closed' : 'open'}` : 'The pull request is open' }
-      : { id: 'review', label: 'Reviewed', mark: 'pending', sub: 'A reviewer reads the pull request' }
-  const last: Stage = merged ? { id: 'merged', label: 'Merged', mark: 'done', ...(ws.mergedAt ? { at: ws.mergedAt } : {}) } : { id: 'merged', label: 'Merged', mark: 'pending' }
-  return [briefed, setup, building, review, last]
+  const after = reviewStages(ws, input.pr, built, !running && !waiting)
+  return { stages: [briefed, setup, building, ...after.stages], ...(after.title ? { title: after.title } : {}) }
 }

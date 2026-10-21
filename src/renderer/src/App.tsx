@@ -47,6 +47,7 @@ import { ConfirmArchive } from './screens/workspace/ConfirmArchive'
 import { ConfirmArchiveChat } from './screens/workspace/ConfirmArchiveChat'
 import { ConfirmCloseChats } from './screens/workspace/ConfirmCloseChats'
 import { ConfirmDiscard } from './screens/workspace/ConfirmDiscard'
+import { ConfirmMergeAnyway } from './screens/workspace/ConfirmMergeAnyway'
 import { ConfirmRevert } from './screens/workspace/ConfirmRevert'
 import { LeadNewScreen, Workspace } from './screens/workspace/Workspace'
 import { useArchiveLanding } from './screens/workspace/archiveLanding'
@@ -113,6 +114,7 @@ function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
     case 'confirm':
       if (modal.kind === 'archive') return <ConfirmArchive workspaceId={modal.workspaceId} />
       if (modal.kind === 'discard') return <ConfirmDiscard workspaceId={modal.workspaceId} />
+      if (modal.kind === 'mergeAnyway') return <ConfirmMergeAnyway workspaceId={modal.workspaceId} />
       if (modal.kind === 'revert') return <ConfirmRevert workspaceId={modal.workspaceId} checkpointId={modal.checkpointId} start={modal.start} />
       if (modal.kind === 'removeProject') return <ConfirmRemoveProject projectId={modal.projectId} />
       if (modal.kind === 'deleteHistory') return <ConfirmDeleteHistory workspaceIds={modal.workspaceIds} />

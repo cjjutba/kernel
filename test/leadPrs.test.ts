@@ -38,7 +38,7 @@ describe('the order', () => {
     const read = (id: string) => ({ [id]: info(id) })
     const [row] = list([ws('blocked', { reviews: [verdict('approved', { sha: 'old' })] })], read('blocked'))
     expect(row.ready).toBe(false)
-    expect(row.state).toMatchObject({ label: 'Waiting for approval', tone: 'idle', spin: false, why: expect.stringContaining("The code review hasn't approved") })
+    expect(row.state).toMatchObject({ label: 'Waiting for review', tone: 'idle', spin: false, why: expect.stringContaining("The code review hasn't approved") })
     expect(list([ws('fine', { reviews: [verdict('approved')] })], read('fine'))[0].ready).toBe(true)
   })
 
@@ -65,13 +65,14 @@ describe('the three lists (KERNEL-757)', () => {
   it('puts a PR only blockers hold back under Needs attention, with Merge anyway', () => {
     const [row] = list([ws('b', { reviews: [verdict('blockers', { blockers: [{ text: 'No test covers it.' }] })] })], { b: info('b') })
     expect(row).toMatchObject({ ready: false, group: 'attention', blockers: { count: 1 } })
-    expect(rowState(row)).toMatchObject({ text: 'Blockers found', tone: 'fail' })
+    // Nothing failed, so the line says who found how many, quietly, with the info mark (Pen 10.11).
+    expect(rowState(row)).toMatchObject({ text: '1 blocker from Artkin', tone: 'idle', icon: 'info' })
   })
 
   it("gives each row the sidebar's icon: green to merge, red for a person, the spinner while something runs", () => {
     const [ready, failed, draft, running] = list([ws('r'), ws('f', { prState: 'cifail' }), ws('d', { prState: 'draft' }), ws('c', { prState: 'checks' })])
     expect(rowGlyph(ready)).toEqual({ icon: 'pr', tone: 'add', label: 'Ready to merge' })
-    expect(rowGlyph(failed)).toEqual({ icon: 'pr', tone: 'del', label: 'Checks failed' })
+    expect(rowGlyph(failed)).toEqual({ icon: 'xCircle', tone: 'del', label: 'Checks failed' })
     expect(rowGlyph(running)).toEqual({ icon: 'spin', tone: 'muted', label: 'Checks running' })
     expect(rowGlyph(draft)).toEqual({ icon: 'prDraft', tone: 'muted', label: 'Draft' })
     // A merge spins in the row's Merge place, whoever started it, so the icon stays the ready one (KERNEL-520).
@@ -83,14 +84,14 @@ describe('the three lists (KERNEL-757)', () => {
 
   it('says a ready row\'s review, since its list says it can merge, and what any other row waits on with the reason', () => {
     const [approved] = list([ws('a', { reviews: [verdict('approved')] })], { a: info('a') })
-    expect(rowState(approved)).toEqual({ text: 'Code approved', tone: 'good', icon: 'check' })
+    expect(rowState(approved)).toEqual({ text: 'Approved by Artkin', tone: 'good', icon: 'check' })
     const [both] = list([ws('s', { reviews: [verdict('approved', { lens: 'code' }), verdict('approved', { lens: 'security' })] })], { s: info('s') })
     expect(rowState(both)).toEqual({ text: 'Code and security approved', tone: 'good', icon: 'shieldCheck' })
     expect(rowState(list([ws('n')])[0])).toEqual({ text: 'Not reviewed', tone: 'idle' })
     expect(rowState(list([ws('c', { prState: 'checks' })])[0])).toEqual({ text: 'Checks running', tone: 'idle', icon: 'spin' })
-    expect(rowState(list([ws('f', { prState: 'cifail' })])[0])).toEqual({ text: 'Checks failed', tone: 'fail', icon: 'xCircle' })
+    expect(rowState(list([ws('f', { prState: 'cifail' })])[0])).toEqual({ text: 'Checks failed', tone: 'fail', icon: 'close' })
     const [waiting] = list([ws('w', { reviews: [verdict('approved', { sha: 'old' })] })], { w: info('w') })
-    expect(rowState(waiting)).toEqual({ text: 'Waiting for approval', tone: 'idle', icon: 'clock', why: expect.stringContaining("The code review hasn't approved") })
+    expect(rowState(waiting)).toEqual({ text: 'Waiting for review', tone: 'idle', icon: 'hourglass', why: expect.stringContaining("The code review hasn't approved") })
   })
 })
 
@@ -156,12 +157,5 @@ describe('what the tab and the Team update share (KERNEL-411)', () => {
     expect(reviewPhrase({})).toEqual({ text: 'Not reviewed', tone: 'faint' })
     // Blockers win over a review still running.
     expect(reviewPhrase({ reviewing: ['ux'], blockers: { lenses: ['code'], count: 1 } }).text).toBe('Code found 1 blocker')
-  })
-
-  it("counts open PRs that can't merge yet in the band, never as no open PRs", async () => {
-    const { summaryText } = await import('../src/renderer/src/screens/workspace/pr/LeadPrSummary')
-    expect(summaryText(2, 3)).toBe('2 ready to merge')
-    expect(summaryText(0, 2)).toBe('2 open, none ready')
-    expect(summaryText(0, 0)).toBe('No open PRs')
   })
 })

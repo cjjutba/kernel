@@ -25,10 +25,8 @@ import { OpenItems } from './composer/OpenItems'
 import { DiffView, FileView, ImageView, TextView } from './FileView'
 import { BottomPanel, RightPanel } from './Panels'
 import { SharedView } from './shared/SharedView'
-import { LeadPrSummary } from './pr/LeadPrSummary'
-import { LocalMergeInfo } from './pr/LocalMerge'
 import { hasChanges } from './pr/model'
-import { PrHeader } from './pr/PrHeader'
+import { PrTitleBar } from './pr/PrTitleBar'
 import { SessionRail } from './SessionRail'
 import { SkipNotice } from './terminal/SkipNotice'
 import { TerminalView } from './terminal/Terminal'
@@ -111,7 +109,6 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const tabs = useStore((s) => s.ui.tabs[workspaceId])
   // A chat started from New chat keeps its panel closed until the toggle is pressed in it (KERNEL-788).
   const panels = useStore((s) => panelShownIn(s.ui, workspaceId))
-  const held = useStore((s) => s.ui.panelHeld.includes(workspaceId))
   const railWanted = useStore((s) => railShownIn(s.ui, workspaceId))
   const sidebar = useStore((s) => s.ui.sidebar)
   // Expand: the panel takes the whole screen, chat included, until it is pressed again.
@@ -280,8 +277,8 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
       <OneRowHeader project={project} end={!newChatShown && <>
         {focus && <FocusChip />}
         <IssueKey ws={ws} project={project} />
-        {/* The PR's own place is the rail and the Pull request tab (Part 10). Until it moves there the capsule keeps Create PR and Merge in reach. */}
-        {ownPr ? <PrHeader ws={ws} capsule /> : <LeadPrSummary projectId={ws.projectId} capsule quiet={held} />}
+        {/* The pull request's own place is the Session rail and the Pull request tab. With neither on screen, its state moves here: an icon, its number, a few words and the one action (Pen 10.3). */}
+        {ownPr && !rail && !(panels && !newChatShown) && <PrTitleBar ws={ws} />}
         <OpenIn ws={ws} />
         <ViewToggles rail={!isLead} kind={bottomKindOf(getState(), ws)} />
       </>}>
@@ -327,7 +324,6 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
             storageKey={PANEL_KEY} hideBelow={PANEL_HIDE_BELOW} onHide={() => actions.ui.setRightPanel(false)} onCommit={setPanelWidth}
           />
           <section className="side-card" aria-label="Panels">
-            {ownPr && <LocalMergeInfo ws={ws} />}
             {/* Below its tabs the panel is two panes, 2/3 over 1/3 until the bottom is dragged. The one fraction is every chat's (KERNEL-513). */}
             <div className="ws-split" style={{ '--bottom-ratio': bottomRatio } as CSSProperties}>
               <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={openDiff} filePath={filePath} diffPath={diffPath || undefined} expanded={expanded} onExpand={() => setExpanded((e) => !e)} />

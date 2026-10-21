@@ -38,25 +38,8 @@
   --plan: #5aa2ff;
   --on-plan: #06101e;
   --claude: #d97757;
-  --pr-merged-band: #30254a;
-  --pr-merged-line: #433468;
-  --pr-merged-soft: #3d305f;
-  --pr-merged-edge: #6a55a4;
-  --pr-merged-fg: #d4c2ff;
   --pr-merged-text: #b88fff;
-  --pr-merged-solid: #8b45f5;
-  --pr-ready-band: #1a3126;
-  --pr-ready-line: #284b38;
-  --pr-ready-soft: #22422f;
-  --pr-ready-edge: #387755;
-  --pr-ready-fg: #a3e8c3;
   --pr-ready-text: #62d69d;
-  --pr-ready-solid: #1b7f50;
-  --pr-fail-band: #341a1d;
-  --pr-fail-line: #50292e;
-  --pr-fail-soft: #47262b;
-  --pr-fail-edge: #783a42;
-  --pr-fail-fg: #ffbdbd;
   --pr-fail-text: #ff8a8a;
   --danger: #e5484d;
   --on-solid: #ffffff;
@@ -113,25 +96,8 @@
   --plan: #1f5fbf;
   --on-plan: #ffffff;
   --claude: #d97757;
-  --pr-merged-band: #f3effd;
-  --pr-merged-line: #e2d9fa;
-  --pr-merged-soft: #ebe4fc;
-  --pr-merged-edge: #b9a7ef;
-  --pr-merged-fg: #4f34ad;
   --pr-merged-text: #5e3fc6;
-  --pr-merged-solid: #7c5ce0;
-  --pr-ready-band: #eef7f2;
-  --pr-ready-line: #d3eadd;
-  --pr-ready-soft: #e1f1e8;
-  --pr-ready-edge: #8fc5a7;
-  --pr-ready-fg: #0f5235;
   --pr-ready-text: #166a45;
-  --pr-ready-solid: #1a7a4f;
-  --pr-fail-band: #fcf0f0;
-  --pr-fail-line: #f3d6d6;
-  --pr-fail-soft: #f8e5e5;
-  --pr-fail-edge: #e0a3a3;
-  --pr-fail-fg: #8f2222;
   --pr-fail-text: #b32e2e;
   --danger: #bd2b2b;
   --on-solid: #ffffff;
@@ -328,9 +294,10 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .btn.ghost { border-color: transparent; color: var(--ink-2); }
 .btn.danger { background: var(--del); border-color: var(--del); color: var(--on-solid); }
 .btn.merged { background: var(--merged-solid); border-color: var(--merged-solid); color: var(--on-solid); }
+.btn.merge { background: var(--merge); border-color: var(--merge); color: var(--on-solid); }
 /* Hover and press (KERNEL-879). :where() keeps these at the specificity of the variant they sit on, so a screen's own .btn rule still wins. */
-.btn:where(:not(.primary, .danger, .merged, :disabled):hover) { background: var(--surface-3); border-color: var(--line-3); }
-.btn:where(:not(.primary, .danger, .merged, :disabled):active) { background: var(--hover); }
+.btn:where(:not(.primary, .danger, .merged, .merge, :disabled):hover) { background: var(--surface-3); border-color: var(--line-3); }
+.btn:where(:not(.primary, .danger, .merged, .merge, :disabled):active) { background: var(--hover); }
 .btn.ghost:where(:not(:disabled):hover) { color: var(--ink); }
 .btn.primary:where(:not(:disabled):hover) { background: color-mix(in srgb, var(--ink) 88%, var(--on-ink)); }
 .btn.primary:where(:not(:disabled):active) { background: color-mix(in srgb, var(--ink) 76%, var(--on-ink)); }
@@ -338,10 +305,14 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .btn.danger:where(:not(:disabled):active) { background: color-mix(in srgb, var(--del) 76%, var(--on-solid)); border-color: color-mix(in srgb, var(--del) 76%, var(--on-solid)); }
 .btn.merged:where(:not(:disabled):hover) { background: color-mix(in srgb, var(--merged-solid) 88%, var(--on-solid)); border-color: color-mix(in srgb, var(--merged-solid) 88%, var(--on-solid)); }
 .btn.merged:where(:not(:disabled):active) { background: color-mix(in srgb, var(--merged-solid) 76%, var(--on-solid)); border-color: color-mix(in srgb, var(--merged-solid) 76%, var(--on-solid)); }
+.btn.merge:where(:not(:disabled):hover) { background: color-mix(in srgb, var(--merge) 88%, var(--on-solid)); border-color: color-mix(in srgb, var(--merge) 88%, var(--on-solid)); }
+.btn.merge:where(:not(:disabled):active) { background: color-mix(in srgb, var(--merge) 76%, var(--on-solid)); border-color: color-mix(in srgb, var(--merge) 76%, var(--on-solid)); }
 .btn.lg { height: 32px; font-size: var(--fs-ui); padding: 0 14px; border-radius: var(--r); }
 .btn:disabled { opacity: 0.55; cursor: default; }
 /* Busy: the work the button started is running (DESIGN.md). Every variant takes the canvas's Creating PR look. */
 .btn[aria-busy='true']:disabled { opacity: 1; background: var(--surface-3); border: 1px solid var(--line-3); color: var(--ink-3); }
+/* A Merge that is merging keeps its green with its text, a step dimmer, since the pull request stays green while it lands (Pen 10.9, WorkspacePRMerging). */
+.btn.merge[aria-busy='true']:disabled { --spin-ink: var(--on-solid); background: color-mix(in srgb, var(--merge) 88%, var(--on-solid)); border-color: color-mix(in srgb, var(--merge) 88%, var(--on-solid)); color: var(--on-solid); }
 .icon-btn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: var(--r); background: transparent; color: var(--muted); transition: color var(--dur-fast) var(--ease-out); }
 /* Hover brightens the icon with no fill behind it. A fill means on or open (`aria-pressed`, `aria-expanded`), never hover (DESIGN.md). */
 .icon-btn:hover { color: var(--ink); }

@@ -1,73 +1,21 @@
-/* Pull request header states and the PR cards in the transcript. The header is a band in the state's tone (KERNEL-274):
-   `.pr-tone` is `display: contents`, so it keeps the parent's flex row and only hands its children the tone. */
-.pr-tone { display: contents; }
-.pr-tone[data-tone='idle'] { --b-band: var(--surface); --b-line: var(--line-2); --b-soft: var(--surface-3); --b-edge: var(--line-3); --b-fg: var(--ink-2); --b-text: var(--ink-3); --b-solid: var(--ink); --b-on: var(--on-ink); }
-.pr-tone[data-tone='merged'] { --b-band: var(--pr-merged-band); --b-line: var(--pr-merged-line); --b-soft: var(--pr-merged-soft); --b-edge: var(--pr-merged-edge); --b-fg: var(--pr-merged-fg); --b-text: var(--pr-merged-text); --b-solid: var(--pr-merged-solid); --b-on: var(--on-solid); }
-.pr-tone[data-tone='ready'] { --b-band: var(--pr-ready-band); --b-line: var(--pr-ready-line); --b-soft: var(--pr-ready-soft); --b-edge: var(--pr-ready-edge); --b-fg: var(--pr-ready-fg); --b-text: var(--pr-ready-text); --b-solid: var(--pr-ready-solid); --b-on: var(--on-solid); }
-.pr-tone[data-tone='fail'] { --b-band: var(--pr-fail-band); --b-line: var(--pr-fail-line); --b-soft: var(--pr-fail-soft); --b-edge: var(--pr-fail-edge); --b-fg: var(--pr-fail-fg); --b-text: var(--pr-fail-text); }
-/* With the panel hidden the PR cluster is a capsule in the chat header: the band's tint and line, 32px high, and it never shrinks. */
-.pr-tone.pr-cap { display: flex; align-items: center; gap: 7px; height: 32px; padding: 0 3px 0 8px; border: 1px solid var(--b-line); border-radius: var(--r); background: var(--b-band); white-space: nowrap; flex-shrink: 0; }
-.ws-aside-head { container-type: inline-size; border-bottom: 0; }
-/* The head is the band, edge to edge, and the panel toggle sits in it as a bare icon in the band's text colour (KERNEL-799, replaces
-   KERNEL-769's separate cell). */
-.ws-aside-head > .pr-tone { display: flex; flex-direction: column; flex: 1; min-width: 0; align-self: stretch; background: var(--b-band); border-bottom: 1px solid var(--b-line); }
-.ws-aside-head > .pr-tone > .lp-summary { padding: 0 0 0 14px; }
-/* The Lead's band is one row: the summary button, then the toggle beside it. */
-.ws-aside-head > .pr-tone:has(> .lp-summary) { flex-direction: row; align-items: center; padding-right: 12px; }
-/* The panel toggle is not in the band: it floats over the slot at the band's end (workspace.css), 10px from the window edge, the band's
-   12px padding less 2px. Any icon button in the band takes the band's tone, with its 28px box pulled in 6px so the 16px glyph meets the padding. */
-.ws-aside-head > .pr-tone .panel-toggle-slot, .pr-r1 .panel-toggle-slot { margin-right: -2px; }
-.ws-aside-head > .pr-tone .icon-btn, .pr-r1 .icon-btn { margin-right: -6px; color: var(--b-text); }
-.ws-aside-head > .pr-tone .icon-btn:hover, .pr-r1 .icon-btn:hover { color: var(--b-fg); }
-/* The floating toggle takes the band's tone while the panel is open, as the icon buttons in the band do. With the panel hidden there is no
-   band in the panel, so it stays neutral whatever the capsule's tone (KERNEL-911). */
-.ws-panel:has(> .ws-aside .ws-aside-head > .pr-tone[data-tone='ready']) > .panel-toggle { color: var(--pr-ready-text); }
-.ws-panel:has(> .ws-aside .ws-aside-head > .pr-tone[data-tone='ready']) > .panel-toggle:hover { color: var(--pr-ready-fg); }
-.ws-panel:has(> .ws-aside .ws-aside-head > .pr-tone[data-tone='merged']) > .panel-toggle { color: var(--pr-merged-text); }
-.ws-panel:has(> .ws-aside .ws-aside-head > .pr-tone[data-tone='merged']) > .panel-toggle:hover { color: var(--pr-merged-fg); }
-.ws-panel:has(> .ws-aside .ws-aside-head > .pr-tone[data-tone='fail']) > .panel-toggle { color: var(--pr-fail-text); }
-.ws-panel:has(> .ws-aside .ws-aside-head > .pr-tone[data-tone='fail']) > .panel-toggle:hover { color: var(--pr-fail-fg); }
+/* Pull request surfaces: the title bar's state, the Lead's PRs tab, a local merge's note, the "sent" card and the acceptance criteria. The Session rail's stages are in workspace.css. */
 
-.pr-tone > :not(.pr-state):not(.grow) { flex-shrink: 0; }
-.pr-cap > .pr-state { flex-shrink: 0; }
-.pr-cap .lp-summary { flex: none; height: 100%; }
+/* The pull request in the title bar while the Session rail is hidden (Pen 10.3, 10.10): an icon, the number, a few words and the one action. It never shrinks, so a long chat title is cut first. */
+.pr-t { display: inline-flex; align-items: center; gap: 8px; flex: none; white-space: nowrap; font-size: var(--fs-ui); color: var(--ink-2); }
+.pr-t-ico { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; color: var(--muted); --spin-ink: var(--ink-3); }
+.pr-t[data-tone='ready'] .pr-t-ico { color: var(--add); }
+.pr-t[data-tone='fail'] .pr-t-ico { color: var(--del); }
+.pr-t[data-tone='merged'] .pr-t-ico { color: var(--merged); }
+.pr-t-num { padding: 0; border: 0; background: transparent; color: var(--muted); font-size: var(--fs-code); }
+button.pr-t-num { cursor: pointer; }
+button.pr-t-num:hover { color: var(--ink-2); }
+.pr-t-words { color: var(--ink-2); }
 
-/* The `#42 | ↗` pill, then where the PR stands. The label shortens with an ellipsis before anything else gives way. */
-.pr-link { display: inline-flex; align-items: stretch; height: 24px; border: 1px solid var(--b-edge); border-radius: var(--r-sm); overflow: hidden; background: var(--b-soft); color: var(--b-fg); text-decoration: none; font: var(--fs-chip) var(--mono); }
-.pr-link:hover { background: color-mix(in srgb, var(--b-soft) 88%, var(--b-fg)); }
-.pr-num { display: inline-flex; align-items: center; padding: 0 7px; }
-.pr-ext { display: inline-flex; align-items: center; padding: 0 6px; border-left: 1px solid var(--b-edge); }
-.pr-state { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-code); font-weight: var(--fw-medium); color: var(--b-text); }
-.pr-state svg { flex-shrink: 0; }
-.pr-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* The PR buttons are 26px, 12px type and 10px sides, as the redesign draws them. That fits Continue and Archive side by side at the
-   panel's widest, and leaves the capsule 2px above and below. */
-.pr-tone .btn { height: 26px; gap: 6px; padding: 0 10px; border-radius: var(--r-sm); font-size: var(--fs-meta); }
-/* Soft buttons sit in the band's tone; Merge PR and Archive take its solid. Create PR is soft like them, and turns solid only once it is the one step left. */
-/* Merge anyway in a PRs tab or Team update row is an outline: the row's red state already says what is wrong (KERNEL-757). */
-.pr-tone .btn.pr-outline { background: transparent; border-color: var(--line-3); color: var(--ink-2); }
-.pr-tone .btn.pr-outline:hover { background: var(--surface-3); border-color: var(--line-3); color: var(--ink); }
-.pr-tone .btn.pr-soft { background: var(--b-soft); border-color: var(--b-edge); color: var(--b-fg); }
-.pr-tone .btn.pr-soft:hover { background: color-mix(in srgb, var(--b-soft) 85%, var(--b-fg)); }
-.pr-tone .btn.pr-solid { background: var(--b-solid); border-color: var(--b-solid); color: var(--b-on); }
-.pr-tone .btn.pr-solid:hover { background: color-mix(in srgb, var(--b-solid) 88%, var(--b-on)); }
-.pr-tone .split { --split-hover: currentColor; }
-.pr-tone .split.pr-soft { background: var(--b-soft); border-color: var(--b-edge); color: var(--b-fg); }
-.pr-tone .split.pr-solid { background: var(--b-solid); border-color: var(--b-solid); color: var(--b-on); }
-.pr-tone .split .split-caret { color: inherit; border-left-color: color-mix(in srgb, currentColor 30%, transparent); }
-/* A busy button keeps the band's tone instead of the grey busy look, so it never reads as a hole in the band (amends D-086). */
-.pr-tone .btn[aria-busy='true']:disabled { background: var(--b-soft); border: 1px solid var(--b-edge); color: color-mix(in srgb, var(--b-fg) 76%, transparent); }
-.pr-tone .btn[aria-busy='true'] { --spin-ink: var(--b-text); }
-/* An open PR's state word in a PRs tab or Team update row, red for what needs fixing, as the band says it (KERNEL-417). While
-   something runs, the spinner sits before the word in its color, with nothing to press (KERNEL-757). */
+/* An open PR's state word in a PRs tab or Team update row, red for what needs fixing (KERNEL-417). While something runs, the loader sits before the word, with nothing to press (KERNEL-757). */
 .pr-word { font-size: var(--fs-meta); color: var(--ink-3); white-space: nowrap; }
-.pr-word[data-tone='fail'] { color: var(--pr-fail-text); }
-.pr-word[data-tone='ready'] { color: var(--pr-ready-text); }
+.pr-word[data-tone='fail'] { color: var(--del); }
+.pr-word[data-tone='ready'] { color: var(--add); }
 .pr-run { display: inline-flex; align-items: center; gap: 6px; --spin-ink: currentColor; }
-/* A narrow panel drops Continue's word first; the button keeps its aria-label. The merged row needs about 337px of the head's content
-   box, which is 375px when the panel is at its widest (400px). The panel toggle ends the band's first row, not this row. */
-@container (max-width: 336px) { .pr-tone .pr-btn-label { display: none; } }
 
 /* "create-pr.md sent": an instruction file Kernel sent for the user. */
 .pr-sent { align-self: flex-end; width: 82%; border-radius: var(--r-md); border: 1px solid var(--card-line); background: var(--card-bg); overflow: hidden; }
@@ -75,49 +23,39 @@
 .pr-sent-body { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; font: var(--fs-meta)/var(--lh) var(--mono); color: var(--ink-3); }
 .pr-sent-body span { white-space: pre-wrap; overflow-wrap: anywhere; }
 
-/* The Lead's PRs tab (KERNEL-354): a header that counts what can merge, then the project's open PRs, ready ones first. */
-.lp-summary { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; }
-.lp-summary[data-spread] { align-self: stretch; }
-.lp-go { margin-left: auto; display: inline-flex; color: var(--b-text); }
-/* Each list's heading and count (KERNEL-757). The first sits close under the strip. */
-.lp-sec { display: flex; align-items: baseline; gap: 6px; padding: 12px 14px 2px; font-size: var(--fs-meta); line-height: 16px; color: var(--muted); }
-section:first-child > .lp-sec { padding-top: 6px; }
-.lp-sec h3 { margin: 0; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--muted); }
-.lp-list { list-style: none; margin: 0; padding: 0; }
-/* A row (KERNEL-757): its icon, the title with Merge on the right, then one line with where it stands, who, the PR and its size.
-   The title's button covers the row, so a click anywhere opens the workspace, and Merge and the PR link sit above it. Each line
-   lets one thing shrink, the title or the agent's name, and clips the rest, so nothing overlaps at the panel's narrowest. */
-.lp-row { position: relative; display: flex; gap: 10px; margin: 0 6px; padding: 7px 8px 8px; border-radius: var(--r-sm); }
-.lp-row:hover, .lp-row:has(.lp-open:focus-visible) { background: var(--surface-2); }
+
+/* The Lead's PRs tab (Pen 10.6, 10.11): a strip that counts what is open, then three lists of cards, each a title and one line of where it stands. */
+.lp-bar { display: flex; align-items: center; gap: 8px; flex-shrink: 0; min-height: 40px; padding: 0 12px 0 16px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: var(--fs-ui); }
+.lp-sec { display: flex; align-items: baseline; gap: 8px; padding: 14px 16px 6px; }
+.lp-sec h3 { margin: 0; font-size: var(--fs-ui); font-weight: var(--fw-regular); color: var(--ink-2); }
+.lp-sec .mono { font-size: var(--fs-meta); color: var(--muted); }
+.lp-list { list-style: none; margin: 0; padding: 0 12px; display: flex; flex-direction: column; gap: 8px; }
+/* A row (KERNEL-757): its mark, the title with Merge on the right, then one line with where it stands, who, the PR and its size. The title's button covers the row, so a click anywhere opens the workspace, and Merge and the PR link sit above it. Each line lets one thing shrink, the title or the agent's name, and clips the rest. */
+.lp-row { position: relative; display: flex; gap: 12px; padding: 12px 14px; border: 1px solid var(--line-2); border-radius: var(--r-md); }
+.lp-row:hover, .lp-row:has(.lp-open:focus-visible) { background: var(--panel-hover); }
 .lp-row:has(.lp-open:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; }
-.lp-glyph { width: 16px; height: 22px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--muted); --spin-ink: var(--ink-3); }
+.lp-glyph { width: 16px; height: 26px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--muted); --spin-ink: var(--ink-3); }
 .lp-glyph[data-tone='add'] { color: var(--add); }
 .lp-glyph[data-tone='del'] { color: var(--del); }
 .lp-body { flex: 1; min-width: 0; }
-.lp-l1 { display: flex; align-items: center; gap: 10px; height: 22px; }
-.lp-open { flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--ink); font-size: var(--fs-ui); font-weight: var(--fw-medium); line-height: 18px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.lp-l1 { display: flex; align-items: center; gap: 10px; height: 26px; }
+.lp-open { flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--ink); font-size: var(--fs-chat); line-height: 22px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .lp-open:focus-visible { outline-style: none; }
-.lp-open::after { content: ''; position: absolute; inset: 0; border-radius: var(--r-sm); }
+.lp-open::after { content: ''; position: absolute; inset: 0; border-radius: var(--r-md); }
 .lp-act, .lp-num { position: relative; z-index: 1; }
 .lp-act { flex-shrink: 0; display: flex; align-items: center; }
-.lp-row .pr-tone .btn { height: 24px; padding: 0 9px; border-radius: var(--r-sm); }
-/* Rows with nothing to press show where a click goes, on hover or focus. */
-.lp-chev { flex-shrink: 0; display: inline-flex; color: var(--ink-3); opacity: 0; }
-.lp-row:hover .lp-chev, .lp-row:has(.lp-open:focus-visible) .lp-chev { opacity: 1; }
-.lp-l2 { display: flex; align-items: baseline; gap: 5px; margin-top: 2px; overflow: hidden; font-size: var(--fs-meta); line-height: 16px; white-space: nowrap; color: var(--muted); }
+.lp-chev { flex-shrink: 0; display: inline-flex; color: var(--ink-3); }
+.lp-l2 { display: flex; align-items: center; gap: 6px; margin-top: 4px; overflow: hidden; font-size: var(--fs-ui); line-height: 18px; white-space: nowrap; color: var(--muted); }
 .lp-l2 > * { flex-shrink: 0; }
-.lp-state { color: var(--ink-3); }
-.lp-state { display: inline-flex; align-items: center; gap: 4px; }
+.lp-state { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-3); }
 .lp-state[data-tone='good'] { color: var(--add); }
 .lp-state[data-tone='fail'] { color: var(--del); }
 .lp-dot { color: var(--faint); }
 .lp-l2 > .lp-name { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink-3); }
-.lp-num { display: inline-flex; align-items: center; gap: 2px; font: var(--fs-chip) var(--mono); color: var(--muted); text-decoration: none; }
+.lp-num { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); text-decoration: none; }
 .lp-num:hover { color: var(--ink-2); }
-.lp-stat { margin-left: auto; padding-left: 8px; font: var(--fs-badge) var(--mono); font-variant-numeric: tabular-nums; }
+.lp-stat { margin-left: 2px; font-variant-numeric: tabular-nums; }
 
-/* A branch that merges on the Mac: a plain `→ main` pill where the PR link was, in the band's tone, with nothing to open (KERNEL-478). */
-.pr-pill { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px 0 7px; border: 1px solid var(--b-edge); border-radius: var(--r-sm); background: var(--b-soft); color: var(--b-fg); font-size: var(--fs-chip); }
 /* The merge line and its note under the band, above the tabs: how far the branch is from its base, then what is in the way. */
 .lm-line { display: flex; align-items: center; gap: 6px; padding: 10px 14px 0; font-size: var(--fs-meta); color: var(--muted); white-space: nowrap; }
 .lm-line:empty { display: none; }
@@ -142,42 +80,21 @@ section:first-child > .lp-sec { padding-top: 6px; }
 .note.inline[data-local='behind'] > svg { color: var(--ink-3); }
 .note.inline[data-local='conflict'] > svg, .note.inline[data-local='dirty'] > svg { color: var(--pr-fail-text); }
 
-/* The right panel's head is one block in the band's tone (KERNEL-528): the state and the link on a 44px row in line with the chat
-   header, then the actions at full width on a row that ends where the chat's tab row does, so the block's bottom line meets the line
-   under the chat tabs. No line splits the two rows. */
-.ws-aside-head:has(.pr-r1) { height: auto; }
-.pr-r1 { height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 14px; }
-.pr-r1 .pr-state { font-size: var(--fs-ui); }
-.pr-r2 { height: 39px; display: flex; align-items: flex-start; gap: 6px; padding: 0 12px; }
-.pr-r2 > .btn, .pr-r2 > .pr-split { flex: 1; min-width: 0; }
-.pr-r2 .btn { justify-content: center; }
-.pr-r2 > .pr-split > .split-main { flex: 1; }
-/* The row is wide enough for Continue's word at any panel width. */
-@container (max-width: 336px) { .pr-r2 .pr-btn-label { display: inline; } }
-/* The capsule's state word sits on the buttons' centre line. */
-.pr-cap .pr-state { line-height: 16px; }
 
-.pr-overruled { display: flex; align-items: baseline; gap: 6px; padding: 0 12px 8px 14px; font-size: var(--fs-meta); color: var(--ink-3); }
-.pr-overruled .pr-overruled-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pr-undo { flex-shrink: 0; }
-
-/* A chat with Kernel's merged band: its next change starts a new branch, so there is no Continue or Archive (KERNEL-780). */
-.pr-next { font-size: var(--fs-code); color: var(--b-fg); }
-.pr-r2.pr-r2-text { height: auto; padding-bottom: 10px; }
-
-/* Acceptance criteria on the Checks tab (KERNEL-1066). The state is a word; color only backs it. */
+/* Acceptance criteria on the Pull request tab (KERNEL-1066, Pen 10.5). The state is a word with its mark: green when it passed or the reviewer says it is met, red when it failed, muted for what isn't known. */
 .crit-list, .crit-evs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.crit-list { gap: 10px; }
-.crit-head { display: flex; align-items: baseline; gap: 10px; min-height: 26px; }
-.crit-state { display: inline-flex; align-items: center; gap: 4px; flex: none; min-width: 112px; font-size: var(--fs-badge); font-weight: var(--fw-medium); color: var(--ink-2); }
+.crit-list { gap: 12px; margin-top: 8px; }
+.crit-head { display: flex; align-items: baseline; gap: 14px; min-height: 24px; }
+.crit-state { display: inline-flex; align-items: center; gap: 6px; flex: none; min-width: 132px; font-size: var(--fs-ui); color: var(--ink-2); }
+.crit-state[data-state='passed'], .crit-state[data-state='reviewer-met'] { color: var(--add); }
 .crit-state[data-state='failed'] { color: var(--del); }
-.crit-state[data-state='reviewer-met'],
 .crit-state[data-state='unverified'], .crit-state[data-state='stale'] { color: var(--muted); }
-.crit-text { color: var(--ink-2); min-width: 0; }
-.crit-evs { gap: 2px; margin: 2px 0 0 122px; }
-.crit-ev { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: var(--fs-meta); }
+.crit-text { color: var(--ink-2); min-width: 0; font-size: var(--fs-ui); line-height: var(--lh-snug); }
+.crit-evs { gap: 4px; margin: 4px 0 0 146px; }
+.crit-ev { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: var(--fs-ui); }
 .crit-ev[data-stale] { color: var(--muted); }
-.crit-tag { border: 1px solid var(--line); border-radius: var(--r-2xs); padding: 0 5px; font-size: var(--fs-badge); color: var(--muted); }
-.crit-link { display: inline-flex; align-items: center; gap: 4px; padding: 0; background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.crit-tag { border: 1px solid var(--line-3); border-radius: var(--r-xs); padding: 1px 6px; font-size: var(--fs-meta); color: var(--muted); }
+.crit-link { display: inline-flex; align-items: center; gap: 6px; padding: 0; background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .crit-link:hover span { text-decoration: underline; }
 .crit-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-2xs); }
+.crit-evidence { margin-top: 16px; color: var(--ink-3); font-size: var(--fs-ui); }

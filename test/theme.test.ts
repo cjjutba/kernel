@@ -128,14 +128,11 @@ describe('theme contrast', () => {
     expect(contrast(light['on-solid'], light['merged-solid'])).toBeGreaterThanOrEqual(4.5)
     expect(contrast(light['on-ink'], light.ink)).toBeGreaterThanOrEqual(4.5)
   })
-  it('PR header bands keep their label, link and button text readable in both themes', () => {
+  it('the PR state text colors (the chips, the notes and the Work words) stay readable on the panel and on a chip in both themes', () => {
     const fails: string[] = []
-    for (const [name, theme] of themes(both)) for (const t of ['merged', 'ready', 'fail']) {
-      for (const fg of ['text', 'fg']) for (const bg of ['band', 'soft']) {
-        const c = contrast(theme[`pr-${t}-${fg}`], theme[`pr-${t}-${bg}`])
-        if (c < 4.5) fails.push(`${name} pr-${t}-${fg} on pr-${t}-${bg}: ${c.toFixed(2)}`)
-      }
-      if (theme[`pr-${t}-solid`] && contrast('#ffffff', theme[`pr-${t}-solid`]) < 4.5) fails.push(`${name} white on pr-${t}-solid`)
+    for (const [name, theme] of themes(both)) for (const t of ['merged', 'ready', 'fail']) for (const bg of ['panel', 'surface-3']) {
+      const c = contrast(theme[`pr-${t}-text`], theme[bg])
+      if (c < 4.5) fails.push(`${name} pr-${t}-text on ${bg}: ${c.toFixed(2)}`)
     }
     expect(fails).toEqual([])
   })
@@ -324,11 +321,11 @@ export function unknownVarHits(source: string, defined: Set<string>): Hit[] {
 /** Names a file declares (`--x:`), and names it quotes (`'--x'`, set or read from script). */
 const declared = (text: string) => [...text.matchAll(/(?<![\w-])(--[\w-]+)\s*:/g), ...text.matchAll(/['"`](--[\w-]+)['"`]/g)].map((m) => m[1])
 
-/** Every token `tokens` declares that `usage` never reads. The terminal reads its palette by a built name and the scrollbar transitions --scroll-thumb by name. --merge is the Merge button's green (KERNEL-1108), which the redesign parts move onto; drop it from this list when the first one does. */
+/** Every token `tokens` declares that `usage` never reads. The terminal reads its palette by a built name and the scrollbar transitions --scroll-thumb by name. */
 export function unusedTokenHits(tokens: string, usage: string): Hit[] {
   const text = blank(tokens)
   const names = [...new Set(declared(text).filter((n) => text.includes(`${n}:`)))]
-  const unused = names.filter((n) => !n.startsWith('--term-') && n !== '--scroll-thumb' && n !== '--merge' && !new RegExp(`var\\(${n}(?![\\w-])`).test(usage) && !new RegExp(`['"\`]${n}['"\`]`).test(usage))
+  const unused = names.filter((n) => !n.startsWith('--term-') && n !== '--scroll-thumb' && !new RegExp(`var\\(${n}(?![\\w-])`).test(usage) && !new RegExp(`['"\`]${n}['"\`]`).test(usage))
   return unused.map((n) => {
     const line = lineOf(text, text.search(new RegExp(`(?<![\\w-])${n}\\s*:`)))
     return { kind: 'unusedToken' as const, line, text: n }

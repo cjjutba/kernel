@@ -385,6 +385,15 @@ button.fold-head:hover { color: var(--ink-2); }
 .stage-at { color: var(--muted); font-size: var(--fs-chip); }
 .stage-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: var(--fs-meta); line-height: var(--lh-snug); }
 .stage-sub[data-needs] { color: var(--needs); }
+.stage[data-mark='busy'] .stage-ico, .stage[data-mark='wait'] .stage-ico, .stage[data-mark='closed'] .stage-ico { color: var(--ink-3); }
+.stage[data-mark='merged'] .stage-ico, .stage[data-mark='merged'] .stage-name { color: var(--merged); }
+.stage-pill { display: inline-flex; align-items: center; gap: 4px; height: 20px; margin-left: auto; padding: 0 6px; border: 1px solid var(--line-3); border-radius: var(--r-xs); color: var(--ink-3); font-size: var(--fs-meta); }
+.stage-pill svg { color: var(--muted); }
+.stage-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; padding-bottom: 10px; }
+.stage-anchor { position: relative; display: inline-flex; }
+.stage-split { --split-hover: currentColor; background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
+.stage-split .split-caret { color: inherit; border-left-color: color-mix(in srgb, currentColor 30%, transparent); }
+.stage-split:has([aria-busy='true']) { background: var(--surface-3); border-color: var(--line-3); color: var(--ink-3); }
 .rail-rows { display: flex; flex-direction: column; padding: 8px 10px; border-top: 1px solid var(--line-2); }
 .rail-row { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 0 6px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-3); font-size: var(--fs-code); text-align: left; }
 .rail-row .mono { font-size: var(--fs-chip); }

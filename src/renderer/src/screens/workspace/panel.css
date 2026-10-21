@@ -125,36 +125,39 @@
 /* ---- Pull request */
 .pr-tab { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .pr-body { padding: 0; gap: 0; }
-.pr-top { display: flex; flex-direction: column; gap: 6px; padding: 14px 14px 12px; border-bottom: 1px solid var(--line); }
-.pr-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* The head (Pen 10.5): the title and number with the one action at the right, then the pill and where the branch goes. Every section after it sits between hairlines inset 16px. */
+.pr-top { display: flex; flex-direction: column; gap: 10px; margin: 0 16px; padding: 18px 0 16px; border-bottom: 1px solid var(--line); }
+.pr-title-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .pr-title-ico { display: inline-flex; flex-shrink: 0; color: var(--muted); }
 .pr-title-ico[data-state='open'] { color: var(--add); }
 .pr-title-ico[data-state='merged'] { color: var(--merged); }
-.pr-title { margin: 0; min-width: 0; color: var(--ink); font-size: var(--fs-chat); font-weight: var(--fw-medium); line-height: var(--lh-snug); }
-.pr-meta { display: flex; align-items: center; gap: 6px; min-width: 0; padding-left: 22px; color: var(--muted); font-size: var(--fs-meta); white-space: nowrap; }
-.pr-meta .mono { color: var(--ink-3); font-size: var(--fs-chip); }
-.pr-meta > svg { flex-shrink: 0; }
+.pr-title { margin: 0; min-width: 0; color: var(--ink); font-size: var(--fs-sub); font-weight: var(--fw-semibold); line-height: var(--lh-snug); }
+.pr-num { flex-shrink: 0; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: var(--fs-code); }
+button.pr-num { cursor: pointer; }
+button.pr-num:hover { color: var(--ink-2); }
+.pr-meta { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: var(--fs-meta); white-space: nowrap; }
+.pr-meta .mono { color: var(--ink-3); font-size: var(--fs-meta); }
+.pr-pill { display: inline-flex; flex-shrink: 0; align-items: center; gap: 6px; height: 22px; padding: 0 9px 0 7px; border: 1px solid var(--line-3); border-radius: var(--r-pill); color: var(--ink-2); font-size: var(--fs-ui); }
+.pr-pill[data-state='open'] svg { color: var(--add); }
+.pr-pill[data-state='merged'] svg { color: var(--merged); }
+.pr-pill[data-state='draft'] svg, .pr-pill[data-state='closed'] svg { color: var(--muted); }
+.pr-stat { flex-shrink: 0; font: var(--fs-meta) var(--mono); }
 .pr-sep { color: var(--faint); }
-.pr-section { display: flex; flex-direction: column; padding: 10px 14px 8px; }
-.pr-card-head { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 0 0 2px; }
-.pr-tab > .pr-card-head { padding: 12px 14px 4px; }
-.pr-card-title { color: var(--ink-2); font-size: var(--fs-code); font-weight: var(--fw-medium); }
-.pr-card-sub { color: var(--muted); font-size: var(--fs-meta); }
-.pr-row { display: flex; align-items: center; gap: 10px; min-height: 36px; font-size: var(--fs-ui); color: var(--ink-2); }
+.pr-section { display: flex; flex-direction: column; margin: 0 16px; padding: 14px 0 12px; border-bottom: 1px solid var(--line); }
+.pr-card-head { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 0 0 4px; }
+.pr-tab > .pr-card-head { padding: 12px 16px 4px; }
+.pr-card-title { color: var(--muted); font-size: var(--fs-ui); font-weight: var(--fw-regular); }
+.pr-card-sub { color: var(--muted); font-size: var(--fs-ui); }
+.pr-row { display: flex; align-items: center; gap: 10px; min-height: 30px; font-size: var(--fs-ui); color: var(--ink-2); }
 .pr-row > .agent-avatar { flex-shrink: 0; }
 .pr-name { min-width: 0; }
 .pr-sub { color: var(--muted); font-size: var(--fs-meta); white-space: nowrap; }
-.pr-state-word { padding: 0; border: 0; background: transparent; color: var(--muted); font-size: var(--fs-meta); }
-button.pr-state-word:hover { color: var(--ink); text-decoration: underline; }
+.pr-wait { color: var(--muted); }
 .pr-check-ico { display: inline-flex; flex-shrink: 0; color: var(--faint); }
 .pr-check-ico[data-state='ok'] { color: var(--add); }
 .pr-check-ico[data-state='fail'] { color: var(--del); }
 .pr-check-ico[data-state='warn'] { color: var(--needs-fill); }
-.pr-foot { flex-shrink: 0; display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 14px; border-top: 1px solid var(--line); }
-.pr-foot-text { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: var(--fs-code); }
-.pr-tab .crit-list, .pr-tab > .panel-scroll > section[aria-label='Acceptance criteria'] { margin: 0 14px; }
-.pr-body > .muted.t-meta { margin: 0 14px 12px; }
-.pr-body > section[aria-label='Acceptance criteria'] { margin: 8px 14px 12px; }
+.pr-body > section[aria-label='Acceptance criteria'] { margin: 0 16px; padding: 14px 0 16px; }
 
 /* ---- Review */
 .rv-tab { flex: 1; min-height: 0; display: flex; flex-direction: column; }

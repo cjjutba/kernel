@@ -250,7 +250,7 @@ describe('reviews Kernel planned for the head commit (KERNEL-717)', () => {
   it('lists the PR as waiting for approval, not ready', () => {
     const w = { ...ws({ reviewRound: round(), projectId: 'project', agentId: 'christian', status: 'ready' }) } as Workspace
     const [row] = leadPrs([w], { leadId: undefined, projectId: 'project', prs: { w: info() }, rules: both, agents: [] })
-    expect(row).toMatchObject({ ready: false, state: { label: 'Waiting for approval' } })
+    expect(row).toMatchObject({ ready: false, state: { label: 'Waiting for review' } })
     expect(row.blockers).toBeUndefined()
     // Merge reads the same rule, so it offers no Merge, nor Merge anyway.
     expect(mergeView(w, info(), both)).toEqual({ kind: 'blocked', reason: expect.stringContaining("haven't approved the latest commit") })
