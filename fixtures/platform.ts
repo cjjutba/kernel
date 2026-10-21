@@ -806,6 +806,8 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-641: a personal agent's editor, opened from Settings, Agents: Back says Agents, and there is no status, workspace or recent work.
   // Pen 15.9: a repo agent, so Retire is there, and Pen 15.38: its description changed and Save changes pressed, which asks who gets the change.
   SettingsAgentEdit: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: christianTeam }, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents', agentId: 'christian' } } })),
+  // Redesign 16.5: what Kernel noticed in an agent's file, above its fields, with Use Settings for a model Kernel doesn't recognize.
+  AgentEditorNotices: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: sixAgents.map((a) => (a.id === 'christian' ? { ...christianProfile, model: 'sonnet-4', warnings: [{ kind: 'model-unknown' as const }, { kind: 'cant-open-pr' as const }] } : a)) }, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents', agentId: 'christian' } } })),
   SettingsAgentSaveScope: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: sixAgents.map((a) => (a.id === 'christian' ? { ...christianProfile, description: 'Builds UI from plans.' } : a)) }, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents', agentId: 'christian' } } })),
   // A personal agent's editor, opened from Settings, Agents (KERNEL-641): Back says Agents, and there is no Retire.
   SettingsAgentEditPersonal: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'ops' } } })),

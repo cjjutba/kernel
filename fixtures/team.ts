@@ -248,9 +248,13 @@ const beforeWren = (f: Fixture): Partial<Fixture> => {
 }
 
 const wrenDraft: AgentDraft = {
-  id: 'wren', name: 'Wren', model: 'sonnet', tools: ['Read', 'Grep', 'Glob', 'Bash(pnpm screenshot:*)'], file: '.claude/agents/wren.md',
-  description: 'A designer who checks every screen against DESIGN.md before review.',
-  text: '---\nname: wren\ndescription: A designer who checks every screen against DESIGN.md before review.\nmodel: sonnet\ntools: Read, Grep, Glob, Bash(pnpm screenshot:*)\n---\nYou are Wren. Before Artkin reviews a PR, open each changed screen, compare it with DESIGN.md, and list drift in spacing, type and color with file and line.\n'
+  id: 'wren', name: 'Wren', model: 'sonnet', tools: ['Read', 'Edit', 'Write', 'Bash(pnpm shots *)'], file: '.claude/agents/wren.md',
+  description: 'Designs screens and checks them against DESIGN.md',
+  text: [
+    '---', 'name: wren', 'description: Designs screens and checks them against DESIGN.md', 'model: sonnet', 'effort: medium', 'tools: Read, Edit, Write, Bash(pnpm shots *)', '---', '',
+    'You are Wren, the designer on this team.', '',
+    '- Work from the screenshot or mock in the brief.', '- Without one, match DESIGN.md: monochrome, tokens only.', '- Check each screen you change with pnpm shots.', '- Keep UI copy plain and in sentence case.'
+  ].join('\n')
 }
 const wrenPrefill = { name: 'Wren', description: 'A designer who checks every screen against DESIGN.md before review.', model: 'sonnet' }
 
@@ -736,8 +740,10 @@ export const teamFixtures: Record<string, Fixture> = {
   // No PNG: New agent from Settings, Agents with no project added. NewAgent.png without a project, so Kernel and the project's team are not named.
   NewAgentPicker: scene((f) => ({ ...beforeWren(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' }, modal: { name: 'newAgent', projectId: ids.projectA, step: 'describe', prefill: { name: 'Wren', model: 'sonnet' } } } })),
   NewAgentNoProject: scene((f) => ({ ...f, ...empty, ui: { route: { name: 'settings', page: 'agents' }, modal: { name: 'newAgent', step: 'describe', prefill: { name: 'Wren', model: 'sonnet' } } } })),
+  // Redesign 16.5: while Kernel writes the file the description stays and nothing else can change. The shot presses Draft with Kernel on a call that never answers.
+  NewAgentDrafting: { ...scene((f) => ({ ...beforeWren(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' }, modal: { name: 'newAgent', projectId: ids.projectA, step: 'describe', prefill: { name: 'Wren', description: 'Reviews the UI against DESIGN.md and checks every shot.', model: 'sonnet' } } } })), hold: ['agents.draft'] },
   NewAgentDraft: scene((f) => ({ ...beforeWren(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' }, modal: { name: 'newAgent', projectId: ids.projectA, step: 'draft', prefill: { ...wrenPrefill, draft: wrenDraft } } } })),
-  NewAgentDone: scene((f) => ({ ...beforeWren(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' }, modal: { name: 'newAgent', projectId: ids.projectA, step: 'done', prefill: { ...wrenPrefill, draft: wrenDraft } } } })),
+  NewAgentDone: scene((f) => ({ ...teamScene(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' }, modal: { name: 'newAgent', projectId: ids.projectA, step: 'done', prefill: { ...wrenPrefill, draft: wrenDraft } } } })),
   // KERNEL-642: a repo's own agents in Settings, Agents: Architect's warning on its row, New agent and Add a starter agent at the top of In this repo, and Retired with Restore.
   SettingsTeamOwnAgents: scene((f) => {
     const t = ownTeamScene(f)
