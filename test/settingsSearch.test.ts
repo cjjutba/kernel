@@ -64,6 +64,6 @@ describe('Settings search (KERNEL-727)', () => {
   })
 
   it('opens a folded section that holds a row search lands on', () => {
-    expect(read('pages/Hooks.tsx')).toMatch(/title="Advanced" collapsible holds=\{\[[^\]]*'hook-port'/)
+    expect(read('kit.tsx')).toMatch(/holds && route\.name === 'settings' && route\.row && holds\.includes\(route\.row\)\) setOpen\(true\)/)
   })
 })

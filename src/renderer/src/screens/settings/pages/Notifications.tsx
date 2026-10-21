@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import type { AppSettings } from '@shared/types'
 import { call } from '../../../api'
 import { IconButton, SegmentedControl, Select, Toggle, useBusy } from '../../../ui'
@@ -23,9 +24,13 @@ const QUIET = [['23:00', '07:00'], ['22:00', '08:00'], ['18:00', '09:00']]
 export function Notifications({ s }: { s: AppSettings }) {
   const n = s.notifications
   const [busy, run] = useBusy()
-  const q = n.quietHours ? `${n.quietHours.from}-${n.quietHours.to}` : 'off'
-  const options = [{ value: 'off', label: 'Off' }, ...QUIET.map(([f, t]) => ({ value: `${f}-${t}`, label: window12(f, t) }))]
-  if (!options.some((o) => o.value === q) && n.quietHours) options.push({ value: q, label: window12(n.quietHours.from, n.quietHours.to) })
+  // Off keeps the window last picked (or the usual night) in the dropdown, so turning it on again lands where it was.
+  const lastWindow = useRef(`${QUIET[1][0]}-${QUIET[1][1]}`)
+  if (n.quietHours) lastWindow.current = `${n.quietHours.from}-${n.quietHours.to}`
+  const q = lastWindow.current
+  const options = QUIET.map(([f, t]) => ({ value: `${f}-${t}`, label: window12(f, t) }))
+  if (!options.some((o) => o.value === q)) options.push({ value: q, label: window12(...(q.split('-') as [string, string])) })
+  const setQuiet = (v: string) => { const [from, to] = v.split('-'); void patchSettings({ notifications: { quietHours: { from, to } } }) }
   const toggles = (list: [Events, string][]) => list.map(([key, label]) => <Row key={key} id={`notify-${key}`} label={label}><Toggle label={label} checked={n[key]} onChange={(v) => void patchSettings({ notifications: { [key]: v } })} /></Row>)
   return (
     <Page title="Notifications" desc="What Kernel tells you about while you work elsewhere.">
@@ -38,11 +43,9 @@ export function Notifications({ s }: { s: AppSettings }) {
             <SegmentedControl label="Sound" value={n.sound} onChange={(v) => void patchSettings({ notifications: { sound: v as Sound } })} options={[{ value: 'none', label: 'None' }, { value: 'subtle', label: 'Subtle' }, { value: 'chime', label: 'Chime' }]} />
           </span>
         </Row>
-        <Row id="quiet-hours" label="Quiet hours">
-          <Select label="Quiet hours" value={q} options={options} onChange={(v) => {
-            const [from, to] = v.split('-')
-            void patchSettings({ notifications: { quietHours: v === 'off' ? null : { from, to } } })
-          }} />
+        <Row id="quiet-hours" label="Quiet hours" desc="Notifications wait in the Inbox.">
+          <Select label="Quiet hours window" align="right" disabled={!n.quietHours} value={q} options={options} onChange={setQuiet} />
+          <Toggle label="Quiet hours" checked={!!n.quietHours} onChange={(v) => { if (v) setQuiet(q); else void patchSettings({ notifications: { quietHours: null } }) }} />
         </Row>
       </Section>
     </Page>

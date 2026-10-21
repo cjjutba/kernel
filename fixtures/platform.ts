@@ -1,4 +1,4 @@
-import type { AccountProfile, AgentDef, AppSettings, RoleModel, Role, AppUpdate, ChatItem, DevUiPage, HookProblem, HookStatus, Integration, McpAccount, McpAccountServer, McpServer, McpSignInAll, Modal, PreflightCheck, Provider, ProviderModel, PushCheck, RateLimit, Project, ProjectSettings, ProjectSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
+import type { AccountProfile, AgentDef, AppSettings, RoleModel, Role, AppUpdate, ChatItem, DevUiPage, HookProblem, HookStatus, Integration, McpAccount, McpAccountServer, McpServer, McpSignInAll, Modal, PreflightCheck, Provider, ProviderModel, PushCheck, RateLimit, Project, ProjectSettings, ProjectSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset, Toast } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { mcpCounts } from '@shared/mcpCounts'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
@@ -80,6 +80,8 @@ const gallery = (page: DevUiPage) => scene(() => ({ ...empty, ui: { route: { nam
 
 // KERNEL-25: the app-wide settings pages. The seed's projects fill the nav; Account adds the three usage windows the canvas shows.
 const settingsPage = (page: SettingsPage, extra: Partial<Fixture> = {}) => scene(() => ({ ...extra, ui: { route: { name: 'settings', page } } }))
+/** Settings, About with the updater in one state, and the toasts that state raised (Redesign 15). */
+const aboutPage = (update: AppUpdate, toasts: Toast[] = []): Fixture => { const f = settingsPage('about', { preflight: [], update }); return { ...f, ui: { ...f.ui, toasts } } }
 /** One of Client A's project pages (KERNEL-191). */
 const projectPage = (section: ProjectSettingsSection, extra: Partial<Fixture> = {}, menu?: 'settingsFiles') => scene(() => ({ ...extra, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section }, ...(menu ? { menu } : {}) } }))
 /** Settings with some roles moved, the rest as Kernel ships them (KERNEL-406). */
@@ -405,8 +407,8 @@ const extraAgents: AgentDef[] = [
   { ...agentFile('vercel:deployment-expert', 'Deployment Expert', 'Specialist', 'Debugs failed deployments'), origin: 'plugin', file: '', member: true, prompt: 'You debug failed deployments. Read the build log first, then the config that produced it.' }
 ]
 const integrationRows: Integration[] = [
-  { id: 'github', name: 'GitHub', connected: true, detail: 'Through the GitHub CLI as cjjutba' },
-  { id: 'linear', name: 'Linear', connected: false, detail: 'Create workspaces from issues' }
+  { id: 'github', name: 'GitHub', connected: true, detail: 'Signed in with gh as cjjutba. Repos, pull requests, checks and issues.' },
+  { id: 'linear', name: 'Linear', connected: false, detail: 'Not connected. Issues open as workspaces once it is.' }
 ]
 
 /** The same screen as `src`, drawn in the light theme (HomeLight.png, WorkspaceLight.png). */
@@ -525,7 +527,8 @@ export const platformFixtures: Record<string, Fixture> = {
   // Open at login is off by default since KERNEL-57; the canvas draws it on.
   Settings: settingsPage('general', { settings: { ...DEFAULT_SETTINGS('/Users/you'), general: { ...DEFAULT_SETTINGS('/Users/you').general, openTo: 'lastPlace', openAtLogin: true } } }),
   SettingsAppearance: settingsPage('appearance'),
-  SettingsNotifications: settingsPage('notifications'),
+  // Redesign 15: quiet hours on for the night, and a finished workspace stays quiet.
+  SettingsNotifications: settingsPage('notifications', { settings: { ...DEFAULT_SETTINGS('/Users/you'), notifications: { ...DEFAULT_SETTINGS('/Users/you').notifications, finished: false, quietHours: { from: '22:00', to: '08:00' } } } }),
   SettingsShortcuts: settingsPage('shortcuts'),
   // KERNEL-406, KERNEL-974: Frontend runs on Codex and Backend on Opus, each on its own row. The rest stay on their defaults.
   // KERNEL-974: Christian and Sean in two projects, Mira on her own model, and Rio with a custom role that lands under Backend. QA has no one.
@@ -668,7 +671,7 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-455: Auto is the pick, and the fixture's availability has it working on Claude Code and not on Codex.
   SettingsPermissions: settingsPage('permissions', { settings: { ...autoMode(), permissions: { ...autoMode().permissions, neverAllow: ['git push origin main', 'curl * | sh'] } } }),
   SettingsBigTerminal: settingsPage('bigterm', bigTerminal),
-  SettingsAbout: settingsPage('about', { preflight: [] }),
+  SettingsAbout: aboutPage({ status: 'idle', current: '0.42.0' }),
   // KERNEL-397: usage data is opt-in. This build can send, and the user hasn't said yes, so every event is kept on the Mac.
   SettingsPrivacy: settingsPage('privacy', { telemetry: { canSend: true, recent: [
     { event: { name: 'team.resolved', leadFrom: 'builtin', reviewerFrom: 'file', agents: '1-5', helpers: '1-5', warnings: '1-5' }, at: at(10, 42), sent: false },
@@ -894,7 +897,12 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsMcpSetUpRunning: mcpPage({ ui: { route: { name: 'settings', page: 'mcp', account: 'personal' }, modal: setUpModal }, push: [{ type: 'account.mcpSignInAll', run: { ...setUpRun, connect: setUpConnect } }, { type: 'account.mcpConnect', connect: setUpConnect }] }),
   // KERNEL-661: it ended with Vercel failed, the connectors left for claude.ai and one server ignored.
   SettingsMcpSetUpDone: mcpPage({ ui: { route: { name: 'settings', page: 'mcp', account: 'personal' }, modal: setUpModal }, push: [{ type: 'account.mcpSignInAll', run: { ...setUpRun, current: undefined, done: ['Linear'], failed: [{ server: 'Vercel', error: 'The sign-in was not finished in the browser.' }], finished: true, connect: setUpConnect } }] }),
-  SettingsIntegrations: settingsPage('integrations', { integrations: integrationRows }),
+  // Redesign 15: both services connected, as the page usually reads.
+  SettingsIntegrations: settingsPage('integrations', { integrations: integrationRows.map((r) => (r.id === 'linear' ? { ...r, connected: true, detail: 'Read with an API token. Issues and comments.' } : r)) }),
+  // Redesign 15: Connect pressed on Linear and a token typed.
+  SettingsIntegrationsLinearToken: settingsPage('integrations', { integrations: integrationRows }),
+  // Redesign 15: the read failed, so the card keeps a calm row with Try again and a toast carries the error.
+  SettingsIntegrationsFailed: settingsPage('integrations', { integrations: integrationRows, fails: { 'integrations.list': 'gh did not answer within 10 seconds.' } }),
   // KERNEL-893: the integrations read is slow, so each row shows its name and a skeleton, with no Connect.
   SettingsIntegrationsLoading: settingsPage('integrations', { integrations: integrationRows, lag: { 'integrations.list': 60000 } }),
   SettingsProject: scene(settingsProject),
@@ -1107,12 +1115,13 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-455: the first switch into Bypass permissions, with Only in worktrees on.
   ConfirmBypass: scene(() => ({ ui: { ...open, modal: { name: 'confirm', kind: 'bypass' } } })),
   // UX audit (app shell and platform): states the screens above leave out. See docs/audits/ux-platform.md.
-  AuditAboutChecking: settingsPage('about', { preflight: [], update: { status: 'checking', current: '0.1.0' } }),
-  AuditAboutDownloading: settingsPage('about', { preflight: [], update: { status: 'downloading', current: '0.1.0', version: '0.2.0', progress: 42 } }),
-  AuditAboutUpdateError: settingsPage('about', { preflight: [], update: { status: 'error', current: '0.1.0', error: 'net::ERR_INTERNET_DISCONNECTED' } }),
-  AboutInstallFailedSignature: settingsPage('about', { preflight: [], update: { status: 'idle', current: '0.5.0', installFailed: { version: '0.6.0', reason: 'signature' } } }),
-  AboutInstallFailedOther: settingsPage('about', { preflight: [], update: { status: 'idle', current: '0.5.0', installFailed: { version: '0.6.0', reason: 'other' } } }),
-  AuditAboutUpdateBlocked: settingsPage('about', { preflight: [], update: { status: 'idle', current: '0.1.0', blocked: 'Kernel is running from outside Applications, so it does not check for updates.' } }),
+  // Redesign 15: the Version card for each thing the updater does. A failed check or install is a toast, and the card stays calm. Kernel raises the install toast itself when it loads.
+  AuditAboutChecking: aboutPage({ status: 'checking', current: '0.43.2' }),
+  AuditAboutDownloading: aboutPage({ status: 'downloading', current: '0.43.2', version: '0.44.0', progress: 62 }),
+  AuditAboutUpdateError: aboutPage({ status: 'error', current: '0.43.2', error: 'net::ERR_CONNECTION_TIMED_OUT' }, [{ id: 'upd', title: "Couldn't check for updates", sub: 'Could not reach the update server.', glyph: 'error', action: { label: 'Try again', retry: 'update', primary: true } }]),
+  AboutInstallFailedSignature: aboutPage({ status: 'idle', current: '0.43.2', installFailed: { version: '0.44.0', reason: 'signature' } }),
+  AboutInstallFailedOther: aboutPage({ status: 'idle', current: '0.43.2', installFailed: { version: '0.44.0', reason: 'other' } }),
+  AuditAboutUpdateBlocked: aboutPage({ status: 'idle', current: '0.43.2', blocked: 'Kernel 0.44.0 is ready, but this copy runs from Downloads. Move Kernel to Applications to update.' }),
   // The home screen while an update downloads or fails: a quiet footer line.
   AuditHomeUpdateDownloading: { ...teamFixtures.UpdateReady, update: { status: 'downloading', current: '0.1.0', version: '0.2.0', progress: 42 } },
   AuditHomeUpdateError: { ...teamFixtures.UpdateReady, update: { status: 'error', current: '0.1.0', error: 'net::ERR_INTERNET_DISCONNECTED' } },

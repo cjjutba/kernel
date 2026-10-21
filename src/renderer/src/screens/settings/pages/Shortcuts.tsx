@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Icon } from '../../../ui'
-import { Keys, Page, Row, Section } from '../kit'
+import { Keys, Page, Section } from '../kit'
 import './personal.css'
 
 /** The shortcuts Kernel listens for, as bound in App.tsx, the composers, the chat tabs and the menu. They are fixed, so the page is read only. */
@@ -28,7 +28,7 @@ export const SHORTCUTS: { title: string; rows: [string, string[]][] }[] = [
 
 const NAMES: Record<string, string> = { '⌘': 'Command', '⇧': 'Shift', '⌥': 'Option', '⌃': 'Control', '↵': 'Return', '⌫': 'Delete' }
 
-/** Settings > Shortcuts (SettingsPage.png, page shortcuts): a filter, groups with counts and compact rows (KERNEL-680). */
+/** Settings > Shortcuts (SettingsPage.png, page shortcuts): a filter, then each group's shortcuts in two columns (KERNEL-680, Redesign 15). */
 export function Shortcuts() {
   const [query, setQuery] = useState('')
   const q = query.trim().toLowerCase()
@@ -39,15 +39,22 @@ export function Shortcuts() {
         <span aria-hidden="true"><Icon name="search" size={12} /></span>
         <input type="search" aria-label="Filter shortcuts" placeholder="Filter shortcuts" autoComplete="off" spellCheck={false} value={query} onChange={(e) => setQuery(e.target.value)} />
       </div>
-      {groups.map((g) => (
-        <Section key={g.title} title={g.title} count={g.rows.length}>
-          {g.rows.map(([label, keys]) => (
-            <Row key={label + keys.join('')} label={label} className="pe-compact">
-              <span role="img" aria-label={keys.map((k) => NAMES[k] ?? k).join(' ')}><Keys keys={keys} /></span>
-            </Row>
-          ))}
-        </Section>
-      ))}
+      {groups.map((g) => {
+        // Two columns read down, then across, so the first half of a group sits on the left.
+        const per = g.rows.length > 1 ? Math.ceil(g.rows.length / 2) : 1
+        return (
+          <Section key={g.title} title={g.title}>
+            <div className="pe-grid" role="list" aria-label={g.title} style={{ gridTemplateRows: `repeat(${per}, auto)` }}>
+              {g.rows.map(([label, keys], i) => (
+                <div key={label + keys.join('')} role="listitem" className="pe-key" data-right={i >= per || undefined} data-first={i % per === 0 || undefined}>
+                  <span className="pe-key-label">{label}</span>
+                  <span role="img" aria-label={keys.map((k) => NAMES[k] ?? k).join(' ')}><Keys keys={keys} /></span>
+                </div>
+              ))}
+            </div>
+          </Section>
+        )
+      })}
       {!groups.length && <p className="pe-empty">No shortcuts match “{query}”</p>}
     </Page>
   )

@@ -1,4 +1,4 @@
-import type { AppUpdate } from '@shared/types'
+import type { AppUpdate, ToastAction } from '@shared/types'
 import { readSaved, writeSaved } from '../../remember'
 
 const OFFLINE = /ERR_INTERNET_DISCONNECTED|ERR_NETWORK_CHANGED|ERR_NAME_NOT_RESOLVED|ENOTFOUND|ENETDOWN|ENETUNREACH|EAI_AGAIN|offline/i
@@ -16,10 +16,13 @@ export type InstallFailed = NonNullable<AppUpdate['installFailed']>
 export const installFailure = (u: AppUpdate | null | undefined): InstallFailed | undefined =>
   u?.installFailed && u.status !== 'ready' && u.status !== 'downloading' ? u.installFailed : undefined
 
-export const installFailedTitle = (f: InstallFailed): string => `Version ${f.version} couldn't install`
+export const installFailedTitle = (f: InstallFailed): string => `Couldn't install Kernel ${f.version}`
+
+/** Where Download again goes: the releases page, which holds a build whose signature checks out. */
+export const RELEASES_URL = 'https://github.com/cjjutba/kernel/releases/latest'
 
 export function updateReason(error: string | undefined, online = true, failed?: InstallFailed): string {
-  if (failed) return failed.reason === 'signature' ? "This copy of Kernel can't install updates. Download the latest version from GitHub." : 'Kernel will try again later'
+  if (failed) return failed.reason === 'signature' ? "The download's signature didn't match, so Kernel skips it." : 'Kernel will try again later.'
   if (!online || (error && OFFLINE.test(error))) return 'No internet connection'
   if (error && UNREACHABLE.test(error)) return 'Could not reach the update server'
   return 'Could not check for updates'
@@ -28,11 +31,13 @@ export function updateReason(error: string | undefined, online = true, failed?: 
 const FAILED_SEEN = 'kernel.installFailedSeen'
 
 /** The toast after a relaunch on a failed install, once per failure. The seen mark is a remembered choice, since main keeps `installFailed` until a different version is offered. */
-export function installFailedToast(u: AppUpdate | null | undefined): { title: string; sub: string } | null {
+export function installFailedToast(u: AppUpdate | null | undefined): { title: string; sub: string; glyph: 'error'; action: ToastAction } | null {
   const f = installFailure(u)
   if (!f) return null
   const key = `${f.version} ${f.reason}`
   if (readSaved(FAILED_SEEN) === key) return null
   writeSaved(FAILED_SEEN, key)
-  return { title: installFailedTitle(f), sub: updateReason(undefined, true, f) }
+  // A build whose signature failed is fixed by a fresh download. Any other failure waits for Kernel's next try, and About says where it stands.
+  const action: ToastAction = f.reason === 'signature' ? { label: 'Download again', href: RELEASES_URL, primary: true } : { label: 'Open About', route: { name: 'settings', page: 'about' }, primary: true }
+  return { title: installFailedTitle(f), sub: updateReason(undefined, true, f), glyph: 'error', action }
 }

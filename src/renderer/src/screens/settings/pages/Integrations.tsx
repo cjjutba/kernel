@@ -3,10 +3,12 @@ import { useEffect, useState, type ReactNode } from 'react'
 import type { Integration } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions } from '../../../store'
+import { failToast, useRetryKey } from '../../../retry'
 import { ServiceMark } from '../../../icons'
-import { Button, Skeleton, useBusy } from '../../../ui'
+import { Button, Icon, LoadingRow, Skeleton, useBusy } from '../../../ui'
 import { Page, Row, Section, SettingsLink } from '../kit'
 import { forgetLinear, forgetTrackers } from '../../issues/cache'
+import { CalmRow } from './CalmRow'
 
 const Mark = ({ name }: { name: 'github' | 'linear' }) => <span className="sys-logo" aria-hidden="true"><ServiceMark name={name} size={17} /></span>
 
@@ -20,7 +22,9 @@ export function Integrations() {
   const [asking, setAsking] = useState(false)
   const [token, setToken] = useState('')
   const [busy, run] = useBusy<string>()
-  const load = () => call('integrations.list', undefined).then((l) => { setRows(l); setFailed(false) }).catch(() => setFailed(true))
+  // A read that fails leaves a calm row, and the toast carries the error and its Try again.
+  const load = () => call('integrations.list', undefined).then((l) => { setRows(l); setFailed(false) }).catch((e: unknown) => { setFailed(true); failToast("Couldn't read integrations", cleanError(e), 'integrations') })
+  useRetryKey('integrations', load)
   useEffect(() => { void load() }, [])
   const swap = (row: Integration) => setRows((list) => (list ?? []).map((r) => (r.id === row.id ? row : r)))
   const fail = (title: string, e: unknown) => actions.ui.toast({ title, sub: cleanError(e) })
@@ -40,31 +44,37 @@ export function Integrations() {
   const form: ReactNode = asking ? (
     <form className="sys-connect" onSubmit={(e) => { e.preventDefault(); if (token.trim()) void saveLinear() }}>
       <input className="set-token" type="password" autoComplete="off" aria-label="Linear API token" placeholder="lin_api_..." value={token} onChange={(e) => setToken(e.target.value)} />
+      <Button variant="ghost" disabled={busy === 'linear'} onClick={close}>Cancel</Button>
       <Button type="submit" variant="primary" busy={busy === 'linear'} busyLabel="Connecting" disabled={!token.trim()}>Connect</Button>
-      <Button disabled={busy === 'linear'} onClick={close}>Cancel</Button>
     </form>
   ) : undefined
+  const state = (r: Integration | undefined) => r?.connected
+    ? <span className="set-result" data-state="ok"><Icon name="check" size={12} />Connected</span>
+    : r && <span className="set-result" data-state="unchecked">Not connected</span>
   return (
     <Page title="Integrations" desc="The services Kernel reads issues and pull requests from.">
-      <Section label="Services" footnote={<>claude.ai connectors are on <SettingsLink to={{ page: 'mcp' }}>MCP servers</SettingsLink>.</>}>
-        {!rows && failed && (
-          <Row label="Could not read integrations" desc="Try again in a moment.">
-            <Button busy={busy === 'retry'} busyLabel="Trying again" onClick={() => void run('retry', load)}>Try again</Button>
-          </Row>
-        )}
+      <Section title="Services" note={<>Kernel uses the GitHub CLI’s sign-in. Linear takes an API token. <SettingsLink variant="quiet" to={{ page: 'mcp' }}>MCP servers</SettingsLink><Icon name="ext" size={12} /></>}>
+        {!rows && failed && <CalmRow title="Couldn't read integrations" sub="Kernel keeps what it last knew." onRetry={load} />}
         {!rows && !failed && (
           <>
-            <Row id="github" lead={<Mark name="github" />} label="GitHub" desc={<Skeleton width={160} height={10} />}><Skeleton width={72} height={28} /></Row>
-            <Row id="linear" lead={<Mark name="linear" />} label="Linear" desc={<Skeleton width={120} height={10} />}><Skeleton width={72} height={28} /></Row>
+            {[['38%', '24%'], ['30%', '24%'], ['42%', '24%']].map(([title, sub], i) => (
+              <div key={i} className="sys-skel">
+                <Skeleton width={36} height={36} />
+                <span className="sys-skel-text"><Skeleton width={title} height={10} /><Skeleton width={sub} height={10} /></span>
+              </div>
+            ))}
+            <LoadingRow what="integrations" inline />
           </>
         )}
         {rows && <>
         <Row id="github" lead={<Mark name="github" />} label="GitHub" desc={github?.detail}>
+          {state(github)}
           <Button busy={busy === 'github'} busyLabel="Opening" disabled={busy !== null} onClick={() => void manageGithub()}>Manage</Button>
         </Row>
-        <Row id="linear" lead={<Mark name="linear" />} label="Linear" desc={linear?.detail} full={form}>
+        <Row id="linear" lead={<Mark name="linear" />} label="Linear" desc={asking ? 'Paste a personal API key from Linear, Settings, Security.' : linear?.detail} full={form}>
+          {!asking && state(linear)}
           {linear?.connected
-            ? <Button variant="ghost" busy={busy === 'linear'} busyPattern="ripple" busyLabel="Disconnecting" disabled={busy !== null} onClick={() => void disconnectLinear()}>Disconnect</Button>
+            ? <Button busy={busy === 'linear'} busyPattern="ripple" busyLabel="Disconnecting" disabled={busy !== null} onClick={() => void disconnectLinear()}>Disconnect</Button>
             : !asking && <Button disabled={!linear || busy !== null} onClick={() => { close(); setAsking(true) }}>Connect</Button>}
         </Row>
         </>}

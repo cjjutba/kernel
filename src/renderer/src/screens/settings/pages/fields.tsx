@@ -23,7 +23,7 @@ export function NumberField({ label, value, unit, min = 1, disabled, onSave }: {
       <SaveNote state={note.state} />
       <input type="text" inputMode="numeric" autoComplete="off" spellCheck={false} aria-label={label} disabled={disabled} value={text}
         onChange={(e) => { note.reset(); setText(e.target.value) }} {...save} onKeyDown={(e) => { save.onKeyDown(e); if (e.key === 'Enter') e.currentTarget.blur() }} />
-      <span className="rv-unit">{unit}</span>
+      {unit && <span className="rv-unit">{unit}</span>}
     </div>
   )
 }
