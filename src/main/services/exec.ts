@@ -57,15 +57,25 @@ export function exec(cmd: string, args: string[], opts: { cwd?: string; env?: No
   })
 }
 
-/** Like exec, but throws with stderr when the command fails. */
-export async function run(cmd: string, args: string[], opts: Parameters<typeof exec>[2] = {}): Promise<string> {
-  const r = await exec(cmd, args, opts)
+/** Throws for a command that timed out or failed, with its stderr, else returns the result. */
+function succeeded(cmd: string, args: string[], opts: NonNullable<Parameters<typeof exec>[2]>, r: ExecResult): ExecResult {
   if (r.timedOut) {
     const s = Math.max(1, Math.round((opts.timeoutMs ?? EXEC_TIMEOUT_MS) / 1000))
     throw new Error(`${cmd} ${args.join(' ')} didn't finish in ${s} second${s === 1 ? '' : 's'}`)
   }
   if (r.code !== 0) throw new Error(`${cmd} ${args.join(' ')} failed (${r.code}): ${r.stderr.trim() || r.stdout.trim()}`)
-  return r.stdout
+  return r
+}
+
+/** Like exec, but throws with stderr when the command fails. */
+export async function run(cmd: string, args: string[], opts: Parameters<typeof exec>[2] = {}): Promise<string> {
+  return succeeded(cmd, args, opts, await exec(cmd, args, opts)).stdout
+}
+
+/** Like `run`, but returns what the command printed on stdout and stderr together, for a log (KERNEL-1117). */
+export async function runLogged(cmd: string, args: string[], opts: Parameters<typeof exec>[2] = {}): Promise<string> {
+  const r = succeeded(cmd, args, opts, await exec(cmd, args, opts))
+  return [r.stderr.trim(), r.stdout.trim()].filter(Boolean).join('\n')
 }
 
 export const git = (cwd: string, ...args: string[]) => run('git', ['-C', cwd, ...args])

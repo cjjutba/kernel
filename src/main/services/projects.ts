@@ -2,7 +2,7 @@ import { copyFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/pro
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { FolderInfo, GitHubOwner, RepoSummary } from '@shared/types'
-import { exec, git, gitSlow, run } from './exec'
+import { exec, git, gitSlow, runLogged } from './exec'
 import { ghError } from './github'
 import { removeTree } from './removeTree'
 import { githubRepoOf } from './worktrees'
@@ -97,10 +97,11 @@ export async function repoAvailable(owner: string, name: string): Promise<{ avai
 
 /**
  * Creates the private repo `owner/name` on GitHub and makes it the folder's `origin` (KERNEL-944). With `push`, the current
- * branch goes up too. A folder with no commit yet can't push, so it gets the remote and nothing else.
+ * branch goes up too. A folder with no commit yet can't push, so it gets the remote and nothing else. Returns what gh printed, for the
+ * setup log (KERNEL-1117).
  */
 export async function createGitHubRepo(path: string, owner: string, name: string, push: boolean) {
-  await run('gh', ['repo', 'create', `${owner}/${name}`, '--private', '--source', path, '--remote', 'origin', ...(push ? ['--push'] : [])], { timeoutMs: 120_000 })
+  return runLogged('gh', ['repo', 'create', `${owner}/${name}`, '--private', '--source', path, '--remote', 'origin', ...(push ? ['--push'] : [])], { timeoutMs: 120_000 })
 }
 
 /**
@@ -121,9 +122,10 @@ export async function assertFreeFolder(path: string, home = homedir()) {
   if (!(await isDir(path)) || (await readdir(path)).length) throw new Error(`${tildify(path, home)} already exists and is not empty. Pick another folder.`)
 }
 
+/** Clones `fullName` into `dest`. Returns what gh printed, for the setup log (KERNEL-1117). */
 export async function cloneRepo(fullName: string, dest: string) {
   await mkdir(dirname(dest), { recursive: true })
-  await run('gh', ['repo', 'clone', fullName, dest], { timeoutMs: 600_000 })
+  return runLogged('gh', ['repo', 'clone', fullName, dest], { timeoutMs: 600_000 })
 }
 
 /**
@@ -131,11 +133,12 @@ export async function cloneRepo(fullName: string, dest: string) {
  * Kernel's own files in a folder that was empty, so committing them is safe. Works without a git identity.
  */
 export async function copyTemplate(fullName: string, dest: string) {
-  await cloneRepo(fullName, dest)
+  const printed = await cloneRepo(fullName, dest)
   await removeTree(join(dest, '.git'))
   await git(dest, 'init', '-q', '-b', 'main')
   await gitSlow(dest, 'add', '-A')
   await git(dest, '-c', 'user.name=Kernel', '-c', 'user.email=kernel@localhost', 'commit', '-q', '--allow-empty', '-m', 'Initial commit')
+  return printed
 }
 
 /** Past this many files, a folder is not a project to run `git init` in (KERNEL-231). */

@@ -13,6 +13,7 @@ import { ago, agoShort, projectState, teamOf } from '../src/renderer/src/screens
 import { repoOfUrl } from '../src/renderer/src/screens/projects/ConnectRepo'
 import { assertFreeFolder, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listOwners, lockfileInstall, recentFolders, repoAvailable, seatStarterTeam } from '../src/main/services/projects'
 import { loadRepoSettings } from '../src/main/services/settings'
+import { keepSetupLog, setupLogEntry, SETUP_LOG_KEEP } from '../src/main/features/projects'
 import { repoSlug } from '../src/renderer/src/screens/projects/RepoName'
 import { setUp, tempRepo, freePort } from './helpers'
 
@@ -236,6 +237,7 @@ describe('Kernel projects', () => {
       '[ "$1 $2" = "repo clone" ] || exit 1',
       `n=$(cat "${count}" 2>/dev/null || echo 0); echo $((n + 1)) > "${count}"`,
       'if [ "$n" = 0 ]; then mkdir -p "$4"; echo half > "$4/half.txt"; echo "fatal: early EOF" >&2; exit 128; fi',
+      `echo "Cloning into '$4'..." >&2`,
       `exec git clone -q "${src}" "$4"`
     ].join('\n') + '\n', { mode: 0o755 })
     const path = process.env.PATH
@@ -286,6 +288,54 @@ describe('Kernel projects', () => {
     expect(clones).toBe(1)
     expect(await readFile(join(picked, 'half.txt'), 'utf8')).toBe('half\n')
     await k.stop({ budgetMs: 0 })
+  })
+
+  it('keeps a setup log for each project: every step, what a tool printed, the failure and the retry, until the project goes (KERNEL-1117)', async () => {
+    const { k, home } = await kernel()
+    const src = await tempRepo({ 'README.md': '# x\n' })
+    await withFlakyClone(src, async () => {
+      const project = await k.projects.createProject({ source: 'repo', name: 'Log app', from: 'me/log-app', cloneTo: join(home, 'Projects', 'log-app'), team: ['christian'], autostart: false })
+      await setupDone(project.id)
+      const first = await k.handlers()['projects.setupLog']({ projectId: project.id })
+      expect(first).toMatch(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d {2}Clone me\/log-app\n/)
+      expect(first).toContain('Failed, setup stopped here')
+      expect(first).toContain('fatal: early EOF')
+      // The steps after the checkout never ran, so the log has nothing about them.
+      expect(first).not.toContain('Create the worktree folder')
+
+      const done = setupDone(project.id)
+      k.projects.retrySetup(project.id)
+      await done
+      const log = await k.handlers()['projects.setupLog']({ projectId: project.id })
+      expect(log.startsWith(first)).toBe(true)
+      const retry = log.slice(first.length)
+      expect(retry).toContain('Trying again from: Clone me/log-app')
+      expect(retry.indexOf('Output: Clone me/log-app')).toBeGreaterThan(retry.indexOf('Trying again'))
+      expect(retry).toMatch(/Output: Clone me\/log-app\n\s+Cloning into/)
+      expect(retry).toMatch(/Done: .*log-app\n/)
+      expect(retry.indexOf('Create the worktree folder')).toBeGreaterThan(retry.indexOf('Output:'))
+      // Install hooks is skipped with its reason, and the agents after it are seated.
+      expect(log).toMatch(/Install hooks\n[^]*Skipped, setup went on\n\s+Kernel hooks are not in your Claude settings yet[^]*Seat agents\n[^]*Done: Christian from \.claude\/agents, Kernel leads/)
+
+      await k.projects.removeProject(project.id, false)
+      expect(k.store.meta(`setupLog:${project.id}`)).toBeUndefined()
+      await expect(k.handlers()['projects.setupLog']({ projectId: project.id })).rejects.toThrow()
+    })
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('keeps a setup log bounded: a tool\'s output is cut to its end and the oldest lines go first (KERNEL-1117)', () => {
+    const big = setupLogEntry(new Date(2026, 9, 21, 14, 3, 12), 'Output: Clone me/app', `first\n${'y'.repeat(50_000)}\nlast`)
+    expect(big.length).toBeLessThan(5_000)
+    expect(big).toContain('last')
+    expect(big).not.toContain('first')
+    expect(big.startsWith('2026-10-21 14:03:12  Output: Clone me/app\n')).toBe(true)
+    let log = ''
+    for (let i = 0; i < 3000; i++) log = keepSetupLog(log, setupLogEntry(new Date(), `Step ${i}`, 'x'.repeat(100)))
+    expect(log.length).toBeLessThanOrEqual(SETUP_LOG_KEEP)
+    expect(log).toContain('Step 2999')
+    expect(log).not.toContain('Step 0\n')
+    expect(log.split('\n').every((l) => /^\d{4}-\d\d-\d\d |^ +x+$|^$/.test(l))).toBe(true)
   })
 
   it('tries a setup that failed before a restart again after it (KERNEL-883)', async () => {
