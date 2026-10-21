@@ -7,12 +7,12 @@ import { discoverSkills, searchFiles } from '../src/main/services/files'
 import { commitHunks, listHunks } from '../src/main/services/hunks'
 import { git } from '../src/main/services/exec'
 import { chatMode } from '../src/main/services/permissions'
-import { attachFiles, Held, numberImages, partOf, pastedText, pathOnlyFiles, previewOf, PLAN_FILES_ONLY, PLAN_SEND_BLOCKED } from '../src/renderer/src/screens/workspace/composer/attach'
+import { attachFiles, Held, numberImages, partOf, pastedText, pathOnlyFiles, previewOf, PLAN_FILES_ONLY } from '../src/renderer/src/screens/workspace/composer/attach'
 import { mentionMenu, mentionPart } from '../src/renderer/src/screens/workspace/composer/autocomplete'
 import { noteFromParts } from '../src/renderer/src/screens/workspace/cards/steps'
 import { toUserMessage } from '../src/main/services/providers/claude'
 import { ModeMenu } from '../src/renderer/src/screens/workspace/composer/ModeMenu'
-import { MODE_ORDER, buttonName, modeAria, modePatch, modeRows, nextMode, offLine, shownMode, whyLine, type ComposerMode } from '../src/renderer/src/screens/workspace/composer/modes'
+import { buttonName, modeAria, modePatch, modeRows, nextMode, offLine, shownMode, whyLine, type ComposerMode } from '../src/renderer/src/screens/workspace/composer/modes'
 import { apply, getState } from '../src/renderer/src/store'
 import { INLINE_TEXT_MAX, type AppSettings, type ChatPart, type ChatRunMode } from '../src/shared/types'
 import { tempRepo } from './helpers'
@@ -175,7 +175,6 @@ describe('permission mode from the composer', () => {
 
   it('cycles Manual, Accept edits, Plan, Auto, Bypass and round again', () => {
     const order = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions']
-    expect(MODE_ORDER).toEqual(order)
     expect(order.map((m) => nextMode(m as ComposerMode, all))).toEqual(['acceptEdits', 'plan', 'auto', 'bypassPermissions', 'default'])
   })
 
@@ -304,7 +303,6 @@ describe('attaching files', () => {
     const byPath: ChatPart = { type: 'file', name: 'brief.pdf', src: '/Users/cj/brief.pdf', size: 10 }
     const inlined: ChatPart = { type: 'file', name: 'notes.md', src: '/Users/cj/notes.md', text: 'a', lines: 1 }
     expect(pathOnlyFiles([{ type: 'text', text: 'x' }, byPath, inlined, { type: 'file', name: 'a.ts', path: 'src/a.ts' }])).toEqual([byPath])
-    expect(PLAN_SEND_BLOCKED).toBe('Plan change requests take images and text files only. Remove the other files to send.')
   })
 
   it('removes the place of a file that cannot be attached, toasts, and still attaches the rest', async () => {

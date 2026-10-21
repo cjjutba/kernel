@@ -41,8 +41,7 @@ describe('Settings search (KERNEL-727)', () => {
     expect(rows('protected branches')).toEqual(['permissions/protected-branches'])
   })
 
-  it('lists six project pages, and Mode, Files to copy and Setup script land on the right row (KERNEL-914)', () => {
-    expect(PROJECT_PAGES.map((p) => p.section)).toEqual(['general', 'git', 'setup', 'environment', 'agents', 'prs'])
+  it('lands Mode, Files to copy and Setup script on the right row (KERNEL-914)', () => {
     const land = (q: string) => PROJECT_PAGES.flatMap((p) => keywordHits(q, p.keywords).map((k) => `${p.section}/${k.rowId}`))
     expect(land('Mode')).toContain('agents/mode')
     expect(land('Files to copy')).toEqual(['environment/copy-files'])

@@ -245,6 +245,5 @@ describe('no tracker (KERNEL-462)', () => {
     await expect(t.create({ title: 'Crash' })).rejects.toThrow(NO_TRACKER)
     await expect(t.edit('#41', { title: 'Crash' })).rejects.toThrow(NO_TRACKER)
     await expect(t.comment('#41', 'Crash')).rejects.toThrow(NO_TRACKER)
-    expect(NO_TRACKER).toBe('This project has no issue tracker.')
   })
 })

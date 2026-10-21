@@ -65,7 +65,6 @@ describe('kernel.db versions', () => {
 
     const store = new Store(file)
     expect(store.db.pragma('user_version', { simple: true })).toBe(LATEST)
-    expect(LATEST).toBe(9)
     for (const t of TABLES) {
       // Approvals gain two columns, and rooms are projects (KERNEL-880); the rest of each row stays as it was.
       const now = rows(store.db, t).map(({ settled_at: _s, pruned: _p, ...r }) => r)

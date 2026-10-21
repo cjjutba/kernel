@@ -580,6 +580,8 @@ describe('network access', () => {
     const off = { neverAllow: [], alwaysAsk: [], network: false }
     expect(bashVerdict('bash -c "curl https://x.dev"', off, [])).toBe('deny')
     expect(bashVerdict('bash -c "curl https://x.dev"', { ...off, network: true }, [])).toBeUndefined()
+    expect(bashVerdict('curl https://x.dev', off, [])).toBe('deny')
+    expect(bashVerdict('npm test', off, [])).toBeUndefined()
   })
 })
 

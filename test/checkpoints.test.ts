@@ -7,7 +7,6 @@ import { exec, git, run } from '../src/main/services/exec'
 import { createWorktree, fastForward, snapshotBaseline } from '../src/main/services/worktrees'
 import { clock, listCheckpoints, previewRevert, revertTo, snapshot, snapshotWithFiles, worktreeTree } from '../src/main/services/checkpoints'
 import { Kernel } from '../src/main/kernel'
-import { KEEP_CHECKPOINTS_MS } from '../src/main/features/archive'
 import { revertNote } from '../src/main/features/checkpoints'
 
 const read = (dir: string, f: string) => readFile(join(dir, f), 'utf8')
@@ -648,7 +647,6 @@ describe('checkpoints of archived workspaces (KERNEL-221)', () => {
     const { repo, k, refs, archived, done } = await setup()
     const { ws, blob } = await archived('Old', 31)
     expect(await refs(`refs/kernel/checkpoints/${ws.id}/`)).toHaveLength(2)
-    expect(KEEP_CHECKPOINTS_MS).toBe(30 * DAY)
     // While the refs are there, gc keeps the file only a checkpoint holds.
     await git(repo, 'gc', '--prune=now', '--quiet')
     expect((await exec('git', ['-C', repo, 'cat-file', '-e', blob])).code).toBe(0)

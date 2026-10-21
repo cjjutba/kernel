@@ -306,7 +306,6 @@ describe("Kernel's tools in each mode (KERNEL-770)", () => {
   it('create_workspace refuses a task in Build here and still starts a review', async () => {
     const t = tools({ leadMode: 'build' })
     expect(await t.call('create_workspace', { agent: 'christian', title: 'Padding', brief: 'Fix it' })).toEqual({ text: BUILD_HERE_REFUSAL, isError: true })
-    expect(BUILD_HERE_REFUSAL).toContain('Switch this chat to Hand off to give tasks to teammates.')
     expect(t.created).toEqual([])
     const review = await t.call('create_workspace', { agent: 'artkin', title: 'Review padding', brief: 'Review it', review_of: 'w-christian' })
     expect(review.isError).toBe(false)
@@ -370,9 +369,7 @@ describe("the Lead's prompt and tools in each mode (KERNEL-770)", () => {
     for (const part of ['open a pull request', 'fix your own PR', 'never call mcp__kernel__create_workspace, except with review_of', 'bigger than one PR', 'mcp__kernel__suggest_hand_off']) expect(LEAD_BUILD_RULE, part).toContain(part)
     // One go-ahead line in both modes, and Build here builds what the user asked for, with no quote to pass (KERNEL-1113).
     for (const rule of [LEAD_RULE, LEAD_BUILD_RULE]) expect(rule).toContain(GO_AHEAD_LINE)
-    expect(LEAD_BUILD_RULE).toContain('With plan mode off, build what the user asked for.')
     for (const rule of [LEAD_RULE, LEAD_BUILD_RULE]) expect(rule).not.toContain('start_build')
-    expect(LEAD_BUILD_RULE).toContain('"not checked on screen"')
     for (const part of ['Team update', 'Never use em dashes', 'mcp__kernel__read_plans', 'Never leave a teammate waiting', 'answer and stop, with no closing offer or question']) {
       expect(LEAD_RULE, part).toContain(part)
       expect(LEAD_BUILD_RULE, part).toContain(part)

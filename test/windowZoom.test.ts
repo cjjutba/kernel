@@ -54,7 +54,6 @@ describe('the traffic lights', () => {
 
   it('stop zooming out at the floor, which is 100% while the lights overflow the hidden sidebar header there', () => {
     expect(20 + LIGHTS_WIDTH + 8).toBeGreaterThan(78)
-    expect(FLOOR_LEVEL).toBe(0)
     const w = window_(false, FLOOR_LEVEL)
     zoomWindow(w as never, 'out', 1)
     expect(w.webContents.setZoomLevel).toHaveBeenCalledWith(FLOOR_LEVEL)

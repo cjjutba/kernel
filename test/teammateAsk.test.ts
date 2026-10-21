@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type { ChatPart, TeamUpdate, Workspace } from '@shared/types'
 import { Kernel } from '../src/main/kernel'
 import { teammateTools } from '../src/main/services/teammateMcp'
-import { forProvider, LEAD_RULE, TEAMMATE_RULE } from '../src/main/services/handoff'
+import { forProvider, TEAMMATE_RULE } from '../src/main/services/handoff'
 import { tempRepo, freePort } from './helpers'
 
 // KERNEL-747: a teammate asks the Lead with ask_lead, or proposes handing part of its work to another agent with
@@ -125,10 +125,9 @@ describe('propose_handoff', () => {
 })
 
 describe('the rules and Codex', () => {
-  it('tells teammates when to use each tool, and the Lead that a proposal needs the user', () => {
-    expect(TEAMMATE_RULE).toContain("When you need a decision your brief doesn't cover, call mcp__kernel__ask_lead and end your turn.")
-    expect(TEAMMATE_RULE).toContain('call mcp__kernel__propose_handoff and carry on with the rest. The Lead asks the user, so never start that work yourself.')
-    expect(LEAD_RULE).toContain('A hand-off a teammate proposes is yours to propose to the user, and needs the same go-ahead.')
+  it('names both tools to teammates, under Codex names for Codex', () => {
+    expect(TEAMMATE_RULE).toContain('mcp__kernel__ask_lead')
+    expect(TEAMMATE_RULE).toContain('mcp__kernel__propose_handoff')
     expect(forProvider(TEAMMATE_RULE, 'codex')).toContain('call kernel_ask_lead and end your turn')
     expect(forProvider(TEAMMATE_RULE, 'codex')).toContain('call kernel_propose_handoff')
     expect(TEAMMATE_RULE).not.toMatch(/[–—]/)

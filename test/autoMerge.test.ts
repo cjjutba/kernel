@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { ActivityEvent, Chat, PrCheck, PrInfo, ReviewKind, TeamUpdate, Workspace } from '@shared/types'
-import { ALWAYS_REVIEW, autoMergeBlock, autoMergeRetry, autoMergeWhy, type AutoMergeFacts } from '@shared/merge'
+import { autoMergeBlock, autoMergeRetry, autoMergeWhy, type AutoMergeFacts } from '@shared/merge'
 import { Kernel } from '../src/main/kernel'
 import { Prs } from '../src/main/features/prs'
 import { Store } from '../src/main/db'
@@ -85,6 +85,7 @@ describe('which PRs merge by themselves', () => {
     // KERNEL-632: the agents' files and instructions count at the root and in any folder below it.
     ...['CLAUDE.md', 'AGENTS.md', '.claude/agents/x.md', 'src/CLAUDE.md', 'packages/x/AGENTS.md', 'apps/web/.claude/agents/x.md'].map((f): Row =>
       [`a PR that touches ${f}`, { files: { [f]: 'You are Christian.\n' } }, `It changes ${f}, which always needs a person's review.`]),
+    ['a PR that touches a workflow', { files: { '.github/workflows/ci.yml': 'on: push\n' } }, "It changes .github/workflows/ci.yml, which always needs a person's review."],
     ["a path the base branch's [merge] always_review adds", { main: { '.kernel/settings.toml': '[merge]\nalways_review = ["migrations/**"]\n' }, files: { 'migrations/001.sql': 'select 1;\n' } }, "It changes migrations/001.sql, which always needs a person's review."],
     ['a shared settings file that turns it on', { app: OFF, main: { '.kernel/settings.toml': '[merge]\nauto = true\nmax_lines = 5000\n' } }, 'Auto-merge is off.'],
     ['a personal settings file the repo committed', { app: OFF, main: { '.kernel/settings.local.toml': '[merge]\nauto = true\n' } }, 'Auto-merge is off.'],
@@ -698,9 +699,6 @@ describe('the rule', () => {
     expect(autoMergeRetry(clean)).toBe(false)
   })
 
-  it("keeps Kernel's own always-review paths", () => {
-    expect(ALWAYS_REVIEW).toEqual(['.kernel/**', '**/.claude/agents/**', '**/CLAUDE.md', '**/AGENTS.md', '.github/workflows/**'])
-  })
 })
 
 describe('the settings', () => {

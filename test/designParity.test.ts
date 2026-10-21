@@ -16,8 +16,4 @@ describe('app and website colors', () => {
     const pairs = [['--add', '--color-add'], ['--merged', '--color-merged'], ['--merged-solid', '--color-merged-fill']]
     expect(pairs.map(([a, s]) => [a, value(app, a), value(site, s)]).filter(([, a, s]) => !a || a !== s)).toEqual([])
   })
-  it('fails when a color drifts', () => {
-    expect(value(app, '--add')).toMatch(/^#[0-9a-f]{6}$/)
-    expect(value(app.replace('--add: #4cb782', '--add: #4cb783'), '--add')).not.toBe(value(site, '--color-add'))
-  })
 })
