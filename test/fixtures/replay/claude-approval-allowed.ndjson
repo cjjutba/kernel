@@ -1,0 +1,10 @@
+{"provider":"claude","scenario":"approval-allowed","description":"Claude Code asks to run a command, the user allows it, and the tool result comes back."}
+{"dir":"out","query":{"model":"claude-sonnet-5-5","permissionMode":"acceptEdits"}}
+{"dir":"out","user":{"text":"Install the dependencies"}}
+{"dir":"in","msg":{"type":"system","subtype":"init","uuid":"i1","session_id":"sess-1","apiKeySource":"none","permissionMode":"acceptEdits","model":"claude-sonnet-5-5","mcp_servers":[],"tools":["Read","Bash"]}}
+{"dir":"in","msg":{"type":"assistant","uuid":"a1","session_id":"sess-1","parent_tool_use_id":null,"message":{"id":"m1","role":"assistant","model":"claude-sonnet-5-5","content":[{"type":"tool_use","id":"tu1","name":"Bash","input":{"command":"pnpm install"}}],"stop_reason":"tool_use"}}}
+{"dir":"in","ask":{"tool":"Bash","input":{"command":"pnpm install"},"toolUseID":"tu1"}}
+{"dir":"out","answer":{"behavior":"allow","updatedInput":{"command":"pnpm install"}}}
+{"dir":"in","msg":{"type":"user","uuid":"u1","session_id":"sess-1","parent_tool_use_id":null,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu1","content":"Done in 2s"}]}}}
+{"dir":"in","msg":{"type":"assistant","uuid":"a2","session_id":"sess-1","parent_tool_use_id":null,"message":{"id":"m2","role":"assistant","model":"claude-sonnet-5-5","content":[{"type":"text","text":"Installed."}],"stop_reason":"end_turn"}}}
+{"dir":"in","msg":{"type":"result","subtype":"success","uuid":"r1","session_id":"sess-1","is_error":false,"duration_ms":900,"duration_api_ms":800,"num_turns":2,"result":"Installed."}}

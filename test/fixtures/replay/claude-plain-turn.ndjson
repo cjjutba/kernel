@@ -1,0 +1,10 @@
+{"provider":"claude","scenario":"plain-turn","description":"A turn with thinking, text and a tool call that each arrive as their own message, then the result."}
+{"dir":"out","query":{"model":"claude-sonnet-5-5","permissionMode":"acceptEdits","sessionId":"*","thinking":{"type":"adaptive","display":"summarized"}}}
+{"dir":"out","user":{"text":"Add a pdf_url column"}}
+{"dir":"in","msg":{"type":"system","subtype":"init","uuid":"i1","session_id":"sess-1","apiKeySource":"none","permissionMode":"acceptEdits","model":"claude-sonnet-5-5","mcp_servers":[],"tools":["Read","Bash"]}}
+{"dir":"in","msg":{"type":"assistant","uuid":"a1","session_id":"sess-1","parent_tool_use_id":null,"message":{"id":"m1","role":"assistant","model":"claude-sonnet-5-5","content":[{"type":"thinking","thinking":"Schema first."}],"stop_reason":null}}}
+{"dir":"in","msg":{"type":"assistant","uuid":"a2","session_id":"sess-1","parent_tool_use_id":null,"message":{"id":"m1","role":"assistant","model":"claude-sonnet-5-5","content":[{"type":"text","text":"I'll read the schema first."}],"stop_reason":null}}}
+{"dir":"in","msg":{"type":"assistant","uuid":"a3","session_id":"sess-1","parent_tool_use_id":null,"message":{"id":"m1","role":"assistant","model":"claude-sonnet-5-5","content":[{"type":"tool_use","id":"tu1","name":"Read","input":{"file_path":"src/db/schema.ts"}}],"stop_reason":"tool_use"}}}
+{"dir":"in","msg":{"type":"user","uuid":"u1","session_id":"sess-1","parent_tool_use_id":null,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu1","content":"export const invoices = {}"}]}}}
+{"dir":"in","msg":{"type":"assistant","uuid":"a4","session_id":"sess-1","parent_tool_use_id":null,"message":{"id":"m2","role":"assistant","model":"claude-sonnet-5-5","content":[{"type":"text","text":"Added the column."}],"stop_reason":"end_turn"}}}
+{"dir":"in","msg":{"type":"result","subtype":"success","uuid":"r1","session_id":"sess-1","is_error":false,"duration_ms":1200,"duration_api_ms":1000,"num_turns":2,"result":"Added the column."}}
