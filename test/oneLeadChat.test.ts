@@ -213,13 +213,12 @@ describe("the Lead's prompt and tools in every chat (one-lead-chat)", () => {
     expect(prompt).toContain(LEAD_RULE)
     for (const part of [
       'Answer a question, opinion or report, then stop',
-      'Do it yourself when the work is one PR in one lane and short',
-      'Hand it off when there are parallel pieces, other lanes or long work',
-      'Mix: do your small part, hand off the rest.',
-      "Teammates start from the base branch and don't see your uncommitted edits.",
-      'commit them and start the teammate from your branch with base_ref, or open your PR first',
-      'Never edit a file a teammate you handed work to is changing.',
-      'Call mcp__kernel__link_issue before your first push',
+      'Do it yourself when the work stays in one area of the code, takes about an hour and has no parallel pieces',
+      'Hand it off when the work spans several areas, has parallel pieces or takes longer',
+      'Mixed work: do the quick one-area part yourself and hand off the rest in the same turn.',
+      "Teammates don't see your uncommitted edits",
+      'commit them and pass base_ref, or open your PR first',
+      'Never edit a file a teammate is changing.',
       'Team update', 'Never use em dashes', 'read_plans', 'Never leave a teammate waiting', 'Reviews start on their own'
     ]) expect(LEAD_RULE, part).toContain(part)
     for (const gone of ['Never build a task yourself', 'suggest_hand_off', 'start_build', 'Build here', 'Hand off mode']) expect(LEAD_RULE, gone).not.toContain(gone)
@@ -230,7 +229,8 @@ describe("the Lead's prompt and tools in every chat (one-lead-chat)", () => {
     expect(agentPrompt(kernel, { ...ws, shared: true })).toContain(LEAD_RULE)
     // Codex reads Kernel's tools under its own names.
     expect(forProvider(LEAD_RULE, 'codex')).toContain('kernel_create_workspace')
-    expect(forProvider(LEAD_RULE, 'codex')).toContain('kernel_link_issue')
+    expect(forProvider(LEAD_RULE, 'codex')).toContain('kernel_list_agents')
+    expect(LEAD_INSTRUCTIONS).toContain('Call link_issue before your first push when your work builds a tracker issue.')
     expect(forProvider(LEAD_RULE, 'codex')).not.toContain('mcp__kernel__')
   })
 

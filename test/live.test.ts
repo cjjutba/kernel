@@ -380,6 +380,71 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live lead move', () => {
   })
 })
 
+// lean-lead-prompt: the Lead's tools outside LEAD_ALWAYS_LOADED are deferred behind ToolSearch. Two short Sonnet turns in a
+// throwaway repo asks for read_plans (deferred) and list_workspaces (always loaded), and Claude Code's own /context numbers have to
+// show read_plans out of the prompt and list_workspaces in it, with both calls finishing. `-t "live lead deferred tools"`.
+describe.skipIf(!process.env.KERNEL_LIVE)('live lead deferred tools', () => {
+  it('finds a deferred Lead tool through ToolSearch and calls it', { timeout: 300_000 }, async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'kernel-live-lean-'))
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-live-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-live-home-'))
+    const where = { dataDir, home, claudeSettingsFile: join(home, 'claude-settings.json') }
+    for (const args of [['init', '-q', '-b', 'main', repo], ['-C', repo, 'config', 'user.email', 't@t.dev'], ['-C', repo, 'config', 'user.name', 'Test']]) await exec('git', args)
+    await mkdir(join(repo, '.claude', 'agents'), { recursive: true })
+    await writeFile(join(repo, 'README.md'), '# lean lead\n')
+    await writeFile(join(repo, '.claude', 'agents', 'kernel.md'), '---\nname: kernel\ndescription: Lead.\nlead: true\nmodel: sonnet\n---\nYou are Kernel. Answer in one short line.')
+    await exec('git', ['-C', repo, 'add', '-A'])
+    await exec('git', ['-C', repo, 'commit', '-q', '-m', 'init'])
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({
+      hookPort: await freePort(), worktreeRoot: join(home, 'wt'),
+      models: { effort: 'low', leadPlanMode: false }, permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [] }
+    }))
+    const evidence: Record<string, unknown> = { repo }
+    const k = new Kernel(where)
+    await k.start()
+    try {
+      const project = await k.addProject(repo)
+      // A real Lead chat, so the session gets the Lead's tools (a hand-made workspace can start with a teammate's).
+      const made = await k.lead.newLeadChat(project.id, { prompt: '', baseRef: 'main' })
+      await waitFor('the Lead workspace', () => k.store.workspace(made.workspaceId)?.status === 'ready')
+      const chat = k.store.chat(made.id)!
+      const items = () => k.store.items(chat.id)
+      const turnDone = (from: number) => waitFor('the turn', () => items().slice(from).some((i) => i.kind === 'result') && !k.sessions.isRunning(chat.id))
+      // Turn 1 uses no tool, then Claude Code's own /context numbers say which Kernel tools the prompt carries.
+      await k.handlers()['chats.send']({ chatId: chat.id, parts: [{ type: 'text', text: 'Reply with just ok. Use no tools.' }] })
+      // The session ends with an idle turn, so ask while it runs, once Claude Code has said init.
+      type Live = { runner: { query: { getContextUsage: () => Promise<{ mcpTools: { name: string; tokens: number; isLoaded?: boolean }[]; categories: { name: string; kind: string; tokens: number }[] }> } } }
+      const live = await waitFor('the live session', () => k.store.chat(chat.id)?.sessionId && (k.sessions as unknown as { live: Map<string, Live> }).live.get(chat.id))
+      const query = (live as Live).runner.query
+      const usage = await query.getContextUsage()
+      const kernelTools = usage.mcpTools.filter((t) => t.name.startsWith('mcp__kernel__'))
+      evidence.kernelTools = kernelTools.map((t) => `${t.name} loaded=${t.isLoaded} tokens=${t.tokens}`)
+      evidence.categories = usage.categories
+      const loaded = kernelTools.filter((t) => t.isLoaded).map((t) => t.name)
+      expect(loaded, 'list_workspaces is in the prompt').toContain('mcp__kernel__list_workspaces')
+      expect(loaded, 'read_plans is not in the prompt').not.toContain('mcp__kernel__read_plans')
+      await turnDone(0)
+      const from = items().length
+      await k.handlers()['chats.send']({ chatId: chat.id, parts: [{ type: 'text', text: 'Do two things with your Kernel tools, no other tools. First call list_workspaces. Then call read_plans and tell me how many plans it returned. If a tool is not in your tool list, search for it with ToolSearch.' }] })
+      await turnDone(from)
+      const tools = items().slice(from).filter((i): i is ChatItem & { kind: 'tool' } => i.kind === 'tool')
+      evidence.tools = tools.map((t) => ({ name: t.name, status: t.status, input: t.input, output: t.output?.slice(0, 300) }))
+      evidence.reply = items().flatMap((i) => (i.kind === 'text' ? [i.text] : []))
+      const call = (name: string) => tools.find((t) => t.name === `mcp__kernel__${name}`)
+      expect(call('list_workspaces')?.status, 'list_workspaces (always loaded)').toBe('done')
+      expect(call('read_plans')?.status, 'read_plans (deferred)').toBe('done')
+      // Whether the model searched first is evidence, not an assertion: a model that names a deferred tool may call it directly.
+      evidence.searched = tools.filter((t) => t.name === 'ToolSearch').map((t) => String(t.input?.query))
+    } finally {
+      const out = join(process.env.KERNEL_LIVE_OUT ? join(process.env.KERNEL_LIVE_OUT, '..') : tmpdir(), 'kernel-live-lean-lead.json')
+      await writeFile(out, JSON.stringify(evidence, null, 2))
+      console.log(`[live] evidence: ${out}`)
+      await k.stop({ budgetMs: 0 })
+      for (const dir of [home, dataDir, repo]) await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 async function waitFor<T>(what: string, check: () => T | undefined | false, timeoutMs = 180_000): Promise<T> {
   const end = Date.now() + timeoutMs
   for (;;) {

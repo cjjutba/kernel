@@ -78,7 +78,7 @@ describe('work comes back with evidence in plain words (pr-evidence)', () => {
   })
 
   it('tells the Lead the same for its own PR and for its report to the user', () => {
-    for (const part of ['What changed', 'How it was checked', '"not checked"', 'What could go wrong', 'End a report with one line: what was done and how it was verified']) expect(LEAD_RULE).toContain(part)
+    for (const part of ['What changed', 'How it was checked', '"not checked"', 'What could go wrong', 'When you report finished work, end with one line: what was done and how it was verified']) expect(LEAD_RULE).toContain(part)
   })
 
   it('keeps the added instructions under 80 words and free of dashes', () => {
@@ -378,7 +378,7 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     expect(LEAD_RULE).not.toContain('in plan mode or through request_plan_approval')
     // After an approved plan the Lead carries it out in the same turn, which can't be read against asking first with plan mode off.
     expect(LEAD_RULE).toContain('After approval, carry the plan out in the same turn.')
-    expect(LEAD_RULE).toContain('Before creating several workspaces, say who gets what, ask one yes-or-no question')
+    expect(LEAD_RULE).toContain('For two or more teammates, say who gets what, ask one yes-or-no question')
     const tool = kernelTools({} as KernelToolDeps).find((x) => x.name === 'request_plan_approval')!
     expect(tool.description).toContain('Only while the chat is in plan mode. With plan mode off it refuses, and you ask in the chat before handing off.')
   })
@@ -457,9 +457,9 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
 
   // KERNEL-1079: the user approved in a long paste, then on the Lead's own question card, and nothing passed.
   it('tells the Lead to answer a yes that comes with questions first, and to ask once', () => {
-    expect(LEAD_RULE).toContain('A message that offers options, asks what to do or only agrees is not: answer, recommend one approach and ask once.')
+    expect(LEAD_RULE).toContain('A message that offers options, asks what to do or only agrees is not one: answer, recommend one approach and ask once.')
     expect(LEAD_RULE).toContain('say who gets what, ask one yes-or-no question, and create them once the user agrees.')
-    expect(LEAD_RULE).toContain("File and edit tracker issues with the tracker's own tools or mcp__kernel__file_issue.")
+    expect(LEAD_INSTRUCTIONS).toContain("File and edit tracker issues with the tracker's own tools or file_issue.")
     expect(LEAD_RULE).not.toContain('right away')
   })
 
@@ -483,9 +483,10 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
       if (said !== LEAD_RULE) expect(said).toContain('changes scope or only agrees with the idea')
       expect(said).not.toMatch(/[\u2013\u2014]/)
     }
-    for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, starter]) expect(said).toMatch(/tracker issues with the tracker's own tools/)
+    for (const said of [LEAD_INSTRUCTIONS, starter]) expect(said).toMatch(/tracker issues with the tracker's own tools/)
     // One rule for every chat replaced two (one-lead-chat). The Hand off rule it replaced ran about 1,050 words.
-    expect(LEAD_RULE.split(/\s+/).filter(Boolean).length).toBeLessThan(700)
+    // lean-lead-prompt: the rule says how the Lead behaves, and the tools' descriptions say how to call them.
+    expect(LEAD_RULE.split(/\s+/).filter(Boolean).length).toBeLessThan(600)
   })
 
   // KERNEL-692: Kernel is the Lead, so its rule speaks to Kernel and never about Kernel in the third person.
@@ -549,7 +550,7 @@ describe('request_plan_approval carries the full plan (KERNEL-373)', () => {
   it('describes the same call in the rule, the instructions, the tool and the starter Kernel', async () => {
     const starter = await readFile(join(__dirname, '..', 'docs', 'starter-agents', 'kernel.md'), 'utf8')
     const tool = kernelTools({} as KernelToolDeps).find((x) => x.name === 'request_plan_approval')!
-    for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, tool.description, starter]) {
+    for (const said of [LEAD_INSTRUCTIONS, tool.description, starter]) {
       expect(said).toMatch(/full plan as markdown in plan/)
       expect(said).toMatch(/one line per task in steps/)
     }

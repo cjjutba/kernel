@@ -6,7 +6,7 @@ import type { AgentDef, PrInfo, PrState } from '@shared/types'
 import { tempRepo, freePort } from './helpers'
 import { run } from '../src/main/services/exec'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
-import { LEAD_RULE } from '../src/main/services/handoff'
+import { z } from 'zod'
 import { Kernel } from '../src/main/kernel'
 
 // KERNEL-68: the Lead can name a workspace's branch, and Kernel follows an agent that switches branches in its worktree.
@@ -69,7 +69,7 @@ describe('the Lead names the branch', () => {
     const out = await tool.handler({ agent: 'sean', title: 'Symlink node_modules', brief: 'Goal', branch: LINEAR } as never, {})
     expect(asked[0]).toMatchObject({ agentId: 'sean', branch: LINEAR })
     expect((out.content[0] as { text: string }).text).toBe(`Created ws-1 on ${LINEAR} for sean.`)
-    expect(LEAD_RULE).toContain('Leave branch out unless the user names one.')
+    expect(JSON.stringify(z.toJSONSchema(z.object(tool.inputSchema)))).toContain('Leave out unless the user names a branch.')
   })
 })
 
