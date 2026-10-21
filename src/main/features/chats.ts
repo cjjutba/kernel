@@ -1,4 +1,4 @@
-import type { Chat, ChatItem, ChatPart, Effort, Provider, Workspace } from '@shared/types'
+import type { Chat, ChatItem, ChatPart, Effort, Provider, QueueReason, Workspace } from '@shared/types'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import { isSentItem } from '@shared/approvalAnswer'
 import { effortFor } from '@shared/effort'
@@ -435,6 +435,19 @@ export class Chats extends Feature {
       'chats.live': async () => ({ running: this.sessions.runningIds(), retry: this.sessions.retries() }),
       'chats.unqueue': async ({ chatId, id }) => this.sessions.unqueue(chatId, id),
       'chats.sendNow': async ({ chatId, id, clientId }) => this.sendNow(chatId, id, clientId),
+      'chats.steer': async ({ chatId, parts, id, clientId }) => {
+        // An idle chat has nothing to steer: the message is an ordinary send, which a Lead chat on the shared folder routes through its working copy.
+        if (parts && !id && !this.sessions.isRunning(chatId)) {
+          const r: { queued: boolean; why?: QueueReason; item?: ChatItem } = await this.k.lead.send(chatId, parts, { clientId })
+          return { steered: false, queued: r.queued, why: r.why, item: r.item, queue: this.sessions.queued(chatId) }
+        }
+        if (!id) this.k.lead.userSpoke(chatId)
+        const ws = this.mustWs(this.mustChat(chatId).workspaceId)
+        // A brief held for a merge goes as Send now sends it: with everything queued, in order.
+        if (id && ws.status === 'ready' && ws.waitsFor?.held) { await this.sendNow(chatId, id, clientId); return { steered: false, queued: false, queue: this.sessions.queued(chatId) } }
+        const project = this.store.project(ws.projectId)
+        return this.sessions.steer(chatId, { parts, id, clientId, pastPause: project?.pausedBy === 'limit' })
+      },
       'chats.retry': async ({ chatId, itemId, now, clientId }) => {
         // Sending their own message again is the user stepping in; a Kernel update sent again isn't.
         const items = this.store.items(chatId)

@@ -2885,3 +2885,89 @@ describe('a chat with Kernel, on Claude (KERNEL-770, one-lead-chat)', () => {
     expect(await runGuard('g1', 'gh issue edit 41 --body done')).toEqual({})
   })
 })
+
+describe('steering a running turn', () => {
+  const text = (t: string) => [{ type: 'text' as const, text: t }]
+  const users = (store: { items: (id: string) => ChatItem[] }) => store.items('chat').filter((i): i is ChatItem & { kind: 'user' } => i.kind === 'user')
+  const liveRunner = (sessions: unknown) => (sessions as { live: Map<string, { runner: any }> }).live.get('chat')!.runner
+  /** A chat whose first turn is running, with that first message already read from the session's input. */
+  async function running() {
+    const s = await setup()
+    s.call.feed({ type: 'system', subtype: 'init', session_id: s.options.sessionId, apiKeySource: 'none' })
+    await flush()
+    await nextSent(s.call)
+    expect(s.sessions.isRunning('chat')).toBe(true)
+    return s
+  }
+
+  it('pushes the message into the live session with priority next, without stopping the turn, and marks its row', async () => {
+    const { sessions, call, store } = await running()
+    const r = await sessions.steer('chat', { parts: text('also add an index'), clientId: 'c-steer' })
+    expect(r).toMatchObject({ steered: true, queued: false, item: { id: 'c-steer', steered: true } })
+    const { value } = await call.prompt[Symbol.asyncIterator]().next()
+    expect(value).toMatchObject({ type: 'user', priority: 'next', message: { content: [{ type: 'text', text: 'also add an index' }] } })
+    expect(call.interrupts).toBe(0)
+    expect(sessions.isRunning('chat')).toBe(true)
+    expect(users(store).map((u) => [u.id === 'c-steer', u.steered])).toEqual([[false, undefined], [true, true]])
+    expect(sessions.queued('chat')).toEqual([])
+  })
+
+  it('steers a queued message under its own id and takes it out of the queue', async () => {
+    const { sessions, call, store } = await running()
+    await sessions.send('chat', text('mind the null case'), { clientId: 'q-1' })
+    expect(sessions.queued('chat')).toHaveLength(1)
+    const r = await sessions.steer('chat', { id: 'q-1' })
+    expect(r).toMatchObject({ steered: true, queue: [] })
+    expect((await call.prompt[Symbol.asyncIterator]().next()).value).toMatchObject({ priority: 'next' })
+    expect(users(store).filter((u) => u.id === 'q-1')).toMatchObject([{ steered: true, parts: text('mind the null case') }])
+    // The turn's end sends nothing more: the message went once.
+    call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 10 })
+    await flush()
+    expect(users(store)).toHaveLength(2)
+    expect(sessions.isRunning('chat')).toBe(false)
+  })
+
+  it('sends it as the next message when the turn already ended, with no steered mark and no second copy', async () => {
+    const { sessions, call, store } = await running()
+    call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 10 })
+    await flush()
+    expect(sessions.isRunning('chat')).toBe(false)
+    const r = await sessions.steer('chat', { parts: text('one more thing'), clientId: 'c-late' })
+    expect(r).toMatchObject({ steered: false, queued: false, item: { id: 'c-late' } })
+    const { value } = await call.prompt[Symbol.asyncIterator]().next()
+    expect(value.priority).toBeUndefined()
+    expect(value.message.content[0].text).toBe('one more thing')
+    expect(users(store).filter((u) => u.id === 'c-late')).toHaveLength(1)
+    expect(users(store).some((u) => u.steered)).toBe(false)
+    expect(sessions.isRunning('chat')).toBe(true)
+  })
+
+  it('stops the turn and sends it first when the provider cannot steer', async () => {
+    const { sessions, call, store } = await running()
+    Object.defineProperty(liveRunner(sessions), 'canSteer', { value: false })
+    const r = await sessions.steer('chat', { parts: text('change of plan'), clientId: 'c-fb' })
+    expect(r.steered).toBe(false)
+    expect(call.interrupts).toBe(1)
+    call.feed({ type: 'result', subtype: 'error_during_execution', uuid: 'r1', duration_ms: 10 })
+    await flush()
+    const { value } = await call.prompt[Symbol.asyncIterator]().next()
+    expect(value.message.content[0].text).toBe('change of plan')
+    expect(value.priority).toBeUndefined()
+    expect(users(store).filter((u) => u.id === 'c-fb')).toMatchObject([{ id: 'c-fb' }])
+    expect(users(store).some((u) => u.steered)).toBe(false)
+  })
+
+  it('puts a queued message back first in line when the turn refuses the steer', async () => {
+    const { sessions, call, store } = await running()
+    liveRunner(sessions).steer = async () => false
+    await sessions.send('chat', text('second'), { clientId: 'q-2' })
+    await sessions.send('chat', text('third'), { clientId: 'q-3' })
+    const r = await sessions.steer('chat', { id: 'q-3' })
+    expect(r).toMatchObject({ steered: false, queued: true })
+    expect(sessions.queued('chat').map((q) => q.id)).toEqual(['q-3', 'q-2'])
+    expect(users(store).some((u) => u.steered)).toBe(false)
+    call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 10 })
+    await flush()
+    expect((await call.prompt[Symbol.asyncIterator]().next()).value.message.content[0].text).toBe('third')
+  })
+})

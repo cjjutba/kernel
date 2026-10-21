@@ -224,7 +224,7 @@ export type ChatItem =
    * `answer-<approvalId>`, right after the card: drawn as the user's bubble and never sent to the agent (`approvalAnswer.ts`).
    * `checkpointId` is on the chat's first message only: the start checkpoint, taken before it went out (KERNEL-764).
    */
-  | { kind: 'user'; id: string; ts: number; parts: ChatPart[]; from?: MessageFrom; update?: TeamUpdate; approvalId?: string; checkpointId?: string }
+  | { kind: 'user'; id: string; ts: number; parts: ChatPart[]; from?: MessageFrom; update?: TeamUpdate; approvalId?: string; checkpointId?: string; steered?: true }
   | { kind: 'text'; id: string; ts: number; text: string }
   | { kind: 'thinking'; id: string; ts: number; text: string }
   /** `input` is the tool's input as the SDK sent it, long strings clipped. `outputCut` says `output` was cut short. */

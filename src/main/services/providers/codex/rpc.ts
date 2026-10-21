@@ -6,7 +6,7 @@ import { createInterface } from 'node:readline'
 
 /** A JSON-RPC error from Codex, with its code and data. */
 export class RpcError extends Error {
-  constructor(message: string, readonly code?: number, readonly data?: unknown) {
+  constructor(message: string, readonly code?: number, readonly data?: unknown, readonly timedOut = false) {
     super(message)
     this.name = 'RpcError'
   }
@@ -39,7 +39,7 @@ export class Rpc {
     const id = this.next++
     return new Promise<T>((resolve, reject) => {
       const entry: Pending = { resolve: resolve as (v: unknown) => void, reject }
-      if (o.timeoutMs) entry.timer = setTimeout(() => { this.pending.delete(id); reject(new RpcError(`Codex did not answer ${method} in time.`)) }, o.timeoutMs)
+      if (o.timeoutMs) entry.timer = setTimeout(() => { this.pending.delete(id); reject(new RpcError(`Codex did not answer ${method} in time.`, undefined, undefined, true)) }, o.timeoutMs)
       this.pending.set(id, entry)
       this.write({ id, method, ...(params === undefined ? {} : { params }) })
     })

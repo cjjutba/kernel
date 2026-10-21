@@ -179,6 +179,17 @@ export class ClaudeRunner implements Runner {
   start() { void this.consume() }
 
   push(parts: ChatPart[]) { this.input.push(toUserMessage(parts)) }
+  /**
+   * A message pushed with priority 'next' is folded into the running turn at its next step: one result, no interrupt. Checked live
+   * on the pinned SDK, where 'now' interrupts and 'later' starts a second turn (docs/decisions/steer-running-turn.md). The input
+   * queue is Kernel's, so a closed session is the only case it can't take it.
+   */
+  readonly canSteer = true
+  async steer(parts: ChatPart[]) {
+    if (this.closed) return false
+    this.input.push({ ...toUserMessage(parts), priority: 'next' })
+    return true
+  }
   async interrupt() { await this.query.interrupt().catch(() => undefined) }
   async setModel(model: string) { await this.query.setModel(model).catch(() => undefined) }
   async setEffort(effort: Effort) { await this.query.applyFlagSettings({ effortLevel: claudeEffort(effort) }).catch(() => undefined) }

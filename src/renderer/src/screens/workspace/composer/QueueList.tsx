@@ -42,7 +42,7 @@ export function QueueList({ queue, why, held, running, sending, onEdit, onNow, o
   why?: QueueReason
   /** For `merge`, the PRs still to merge, each opening its workspace. */
   held?: WaitLine
-  /** A turn is running, so Send now stops it. */
+  /** A turn is running, so the first row's button is Steer now: it puts the message into that turn. */
   running?: boolean
   /** The id of the message whose Send now is in flight. */
   sending?: string | null
@@ -79,7 +79,7 @@ export function QueueList({ queue, why, held, running, sending, onEdit, onNow, o
                 </button>
                 {more && <span className="queue-extra">{more}</span>}
                 {i === 0 && canSendNow(why) && (
-                  <Button variant="ghost" className="queue-now" busy={sending === q.id} busyLabel="Sending" disabled={!!sending} data-tip={stops ? 'Stop this turn and send now' : 'Send now'} data-tip-kbd="⌘⇧↵" onClick={() => onNow(q)}>Send now</Button>
+                  <Button variant="ghost" className="queue-now" busy={sending === q.id} busyLabel={stops ? 'Steering' : 'Sending'} disabled={!!sending} data-tip={stops ? 'Add this to the running turn' : 'Send now'} data-tip-kbd="⌘⇧↵" onClick={() => onNow(q)}>{stops ? 'Steer now' : 'Send now'}</Button>
                 )}
                 <button type="button" className="queue-x" aria-label="Remove queued message" onClick={() => onRemove(q)}><Icon name="close" size={12} /></button>
               </div>

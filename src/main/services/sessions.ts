@@ -337,6 +337,9 @@ const sender = (o: Sender): Sender => ({ ...(o.from ? { from: o.from } : {}), ..
 const queuedOf = (chatId: string, parts: ChatPart[], o: Sender): QueuedMessage =>
   ({ id: o.clientId ?? randomUUID(), chatId, parts, ts: Date.now(), ...sender(o), ...(o.clientId ? { clientId: o.clientId } : {}) })
 
+/** What `steer` did: `steered` when the running turn took the message, else it went as an ordinary send or stayed queued. */
+export interface SteerResult { steered: boolean; queued: boolean; why?: QueueReason; item?: ChatItem; queue: QueuedMessage[] }
+
 /** The workspace is ready and the brief waits for PRs to merge (KERNEL-259). Any other held chat waits for its workspace to be made (KERNEL-1086). */
 const heldForMerge = (ws?: Workspace) => ws?.status === 'ready' && !!ws.waitsFor?.held
 
@@ -1041,6 +1044,71 @@ export class Sessions {
     else if (why === 'capacity' || why === 'moving' || why === 'limit' || (why === 'paused' && o.pastPause)) { this.setQueue(chatId, rest); this.dispatch(this.mustChat(chatId), pick.parts, pick) }
     else this.drain(chatId)
     return this.queued(chatId)
+  }
+
+  /**
+   * Put a message into the running turn instead of after it (steer). Give `parts` for a message typed now, or `id` for a queued one.
+   * The row it leaves in the chat is marked `steered`. Whatever can't steer goes the old way: a turn that ended makes it the
+   * next message, a provider that can't steer interrupts the turn and sends it first, and a turn that refuses it leaves it
+   * queued. Nothing is sent twice, since the queued message is held out of the queue while the runner decides.
+   */
+  async steer(chatId: string, o: { parts?: ChatPart[]; id?: string; clientId?: string; pastPause?: boolean } = {}): Promise<SteerResult> {
+    const chat = this.mustChat(chatId)
+    const found = o.id ? this.queued(chatId).find((q) => q.id === o.id) : undefined
+    const sent = (r: { queued: boolean; why?: QueueReason; item?: ChatItem }): SteerResult => ({ steered: false, ...r, queue: this.queued(chatId) })
+    if (o.id && !found) return sent({ queued: false })
+    const live = this.live.get(chatId)
+    if (!found) {
+      this.mustHaveFolder(chat)
+      const known = this.known(chatId, o.clientId)
+      if (known) return sent(known)
+    }
+    const parts = found?.parts ?? o.parts ?? []
+    // Not running: it is the next message. A provider that can't steer: Send now's interrupt, then the message.
+    if (!live?.running || this.closing || live.interrupted || !live.runner.canSteer) {
+      if (found) { await this.sendNow(chatId, found.id, { pastPause: o.pastPause, clientId: o.clientId }); return sent({ queued: false }) }
+      const r = await this.send(chatId, parts, { clientId: o.clientId })
+      if (r.queued && live?.running && !this.closing) {
+        const id = o.clientId ?? this.queued(chatId).at(-1)?.id
+        if (id) await this.sendNow(chatId, id)
+        return sent({ queued: false })
+      }
+      return sent(r)
+    }
+    const ws = this.mustWorkspace(chat.workspaceId)
+    const from = found ? sender(found) : {}
+    if (from.from !== 'kernel') this.d.openItems?.userSent(chatId)
+    // Held out of the queue while the runner decides, so the turn ending meanwhile can't send it a second time.
+    if (found) this.setQueue(chatId, this.queued(chatId).filter((q) => q.id !== found.id))
+    const id = found ? o.clientId && !this.known(chatId, o.clientId) ? o.clientId : found.id : o.clientId ?? randomUUID()
+    const pressed = Date.now()
+    const back = async (): Promise<SteerResult> => {
+      // The turn took nothing. A queued message goes back first in line, and one typed now follows `send`'s rules.
+      if (found) {
+        this.setQueue(chatId, [found, ...this.queued(chatId)])
+        if (!this.live.get(chatId)?.running) this.drain(chatId)
+        return sent({ queued: true })
+      }
+      const r = await this.send(chatId, parts, { clientId: id })
+      return sent(r)
+    }
+    let ready: ChatPart[]
+    try { ready = hasUnsaved(parts) ? await withAttachments(ws.path, parts) : parts }
+    catch (e) {
+      if (found) this.setQueue(chatId, [found, ...this.queued(chatId)])
+      throw e
+    }
+    // The turn can have ended, or the session been replaced, while the attachments were saved.
+    if (this.live.get(chatId) !== live || !live.running || live.interrupted || this.closing) return back()
+    const mine = this.withMentions(chat, ws, ready)
+    let taken = false
+    try { taken = await live.runner.steer(mine) } catch { taken = false }
+    if (!taken) return back()
+    const row: ChatItem & { kind: 'user' } = { kind: 'user', id, ts: pressed, parts, ...from, steered: true }
+    this.item(chat, row)
+    live.sent = [...(live.sent ?? []), ...mine]
+    this.d.onSent?.(ws, chat, from.from === 'kernel' ? [] : parts)
+    return { steered: true, queued: false, item: row, queue: this.queued(chatId) }
   }
 
   /**

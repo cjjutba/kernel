@@ -390,7 +390,8 @@ export function buildThread(items: ChatItem[], running = false): ThreadBlock[] {
   }
   for (const item of items) {
     if (item.kind === 'tool' && QUESTION_TOOLS.has(item.name)) continue
-    if (item.kind === 'user') {
+    // A message steered into the running turn is part of that turn: it sits between its steps and doesn't end the turn or start a new one.
+    if (item.kind === 'user' && !item.steered) {
       finish()
       startedAt = item.ts
       const view = userView(item)

@@ -286,3 +286,50 @@ describe('a workspace update that ends setup waits for the message it releases',
     vi.useRealTimers()
   })
 })
+
+describe('steering', () => {
+  let send: typeof import('../src/renderer/src/screens/workspace/composer/sendMessage')
+  beforeEach(async () => {
+    call.mockReset()
+    send = await import('../src/renderer/src/screens/workspace/composer/sendMessage')
+    actions.chats.set('w1', [chat])
+    actions.chats.setItems('c1', [])
+    actions.chats.setQueue('c1', [], null)
+    actions.chats.setRunning('c1', true)
+    actions.workspaces.set([{ id: 'w1' } as unknown as Workspace])
+    actions.system.setOnline(true)
+  })
+
+  it('draws the message in the tray, and main\'s steered row replaces it under the same id', async () => {
+    let answer: (v: unknown) => void = () => undefined
+    call.mockReturnValue(new Promise((r) => { answer = r }))
+    const sent = send.steerMessage('c1', text('also add an index'))
+    expect(queue()).toHaveLength(1)
+    const id = queue()[0].id
+    expect(call).toHaveBeenCalledWith('chats.steer', { chatId: 'c1', parts: text('also add an index'), clientId: id })
+    const row: ChatItem = { kind: 'user', id, ts: 5, parts: text('also add an index'), steered: true }
+    apply({ type: 'chat.item', chatId: 'c1', item: row })
+    apply({ type: 'chat.queue', chatId: 'c1', queue: [] })
+    answer({ steered: true, queued: false, item: row, queue: [] })
+    expect(await sent).toBe(true)
+    expect(queue()).toEqual([])
+    expect(items()).toMatchObject([{ id, steered: true }])
+  })
+
+  it('takes the message back out of the tray and puts the text back when the call fails', async () => {
+    call.mockRejectedValue(new Error('no'))
+    const failed = vi.fn()
+    expect(await send.steerMessage('c1', text('x'), { onFail: failed })).toBe(false)
+    expect(queue()).toEqual([])
+    expect(failed).toHaveBeenCalled()
+  })
+
+  it('steers a queued message by its id and shows the tray main answers with', async () => {
+    const q: QueuedMessage = { id: 'q1', chatId: 'c1', parts: text('later'), ts: 1, clientId: 'q1' }
+    actions.chats.setQueue('c1', [q], null)
+    call.mockResolvedValue({ steered: true, queued: false, queue: [] })
+    await send.steerQueued('c1', q)
+    expect(call).toHaveBeenCalledWith('chats.steer', { chatId: 'c1', id: 'q1', clientId: 'q1' })
+    expect(queue()).toEqual([])
+  })
+})

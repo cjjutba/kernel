@@ -40,6 +40,8 @@ import type { ToolRequestUserInputParams } from './protocol/v2/ToolRequestUserIn
 import type { ToolRequestUserInputResponse } from './protocol/v2/ToolRequestUserInputResponse'
 import type { Turn } from './protocol/v2/Turn'
 import type { TurnStartResponse } from './protocol/v2/TurnStartResponse'
+import type { TurnSteerParams } from './protocol/v2/TurnSteerParams'
+import type { TurnSteerResponse } from './protocol/v2/TurnSteerResponse'
 import type { UserInput } from './protocol/v2/UserInput'
 import { askedOption } from '../questions'
 
@@ -228,6 +230,31 @@ export class CodexRunner implements Runner {
 
   push(parts: ChatPart[]) {
     void this.turn(parts).catch((e) => this.turnFailed(e))
+  }
+
+  /**
+   * `turn/steer` adds input to the active turn, and Codex checks `expectedTurnId` against it. A turn whose start hasn't answered
+   * has no id yet, one that ended or isn't steerable (a compaction) is refused, and all three go to Sessions as the next message.
+   */
+  readonly canSteer = true
+  /** How long `turn/steer` may go unanswered before Kernel stops waiting. */
+  steerTimeoutMs = 10_000
+  async steer(parts: ChatPart[]) {
+    const threadId = this.threadId
+    const turnId = this.turnId
+    if (!this.rpc || this.isClosed || !threadId || !turnId) return false
+    try {
+      await this.rpc.request<TurnSteerResponse>('turn/steer', { threadId, input: toCodexInput(parts), expectedTurnId: turnId } satisfies TurnSteerParams, { timeoutMs: this.steerTimeoutMs })
+      return true
+    } catch (e) {
+      // No answer says nothing about whether Codex took the message. Sending it again could run it twice, so it counts as steered:
+      // the row stays in the chat, and if Codex never read it the user sees that in the turn and can send it again.
+      if (e instanceof RpcError && e.timedOut) {
+        console.warn(`Codex did not answer turn/steer within ${this.steerTimeoutMs} ms, so the message is kept as steered and not sent again.`)
+        return true
+      }
+      return false
+    }
   }
 
   async interrupt() {

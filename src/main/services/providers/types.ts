@@ -15,6 +15,13 @@ export interface Runner {
   start(): void
   /** Send a user turn into the session. */
   push(parts: ChatPart[]): void
+  /** True when `steer` can put a message into a running turn. A runner that can't leaves Send now to interrupt the turn and send after it. */
+  readonly canSteer: boolean
+  /**
+   * Put a user message into the running turn, so the agent reads it before the turn ends. True when the turn took it. False
+   * when no turn runs to take it, or the provider refused: nothing was sent, and Sessions sends it as the next message.
+   */
+  steer(parts: ChatPart[]): Promise<boolean>
   /** Stop the running turn. The turn's own end still arrives and goes to `RunnerHost.turnEnded`. */
   interrupt(): Promise<void>
   setModel(model: string): Promise<void>

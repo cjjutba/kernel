@@ -261,6 +261,13 @@ export interface KernelApi {
    */
   'chats.sendNow': { req: { chatId: string; id: string; clientId?: string }; res: QueuedMessage[] }
   /**
+   * Put a message into the running turn instead of after it. Give `parts` for a message typed now, or `id` for one waiting in the
+   * queue. The row it leaves in the chat has `steered` set. When the turn has ended, or the chat's provider can't take a message
+   * mid-turn, it goes as `chats.send` does for `parts`, and as `chats.sendNow` does for `id`. `steered` says whether it reached
+   * a running turn. `clientId` is the id the window drew the message under (KERNEL-894), as for `chats.send`.
+   */
+  'chats.steer': { req: { chatId: string; parts?: ChatPart[]; id?: string; clientId?: string }; res: { steered: boolean; queued: boolean; why?: QueueReason; item?: ChatItem; queue: QueuedMessage[] } }
+  /**
    * The chats with a turn running and the ones retrying, which `chat.running` and `retry` only report as they change. A window
    * that loads while agents work reads them here, or every working agent would look stopped (KERNEL-340).
    */

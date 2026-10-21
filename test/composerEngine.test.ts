@@ -11,6 +11,8 @@ import { attachFiles, Held, numberImages, partOf, pastedText, pathOnlyFiles, pre
 import { mentionMenu, mentionPart } from '../src/renderer/src/screens/workspace/composer/autocomplete'
 import { noteFromParts } from '../src/renderer/src/screens/workspace/cards/steps'
 import { toUserMessage } from '../src/main/services/providers/claude'
+import { QueueOrSteer } from '../src/renderer/src/screens/workspace/composer/ComposerToolbar'
+import { QueueList } from '../src/renderer/src/screens/workspace/composer/QueueList'
 import { ModeMenu } from '../src/renderer/src/screens/workspace/composer/ModeMenu'
 import { buttonName, modeAria, modePatch, modeRows, nextMode, offLine, shownMode, whyLine, type ComposerMode } from '../src/renderer/src/screens/workspace/composer/modes'
 import { apply, getState } from '../src/renderer/src/store'
@@ -330,5 +332,30 @@ describe('attaching files', () => {
     expect(held.size).toBe(1)
     expect(held.release('b')).toBe(true)
     expect(held.size).toBe(0)
+  })
+})
+
+describe('Queue and Steer while a turn runs', () => {
+  const noop = () => undefined
+  const send = { label: 'Queue message', ready: true, stop: true, onSend: noop, onSteer: noop }
+  const row = { id: 'q1', chatId: 'c', parts: [{ type: 'text' as const, text: 'mind the null case' }], ts: 1 }
+  const tray = (o: { running?: boolean; why?: 'paused' } = {}) => renderToStaticMarkup(createElement(QueueList, { queue: [row], running: true, onEdit: noop, onNow: noop, onRemove: noop, ...o }))
+
+  it('draws two real buttons, each with its one-line tooltip and key', () => {
+    const html = renderToStaticMarkup(createElement(QueueOrSteer, { send }))
+    expect(html).toMatch(/<button[^>]*data-tip="Send after this turn ends"[^>]*>Queue<\/button>/)
+    expect(html).toMatch(/<button[^>]*data-tip="Add this to the running turn"[^>]*>Steer<\/button>/)
+    expect(html).toContain('data-tip-kbd="⌘⇧↵"')
+  })
+
+  it('disables both while the box is busy attaching', () => {
+    const html = renderToStaticMarkup(createElement(QueueOrSteer, { send: { ...send, busy: true } }))
+    expect(html.match(/disabled=""/g)).toHaveLength(2)
+  })
+
+  it('offers Steer now on a queued row while the turn runs, and Send now when something else holds the queue', () => {
+    expect(tray()).toMatch(/>Steer now<\/button>/)
+    expect(tray()).toContain('data-tip="Add this to the running turn"')
+    expect(tray({ why: 'paused' })).toMatch(/>Send now<\/button>/)
   })
 })
