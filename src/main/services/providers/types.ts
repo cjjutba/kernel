@@ -1,5 +1,5 @@
 import type { ChildProcess } from 'node:child_process'
-import type { AgentDef, Approval, AskedQuestion, Chat, ChatItem, ChatPart, Decision, Effort, LeadMode, TokenCounts, Workspace } from '@shared/types'
+import type { AgentDef, Approval, AskedQuestion, Chat, ChatItem, ChatPart, Decision, Effort, TokenCounts, Workspace } from '@shared/types'
 import type { Retry } from '@shared/ipc'
 import type { AppSettings } from '../settings'
 import type { RunMode } from '../permissions'
@@ -61,9 +61,7 @@ export interface RunnerHost {
   settings(): AppSettings
   /** The mode the chat runs in now (`effectiveMode`), read at every step, so a change applies at once (KERNEL-447). */
   mode(): RunMode
-  /** A chat with Kernel's Hand off or Build here now, read at the call, which a switch during a turn changes before the process restarts (KERNEL-770). */
-  leadMode(): LeadMode | undefined
-  /** Whether a Build here chat has the user's go-ahead to change files now, read at each call (KERNEL-992). Left out, it is always open. */
+  /** Whether a chat with Kernel may change files now, read at each call: closed only in plan mode (KERNEL-1113). Left out, it is always open. */
   buildOpen?(): boolean
   /** Bash rules the user allowed for the project, and saving one ("Always allow in this project"). */
   projectAllow(): string[]

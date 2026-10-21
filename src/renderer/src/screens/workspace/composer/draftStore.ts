@@ -1,15 +1,13 @@
-import { EFFORT_LABELS, PERMISSION_MODES, type ChatPart, type Effort, type LeadMode, type PermissionMode, type WorkspaceMode } from '@shared/types'
+import { EFFORT_LABELS, PERMISSION_MODES, type ChatPart, type Effort, type PermissionMode, type WorkspaceMode } from '@shared/types'
 
 /**
  * What a New chat box picked, a field only once it is picked. A field left out follows the Lead, the project or Settings, so a box nobody
  * touched follows them as they change (KERNEL-544). Picks live with the box's draft, in memory and on disk, so leaving the page keeps them.
- * Model, effort, plan, permission mode and the branch are the next chat's and go with a send. Hand off or Build here and Worktree or
- * Local are the project's way of working and stay after one (`PROJECT_PICKS`).
+ * Model, effort, plan, permission mode and the branch are the next chat's and go with a send. Worktree or Local is the
+ * project's way of working and stays after one (`PROJECT_PICKS`). A `leadMode` an older version saved is dropped on load.
  */
 export interface DraftPicks {
   model?: string; effort?: Effort; plan?: boolean; mode?: PermissionMode
-  /** Hand off or Build here. */
-  leadMode?: LeadMode
   /** Worktree or Local. */
   place?: WorkspaceMode
   /** The branch the chat starts from, as the branch menu lists it. Left out for the default. */
@@ -17,7 +15,7 @@ export interface DraftPicks {
 }
 
 /** The picks a send keeps: how the user works in the project, not what the next chat starts from. */
-const PROJECT_PICKS = ['leadMode', 'place'] as const
+const PROJECT_PICKS = ['place'] as const
 
 /**
  * Unsent messages by chat id: the parts in the box, text and chips in order, and the workspace the chat belongs to. Module level, so
@@ -60,13 +58,12 @@ let listening = false
 /** The picks a file holds, field by field: a value that isn't a model id, an effort or a boolean is dropped. */
 function picksOf(v: unknown): DraftPicks | undefined {
   if (!v || typeof v !== 'object') return undefined
-  const { model, effort, plan, mode, leadMode, place, baseRef } = v as Record<string, unknown>
+  const { model, effort, plan, mode, place, baseRef } = v as Record<string, unknown>
   const out: DraftPicks = {}
   if (typeof model === 'string' && model.trim()) out.model = model
   if (typeof effort === 'string' && Object.keys(EFFORT_LABELS).includes(effort)) out.effort = effort as Effort
   if (typeof plan === 'boolean') out.plan = plan
   if (typeof mode === 'string' && PERMISSION_MODES.includes(mode as PermissionMode)) out.mode = mode as PermissionMode
-  if (leadMode === 'handoff' || leadMode === 'build') out.leadMode = leadMode
   if (place === 'worktree' || place === 'current') out.place = place
   if (typeof baseRef === 'string' && baseRef.trim()) out.baseRef = baseRef
   return Object.keys(out).length ? out : undefined

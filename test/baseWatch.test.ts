@@ -297,9 +297,9 @@ describe('telling a teammate that main moved (KERNEL-180)', () => {
     expect(s.posts).toEqual([])
   })
 
-  it('tells a chat in Build here, as it tells a teammate, and checks at its turn ends (KERNEL-778)', async () => {
+  it('tells a chat with Kernel, as it tells a teammate, and checks at its turn ends (KERNEL-778)', async () => {
     const s = await setUp()
-    const leadChat = await s.k.lead.newLeadChat(s.project.id, { prompt: 'Go', leadMode: 'build' })
+    const leadChat = await s.k.lead.newLeadChat(s.project.id, { prompt: 'Go' })
     // Only a workspace whose setup finished is watched, and a slow machine is still setting it up once the worktree exists.
     await vi.waitFor(() => expect(s.k.store.workspace(leadChat.workspaceId)?.status).toBe('ready'), { timeout: 10_000, interval: 10 })
     const lead = s.k.store.workspace(leadChat.workspaceId)!

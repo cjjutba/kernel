@@ -1,6 +1,6 @@
 import './agents.css'
 import { useEffect, useState } from 'react'
-import type { AgentDef, AppSettings, LeadMode } from '@shared/types'
+import type { AgentDef, AppSettings } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions, go, useStore } from '../../../store'
 import { Button, Icon, SegmentedControl, Select } from '../../../ui'
@@ -54,10 +54,7 @@ export function Agents() {
   }
 
   return (
-    <Page title="Agents" desc="Who joins every project, and how a chat with Kernel starts." action={<Button variant="primary" icon="plus" onClick={hire}>New agent</Button>}>
-      {s && <Section title="Kernel">
-        <Row id="lead-mode" setting="team.leadMode" label="New chats start in" desc="Hand off plans and gives tasks to teammates. Build here has Kernel make the change itself. Each chat can switch."><SegmentedControl label="New chats start in" value={s.team.leadMode} onChange={(v) => void patchSettings({ team: { leadMode: v as LeadMode } })} options={[{ value: 'handoff', label: 'Hand off' }, { value: 'build', label: 'Build here' }]} /></Row>
-      </Section>}
+    <Page title="Agents" desc="Who joins every project." action={<Button variant="primary" icon="plus" onClick={hire}>New agent</Button>}>
       {list && groups.map((g, i) => (
         <Section key={g.key} title={g.title} plain action={g.plugin ? undefined : <span className="set-section-note ag-where">~/.claude/agents</span>}>
           {i === 0 && (

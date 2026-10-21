@@ -2,7 +2,7 @@ import { REVIEW_KINDS, type AgentDef, type Chat, type ChatPart, type Provider, t
 import { kindStates, lensOf, reviewsText, reviewVerdicts, sameHeads } from '@shared/merge'
 import { KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
 import { providerOf } from '@shared/providers'
-import { buildsHere } from '@shared/leadMode'
+import { ownsFolder } from '@shared/leadWorkspace'
 import { bus } from '../bus'
 import type { ReviewState } from '../services/leadUpdates'
 import type { ReviewInput } from '../services/reviewMcp'
@@ -195,7 +195,7 @@ export class Reviews extends Feature {
    */
   async onReady(workspaceId: string, asked = false): Promise<void> {
     const of = this.store.workspace(workspaceId)
-    if (!of || of.status === 'archived' || of.reviewOf || of.prState !== 'ready' || !of.prNumber || (this.isLeadWorkspace(of) && !buildsHere(of))) return
+    if (!of || of.status === 'archived' || of.reviewOf || of.prState !== 'ready' || !of.prNumber || (this.isLeadWorkspace(of) && !ownsFolder(of))) return
     if (this.settings.pr.autoReview === false && !asked) {
       if (of.reviewPending !== undefined) this.updateWs(of.id, { reviewPending: undefined })
       await this.noteNotStarted(of)

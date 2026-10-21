@@ -36,10 +36,10 @@ function useShowLog(ws: Workspace) {
   return { open, show: () => { actions.ui.setRightPanel(true); actions.ui.setWorkspaceView({ bottom: 'setup' }); actions.ui.setBottomCollapsed(kind, false, false) } }
 }
 
-/** A chat that works in the main folder, not in a copy of its own, says so once (a Lead chat before Build here). */
+/** A chat that still works in the main folder, not in a copy of its own, says so once (a Lead chat from before every chat got a folder of its own). */
 export function SharedFolderNote({ ws }: { ws: Workspace }) {
   if (ws.firstInProject === true || !ws.lead || ws.worktreePending || !onSharedFolder(ws)) return null
-  return <p className="su-shared"><Icon name="folder" size={14} />This chat works in the main folder. Changes and Run have nothing of their own until Build here.</p>
+  return <p className="su-shared"><Icon name="folder" size={14} />This chat works in the main folder. Changes and Run have nothing of their own until you send your next message, which gives it a copy of its own.</p>
 }
 
 /**

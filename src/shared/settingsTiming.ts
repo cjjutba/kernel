@@ -96,7 +96,6 @@ export const APP_SETTING_TIMING: Record<string, SettingTiming> = {
   // The renderer seeds a new project's agents with it (screens/projects/draft.ts).
   'team.defaultTemplate': 'newProjects',
   // newLeadChat() in features/lead.ts, when a chat with Kernel starts. Open chats keep their mode (KERNEL-770).
-  'team.leadMode': 'newChats',
   // applyModes() in services/sessions.ts moves live sessions. Crossing into or out of Bypass restarts the process after its turn,
   // and it runs in the stricter mode until then.
   'permissions.mode': 'now',
@@ -197,7 +196,6 @@ export const PROJECT_SETTING_TIMING: Record<ProjectSettingPath, SettingTiming> =
   // features/lead.ts, on each hand-off.
   'agents.openWorkspaces': 'now',
   // newLeadChat() in features/lead.ts, when a chat with Kernel starts (KERNEL-770).
-  'agents.leadMode': 'newChats',
   'preview.urls': 'now',
   // envFor() in features/env.ts builds a chat's env when its process starts. Scripts read it when they start.
   'env.files': 'newChats',

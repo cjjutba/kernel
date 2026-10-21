@@ -106,14 +106,13 @@ export function timingOf(path: string, projectId?: string): SettingTiming | unde
   return undefined
 }
 
-const BOTH = 'Applies to teammates and to chats in Build here'
-const TEAMMATES_AND_BUILD = 'Applies to teammates and to chats when they switch to Build here'
+const CHATS_TOO = 'Applies to teammates and to chats with Kernel'
 
-/** Settings that reach chats with Kernel as well as teammates. A chat in Hand off has no workspace of its own, so these meet it when it switches to Build here (KERNEL-1052). */
+/** Settings that reach chats with Kernel as well as teammates: every chat has a folder of its own that these shape (KERNEL-1052, one-lead-chat). */
 const CHAT_AUDIENCE: Record<string, string> = {
-  'workspace.mode': TEAMMATES_AND_BUILD,
-  'scripts.setupOnCreate': TEAMMATES_AND_BUILD,
-  'workspace.oneCurrentBranchPerProject': BOTH
+  'workspace.mode': CHATS_TOO,
+  'scripts.setupOnCreate': CHATS_TOO,
+  'workspace.oneCurrentBranchPerProject': CHATS_TOO
 }
 
 /** The muted line for a setting whose change doesn't reach running agents, or undefined when it does. */

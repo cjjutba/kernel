@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import { query, type CanUseTool, type EffortLevel, type HookCallback, type HookCallbackMatcher, type HookEvent, type McpServerStatus, type ModelInfo, type Options, type PermissionResult, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand, type SpawnedProcess, type SyncHookJSONOutput } from '@anthropic-ai/claude-agent-sdk'
-import type { AppSettings, AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPart, CompactWindow, Effort, LeadMode, TokenCounts, UnlistedTools } from '@shared/types'
+import type { AppSettings, AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPart, CompactWindow, Effort, TokenCounts, UnlistedTools } from '@shared/types'
 import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import { linkText } from '@shared/links'
-import { leadModeOf } from '@shared/leadMode'
 import { toolView } from '@shared/toolView'
 import { bus } from '../../bus'
 import { NO_PROMPTS } from '../exec'
@@ -120,8 +119,8 @@ export class ClaudeRunner implements Runner {
     const sessionId = chat.sessionId ?? randomUUID()
     host.managed(sessionId)
     // The agent file's tools line and disallowedTools hold, as they do when Claude Code runs the file as a subagent (KERNEL-397, KERNEL-451).
-    // A review only reads, whatever its agent's file says (KERNEL-549). A chat with Kernel edits only in Build here (KERNEL-770).
-    const tools = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools, aliases: o.aliases, allow: o.access?.allow, readOnly: !!ws.reviewOf, lead: agent?.lead ? leadModeOf(ws) : undefined })
+    // A review only reads, whatever its agent's file says (KERNEL-549). A chat with Kernel edits its own folder, outside plan mode.
+    const tools = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools, aliases: o.aliases, allow: o.access?.allow, readOnly: !!ws.reviewOf, lead: !!agent?.lead })
     const off = switchedOff(o.disabled, Object.keys(o.mcpServers ?? {}))
     this.applied = o.mode
     this.bypassable = o.bypass
@@ -148,7 +147,7 @@ export class ClaudeRunner implements Runner {
         ctx, commands: this.commands, cwds: this.cwds, tools,
         verdict: (command, cwd) => hookVerdict({ tool: 'Bash', command, cwd }, this.rules()),
         writeVerdict: (tool, input, cwd) => referenceWrite({ tool, input, cwd }, this.references),
-        ...(agent?.lead && host.buildOpen ? { buildGate: (tool: string, input: unknown, cwd?: string) => (host.leadMode() === 'build' ? buildWrite({ tool, input, cwd }, () => host.buildOpen!()) : undefined) } : {}),
+        ...(agent?.lead && host.buildOpen ? { buildGate: (tool: string, input: unknown, cwd?: string) => buildWrite({ tool, input, cwd }, () => host.buildOpen!()) } : {}),
         projectAllows: (tool, input) => hookVerdict({ tool, input }, this.rules())?.behavior === 'allow',
         askUser: (command, reason, signal) => this.askFromHook(command, reason, signal),
         askTool: (tool, input, reason, signal) => this.askToolFromHook(tool, input, reason, signal),
@@ -159,8 +158,7 @@ export class ClaudeRunner implements Runner {
         networkAllowed: () => host.settings().permissions.network !== false,
         afterPlan: () => host.afterPlan(),
         setupNote: () => host.setupNote(),
-        handoff: agent?.lead ? { atStop: () => host.handoffAtStop() } : undefined,
-        leadMode: () => host.leadMode()
+        handoff: agent?.lead ? { atStop: () => host.handoffAtStop() } : undefined
       }),
       includeHookEvents: true,
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
@@ -692,7 +690,7 @@ function kernelHooks(o: {
   verdict: (command: string, cwd?: string) => Verdict
   /** Kernel's answer about a file edit in the hook: a deny under a reference folder (`referenceWrite`, KERNEL-748). */
   writeVerdict?: (tool: string, input: unknown, cwd?: string) => Verdict
-  /** A Build here chat's file edit in the hook: a deny until the user has given a go-ahead (`buildWrite`, KERNEL-992). */
+  /** A Lead's file edit in the hook: a deny while the chat is in plan mode (`buildWrite`, KERNEL-1113). */
   buildGate?: (tool: string, input: unknown, cwd?: string) => Verdict
   /** A project's tool rule lets an MCP or web tool call through from the hook (`hookVerdict`, KERNEL-454). */
   projectAllows: (tool: string, input: unknown) => boolean
@@ -706,8 +704,6 @@ function kernelHooks(o: {
   handoff?: LeadHandoff
   /** The agent file's tools line, when it has one (KERNEL-397). */
   tools?: ToolPolicy
-  /** A chat with Kernel's mode at the call, so Hand off's refusal can say the user switched since the turn started (KERNEL-770). */
-  leadMode?: () => LeadMode | undefined
   /** Asks the user about an MCP tool the file doesn't list, for `unlisted_tools = "ask"` (KERNEL-537). */
   askTool?: (tool: string, input: unknown, reason: string, signal: AbortSignal) => Promise<SyncHookJSONOutput>
   /** The project's `[agents] unlisted_tools`. `ask` when unset. */
@@ -720,7 +716,7 @@ function kernelHooks(o: {
   /** Settings, Hooks, read each time a gate runs (KERNEL-537). */
   gates?: () => AppSettings['hooks'] | undefined
 }): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
-  const { ctx, commands, cwds, verdict, writeVerdict, buildGate, projectAllows, askUser, held, networkAllowed = () => true, afterPlan, setupNote, handoff, tools, leadMode = () => undefined, askTool, unlisted = 'ask', bypassing = () => false, gates } = o
+  const { ctx, commands, cwds, verdict, writeVerdict, buildGate, projectAllows, askUser, held, networkAllowed = () => true, afterPlan, setupNote, handoff, tools, askTool, unlisted = 'ask', bypassing = () => false, gates } = o
   const report: HookCallback = async (input) => {
     const a = toActivity(input as HookPayload, ctx)
     if (a) bus.activity(a)
@@ -789,11 +785,6 @@ function kernelHooks(o: {
     const gate: HookCallback = async (input, _id, { signal }) => {
       const { tool_name: tool, tool_input } = input as PreToolUseHookInput
       if (tools.allows(tool, tool_input)) return {}
-      // Hand off refuses an edit whatever the file says, and says so, including a switch to Build here since the turn started.
-      // A Lead's tracker issue writes go through file_issue, whatever a project rule or the user would allow (KERNEL-770,
-      // feat-lead-files-tracker-issues-only-with).
-      const mode = tools.modeRefuses(tool, leadMode())
-      if (mode) return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: mode } }
       // An MCP server the file doesn't list, and disallowedTools doesn't take away: a project rule lets it through, and with
       // `unlisted_tools = "ask"` the user decides, or Bypass permissions does as it would with no tools line. `hide` refuses
       // it as before (KERNEL-537, bypass-allows-unlisted-mcp).
@@ -818,12 +809,12 @@ function kernelHooks(o: {
     hooks.TeammateIdle!.push({ hooks: [team.onIdle] })
   }
   if (afterPlan) {
-    // The approval reaches the agent with the plan's path, and a Lead's with "hand it off now", in the same turn.
+    // The approval reaches the agent with the plan's path in the same turn.
     const planned: HookCallback = async () => { const t = afterPlan(); return t ? { hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: t } } : {} }
     hooks.PostToolUse!.push({ matcher: 'ExitPlanMode', hooks: [planned] })
   }
   if (handoff) {
-    // A Lead's Stop before any workspace exists gets one reminder.
+    // A Lead's Stop gets what its chat still owes (KERNEL-749).
     const atStop: HookCallback = async () => { const t = handoff.atStop(); return t ? { hookSpecificOutput: { hookEventName: 'Stop', additionalContext: t } } : {} }
     hooks.Stop!.push({ hooks: [atStop] })
   }

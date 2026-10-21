@@ -1,9 +1,11 @@
 import { expect, vi } from 'vitest'
 import { cp, mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { run } from '../src/main/services/exec'
+import { leadBase } from '../src/main/services/worktrees'
 import { bus } from '../src/main/bus'
 import type { PushEvent } from '../src/shared/ipc'
 import type { Kernel } from '../src/main/kernel'
@@ -91,4 +93,26 @@ export function freePort() {
   return new Promise<number>((resolve, reject) => {
     const s = createServer().once('error', reject).listen(0, '127.0.0.1', () => { const { port } = s.address() as { port: number }; s.close(() => resolve(port)) })
   })
+}
+
+/**
+ * A chat with Kernel as chats were before every chat got a folder of its own: on the project's shared main folder, detached, with no
+ * branch, ports or setup (KERNEL-1050). No new chat starts there any more, so a test that needs an old one builds it here.
+ */
+export async function oldSharedChat(k: Kernel, projectId: string, o: { firstInProject?: boolean } = {}) {
+  const project = k.store.project(projectId)!
+  const lead = (await k.team.agents(projectId)).find((a) => a.lead)!
+  const base = (await leadBase(project.path, await k.config.remoteFor(project.path)))!
+  const path = await k.mainFolder.ensure(projectId)
+  const pick = k.team.pickFor(lead)
+  const thread = k.store.saveThread({ id: randomUUID(), projectId, title: 'New tab', createdAt: Date.now() })
+  const ws = k.store.saveWorkspace({
+    id: randomUUID(), projectId, name: 'plan-it', branch: 'HEAD', baseRef: base, path, mode: 'worktree', agentId: lead.id, lead: true, shared: true,
+    port: 0, status: 'ready', title: 'Plan it', threadId: thread.id, firstInProject: o.firstInProject ?? false, prState: 'none', createdAt: Date.now()
+  })
+  const chat = k.store.saveChat({
+    id: randomUUID(), workspaceId: ws.id, title: 'New tab', kind: 'chat', ...(pick.provider !== 'claude' ? { provider: pick.provider } : {}), model: pick.model, effort: pick.effort,
+    plan: false, threadId: thread.id, createdAt: Date.now()
+  })
+  return { chat, ws }
 }

@@ -80,7 +80,7 @@ export class Prs extends Feature {
   private async create(id: string, draft: boolean) {
     const ws = this.mustWs(id)
     if (ws.prState !== 'none') throw new Error('This workspace already has a pull request.')
-    if (ws.shared) throw new Error('Switch this chat to Build here first.')
+    if (ws.shared) throw new Error('This chat has no working copy of its own yet. Send a message in it first, which gives it one.')
     if (this.isLocal(ws)) throw new Error('This project merges on this Mac, so there is no pull request to open. Its branch can merge once it has commits.')
     const chat = this.prChat(id)
     if (!chat) throw new Error('This workspace has no chat.')

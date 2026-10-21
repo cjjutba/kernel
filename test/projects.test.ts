@@ -23,7 +23,7 @@ const starter = join(__dirname, '..', 'docs', 'starter-agents')
 async function kernel(settings: Record<string, unknown> = {}, dirs?: { dataDir: string; home: string }) {
   const dataDir = dirs?.dataDir ?? await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = dirs?.home ?? await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), ...settings }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), ...settings }))
   const k = new Kernel({ dataDir, home, starterDir: starter, claudeSettingsFile: join(home, 'claude-settings.json') })
   await k.start()
   return { k, home, dataDir }

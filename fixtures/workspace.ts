@@ -1418,12 +1418,12 @@ const railLead = (f: Fixture): Partial<Fixture> => {
 }
 
 /**
- * Kernel's chat in Hand off or Build here (KERNEL-780). The chat holds the user's ask, a divider for each switch, and whatever `o` adds.
- * `ws` overrides the chat's workspace, `changes` are its files, `right` the open tab of the right panel and `menu` the composer menu forced open.
+ * A chat with Kernel (KERNEL-780, one-lead-chat). The chat holds the user's ask and whatever `o` adds. `ws` overrides the chat's
+ * workspace, `changes` are its files, `right` the open tab of the right panel and `menu` the composer menu forced open.
  */
-const leadModeScene = (f: Fixture, o: { mode: 'handoff' | 'build'; items?: ChatItem[]; ws?: Partial<Workspace>; changes?: ChangedFile[]; right?: 'prs' | 'changes'; menu?: 'mode'; running?: boolean }): Partial<Fixture> => {
+const leadScene = (f: Fixture, o: { items?: ChatItem[]; ws?: Partial<Workspace>; changes?: ChangedFile[]; right?: 'prs' | 'changes'; menu?: 'mode'; running?: boolean } = {}): Partial<Fixture> => {
   const ask: ChatItem = { kind: 'user', id: 'lm-u1', ts: at(10, 0), parts: [{ type: 'text', text: 'The invoice total is off by a cent on refunds. Can you fix it?' }] }
-  const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead', leadMode: o.mode, ...(o.changes?.length ? { stat: { files: o.changes.length, added: 33, removed: 3 } } : {}), ...o.ws }, 'Refund rounding', [ask, ...(o.items ?? [])], {}, { model: 'claude-opus-5-5', effort: 'high', plan: false })
+  const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead', ...(o.changes?.length ? { stat: { files: o.changes.length, added: 33, removed: 3 } } : {}), ...o.ws }, 'Refund rounding', [ask, ...(o.items ?? [])], {}, { model: 'claude-opus-5-5', effort: 'high', plan: false })
   const { approvals: _none, ...rest } = s
   return {
     ...rest,
@@ -1441,7 +1441,7 @@ const lmFiles: ChangedFile[] = [
 ]
 const lmPr = { prNumber: 171, prUrl: 'https://github.com/cjjutba/client-a/pull/171', prTitle: 'fix(money): round refunds half away from zero' }
 
-/** Build here's own PR as quiet rows (KERNEL-990): the notes Kernel draws, and Artkin's review as a card Kernel draws without a turn. */
+/** A chat with Kernel's own PR as quiet rows (KERNEL-990): the notes Kernel draws, and Artkin's review as a card Kernel draws without a turn. */
 const bhNote = (id: string, m: number, text: string, pr?: 'opened' | 'ready' | 'merged'): ChatItem => ({ kind: 'note', id, ts: at(10, m), text, ...(pr ? { pr } : {}) })
 const bhReview = (id: string, m: number, approved: boolean): ChatItem => ({
   kind: 'update', id, ts: at(10, m),
@@ -1455,7 +1455,7 @@ const bhReview = (id: string, m: number, approved: boolean): ChatItem => ({
 })
 /** Artkin's review workspace for the card's In History link, and the Lead chat that reviewed PR #171. */
 const bhScene = (f: Fixture, items: ChatItem[], ws: Partial<Workspace> = {}): Partial<Fixture> => {
-  const s = leadModeScene(f, { mode: 'build', right: 'changes', ws: { ...lmPr, ...ws }, items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' }, ...items] })
+  const s = leadScene(f, { right: 'changes', ws: { ...lmPr, ...ws }, items })
   const review: Workspace = { id: 'ws-review-171', projectId: ids.projectA, name: 'review-pr-171', title: 'Review PR #171', branch: 'feat/refund-rounding-review', baseRef: 'feat/refund-rounding', path: '/Users/you/kernel/worktrees/client-a/review-pr-171', mode: 'worktree', agentId: 'artkin', port: 4317, status: 'archived', prState: 'none', reviewOf: ids.lead, createdAt: at(10, 8) }
   return { ...s, workspaces: [...(s.workspaces ?? f.workspaces), review] }
 }
@@ -2456,25 +2456,31 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ui: open
   })),
   ChatRailLead: scene((f) => railLead(f)),
-  // KERNEL-780: Hand off and Build here. Hand off is the default and is drawn as before, with the mode chip first in the composer.
-  WorkspaceLeadHandOff: scene((f) => leadModeScene(f, { mode: 'handoff', items: lmReply('lm-a', 'Sean has it. I will tell you when the PR is ready.', 1) })),
-  WorkspaceLeadBuildHere: scene((f) => leadModeScene(f, {
-    mode: 'build', right: 'changes', changes: lmFiles,
-    items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' }, ...lmReply('lm-b', 'I rounded refunds half away from zero in money.ts and added a test for the cent case.', 3)]
+  // one-lead-chat: a chat with Kernel that changed the refund rounding itself and handed the export to Sean, in one thread. Its changes are open, its PR is up, and Sean's workspace is the team's.
+  WorkspaceLeadDidAndHandedOff: scene((f) => {
+    const s = leadScene(f, {
+      right: 'changes', changes: lmFiles, ws: { ...lmPr, prState: 'ready' },
+      items: [
+        { kind: 'text', id: 'lm-b-x', ts: at(10, 3), text: 'I rounded refunds half away from zero in money.ts and added a test for the cent case. The export has its own rounding, which is a separate lane, so Sean has it.' },
+        mcpCall('lm-b-t1', 'kernel', 'create_workspace', { agent: 'sean', title: 'Round refunds in the CSV export', brief: 'The export rounds half to even. Match money.ts.' }, { output: 'Created ws-export on feat/refund-export for sean.' }),
+        ...lmReply('lm-b', 'I opened PR #171 and started Sean on the export. I will tell you when it is ready.', 6)
+      ]
+    })
+    return { ...s, ui: { ...s.ui!, rightPanel: true } }
+  }),
+  WorkspaceLeadOwnPrReview: scene((f) => leadScene(f, {
+    right: 'changes', changes: lmFiles, ws: { ...lmPr, prState: 'ready' },
+    items: lmReply('lm-b', 'I opened PR #171. Checks passed and it has no conflicts.', 6)
   })),
-  WorkspaceLeadBuildHereReview: scene((f) => leadModeScene(f, {
-    mode: 'build', right: 'changes', changes: lmFiles, ws: { ...lmPr, prState: 'ready' },
-    items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' }, ...lmReply('lm-b', 'I opened PR #171. Checks passed and it has no conflicts.', 6)]
+  WorkspaceLeadOwnPrMerged: scene((f) => leadScene(f, {
+    right: 'changes', ws: { ...lmPr, prState: 'merged', mergedAt: at(10, 20) },
+    items: lmReply('lm-b', 'PR #171 merged.', 21)
   })),
-  WorkspaceLeadBuildHereMerged: scene((f) => leadModeScene(f, {
-    mode: 'build', right: 'changes', ws: { ...lmPr, prState: 'merged', mergedAt: at(10, 20) },
-    items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' }, ...lmReply('lm-b', 'PR #171 merged.', 21)]
-  })),
-  WorkspaceLeadBuildHereReadyToMerge: scene((f) => bhScene(f, [...lmReply('lm-b', 'I committed, pushed and opened PR #171. Checks are running.', 6), bhReview('bh-u1', 10, true)], { prState: 'ready' })),
-  WorkspaceLeadBuildHereReadyNoReview: scene((f) => bhScene(f, [...lmReply('lm-b', 'I committed, pushed and opened PR #171.', 6), bhReady], { prState: 'ready' })),
-  WorkspaceLeadBuildHereMergedRows: scene((f) => bhScene(f, [...lmReply('lm-b', 'I committed, pushed and opened PR #171.', 6), bhReview('bh-u1', 10, true), bhNote('bh-n3', 20, 'PR #171 was squashed into main. Next changes start on a new branch', 'merged')], { prState: 'merged', mergedAt: at(10, 20) })),
-  WorkspaceLeadBuildHereKept: scene((f) => bhScene(f, [...lmReply('lm-b', 'I opened PR #171.', 6), bhReview('bh-u1', 10, true), bhNote('bh-n3', 20, 'PR #171 was squashed into main.', 'merged'), bhNote('bh-n4', 20, 'Kernel kept this branch because it has uncommitted changes. A new branch starts once nothing here is left out of the merge.')], { prState: 'merged', mergedAt: at(10, 20) })),
-  WorkspaceLeadBuildHereBlockers: scene((f) => bhScene(f, [...lmReply('lm-b', 'I committed, pushed and opened PR #171.', 6), bhReview('bh-u1', 10, false), ...lmReply('lm-c', 'Artkin found two blockers in PR #171. I am fixing the export rounding and adding a test for negative refunds.', 11)], { prState: 'open' })),
+  WorkspaceLeadOwnPrReadyToMerge: scene((f) => bhScene(f, [...lmReply('lm-b', 'I committed, pushed and opened PR #171. Checks are running.', 6), bhReview('bh-u1', 10, true)], { prState: 'ready' })),
+  WorkspaceLeadOwnPrReadyNoReview: scene((f) => bhScene(f, [...lmReply('lm-b', 'I committed, pushed and opened PR #171.', 6), bhReady], { prState: 'ready' })),
+  WorkspaceLeadOwnPrMergedRows: scene((f) => bhScene(f, [...lmReply('lm-b', 'I committed, pushed and opened PR #171.', 6), bhReview('bh-u1', 10, true), bhNote('bh-n3', 20, 'PR #171 was squashed into main. Next changes start on a new branch', 'merged')], { prState: 'merged', mergedAt: at(10, 20) })),
+  WorkspaceLeadOwnPrKept: scene((f) => bhScene(f, [...lmReply('lm-b', 'I opened PR #171.', 6), bhReview('bh-u1', 10, true), bhNote('bh-n3', 20, 'PR #171 was squashed into main.', 'merged'), bhNote('bh-n4', 20, 'Kernel kept this branch because it has uncommitted changes. A new branch starts once nothing here is left out of the merge.')], { prState: 'merged', mergedAt: at(10, 20) })),
+  WorkspaceLeadOwnPrBlockers: scene((f) => bhScene(f, [...lmReply('lm-b', 'I committed, pushed and opened PR #171.', 6), bhReview('bh-u1', 10, false), ...lmReply('lm-c', 'Artkin found two blockers in PR #171. I am fixing the export rounding and adding a test for negative refunds.', 11)], { prState: 'open' })),
   WorkspaceLeadOldSelfCard: scene((f) => bhScene(f, [
     ...lmReply('lm-b', 'I committed, pushed and opened PR #171.', 6),
     tuCard('bh-old1', 7, [{ ...tuRow(ids.lead, 'kernel-lead', 'Kernel', 'Refund rounding', [tuEv('pr.opened', 'Opened PR #171'), tuEv('pr.ready', 'Ready to merge', true), tuEv('pr.review', 'Code approved')]), prNumber: 171 }]),
@@ -2482,16 +2488,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
     tuCard('bh-old2', 13, [{ ...tuRow(ids.lead, 'kernel-lead', 'Kernel', 'Refund rounding', [tuEv('pr.cifail', 'Checks failed', true)]), prNumber: 171 }]),
     ...lmReply('lm-d', 'A check failed on PR #171. I am looking at it.', 14)
   ], { prState: 'cifail' })),
-  WorkspaceLeadTooBig: scene((f) => leadModeScene(f, {
-    mode: 'build', right: 'changes', changes: lmFiles,
-    items: [
-      { kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' },
-      ...lmReply('lm-b', 'Rounding is shared by invoices, credit notes and the export. That touches 14 files across three modules.', 4),
-      { kind: 'modeSuggestion', id: 'lm-s1', ts: at(10, 5), mode: 'handoff', why: 'This change touches 14 files across three modules. Splitting it between teammates keeps each PR small.' }
-    ]
-  })),
-  WorkspaceLeadOldSuggestions: scene((f) => leadModeScene(f, {
-    mode: 'build', right: 'changes', changes: lmFiles,
+  // An old chat that was switched between Hand off and Build here: the dividers and Kernel's suggestions read as plain notes, with no Switch button.
+  WorkspaceLeadOldSuggestions: scene((f) => leadScene(f, {
+    right: 'changes', changes: lmFiles,
     items: [
       { kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' },
       ...lmReply('lm-b', 'Rounding is shared by invoices, credit notes and the export. That touches 14 files across three modules.', 4),
@@ -2502,18 +2501,19 @@ export const workspaceFixtures: Record<string, Fixture> = {
       { kind: 'modeSuggestion', id: 'lm-s2', ts: at(10, 12), mode: 'handoff', why: 'The export adds 6 more files. Splitting it between teammates keeps each PR small.' }
     ]
   })),
-  WorkspaceLeadHandOffDirty: scene((f) => leadModeScene(f, {
-    mode: 'handoff', changes: lmFiles,
-    items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'handoff' }, ...lmReply('lm-a', 'Sean has it. Your edits in this chat stay where they are.', 3)]
+  // A chat with edits of its own that is handing work to Sean: the note under the message box says teammates start from main and won't see them.
+  WorkspaceLeadUncommitted: scene((f) => leadScene(f, {
+    changes: lmFiles,
+    items: lmReply('lm-a', 'Sean has it. Your edits in this chat stay where they are.', 3)
   })),
-  // KERNEL-1052: a Hand off chat on the project's shared main folder, not the project's first. Changes and Run say there is nothing of its own until Build here, Create PR is off with the reason, and no setup rows show (KERNEL-1053).
-  WorkspaceLeadSharedFolder: scene((f) => leadModeScene(f, {
-    mode: 'handoff', right: 'changes', ws: { shared: true, branch: 'HEAD', firstInProject: false },
+  // KERNEL-1052: a chat from before every chat got a folder of its own, still on the project's shared main folder and not the project's first. Changes and Run say there is nothing of its own until its next message, Create PR is off with the reason, and no setup rows show (KERNEL-1053).
+  WorkspaceLeadSharedFolder: scene((f) => leadScene(f, {
+    right: 'changes', ws: { shared: true, branch: 'HEAD', firstInProject: false },
     items: lmReply('lm-a', 'Sean has it. I read the latest main, so I do not have a worktree of my own.', 1)
   })),
   // KERNEL-1053: the first chat of a newly added project is on the shared folder, so its one-time block has a banner for a chat with no branch and the setup script line, but no worktree rows.
   WorkspaceLeadFirstChat: scene((f) => {
-    const s = leadModeScene(f, { mode: 'handoff', right: 'changes', ws: { shared: true, branch: 'HEAD', firstInProject: true }, items: [] })
+    const s = leadScene(f, { right: 'changes', ws: { shared: true, branch: 'HEAD', firstInProject: true }, items: [] })
     return {
       ...s,
       projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, firstChatId: ids.leadChat } : r)),
@@ -2521,10 +2521,10 @@ export const workspaceFixtures: Record<string, Fixture> = {
       items: { [ids.leadChat]: [] }
     }
   }),
-  // KERNEL-1053: Build here is on and the first message is held because the working copy failed. One line under the message, with Try again and Send as Hand off.
-  WorkspaceLeadBuildFailed: scene((f) => {
+  // KERNEL-1053: a chat from the shared folder holds its message because its working copy failed. One line under the message, with Try again.
+  WorkspaceLeadCopyFailed: scene((f) => {
     const q: QueuedMessage[] = [{ id: 'lm-q1', chatId: ids.leadChat, ts: at(10, 3), parts: [{ type: 'text', text: 'The invoice total is off by a cent on refunds. Can you fix it?' }] }]
-    const s = leadModeScene(f, { mode: 'build', right: 'changes', ws: { status: 'failed', shared: true, branch: 'HEAD', firstInProject: false, worktreePending: { fromShared: true, error: "fatal: a branch named 'cjjutba/refund-rounding' already exists" } }, items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' }] })
+    const s = leadScene(f, { right: 'changes', ws: { status: 'failed', shared: true, branch: 'HEAD', firstInProject: false, worktreePending: { fromShared: true, error: "fatal: a branch named 'cjjutba/refund-rounding' already exists" } }, items: [] })
     return {
       ...s,
       items: { [ids.leadChat]: [] },

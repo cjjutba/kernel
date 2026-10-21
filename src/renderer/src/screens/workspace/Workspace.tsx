@@ -3,8 +3,7 @@ import type { ChangedFile, NewChatPicks, Project, Workspace as WorkspaceModel, W
 import { call } from '../../api'
 import { actions, getState, loadWorkspace, panelShownIn, useStore } from '../../store'
 import { Icon } from '../../ui'
-import { isLeadChatWorkspace, onSharedFolder } from '@shared/leadWorkspace'
-import { leadModeOf } from '@shared/leadMode'
+import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { FocusChip, railShownIn, ViewToggles } from '../../components/PanelToggles'
 import { ResizeHandle, readWidth } from '../../components/ResizeHandle'
 import { isLeadWorkspace, leadOf, openProject } from '../../lead'
@@ -25,7 +24,6 @@ import { OpenItems } from './composer/OpenItems'
 import { DiffView, FileView, ImageView, TextView } from './FileView'
 import { BottomPanel, RightPanel } from './Panels'
 import { SharedView } from './shared/SharedView'
-import { hasChanges } from './pr/model'
 import { PrTitleBar } from './pr/PrTitleBar'
 import { SessionRail } from './SessionRail'
 import { SkipNotice } from './terminal/SkipNotice'
@@ -197,9 +195,9 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   useWorkspaceShortcuts({ workspaceId, chatId: chat?.id, openDiff: (path) => select(diffTab(path)) })
 
   if (!ws) return <div className="panel" />
-  // A Lead chat with work of its own shows its PR actions, Create PR included, like a teammate's (KERNEL-405, D-106).
-  // In Build here the chat is a builder from its first turn, so its PR header shows before it has changes (KERNEL-780).
-  const ownPr = !isLead || (isLeadChatWorkspace(ws) && (leadModeOf(ws) === 'build' || onSharedFolder(ws) || hasChanges(ws) || !!ws.prNumber || ws.prState !== 'none'))
+  // A Lead chat shows its PR actions, Create PR included, like a teammate's (KERNEL-405, D-106). Every chat may build, so its PR
+  // header shows before it has changes (KERNEL-780, one-lead-chat).
+  const ownPr = !isLead || isLeadChatWorkspace(ws)
   // the Lead's shared worktree and a current-branch workspace say what they follow instead of a branch. That label carries meaning, so it
   // stays, and it has no copy: the title is plain text there.
   const label = ws.mode === 'current' ? `current branch · ${ws.branch}` : ws.lead && ws.branch === 'HEAD' ? `latest ${leadBase(ws, project)}` : undefined

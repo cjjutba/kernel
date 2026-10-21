@@ -4,9 +4,8 @@ import { join, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
 import { bus } from '../bus'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import { COMPACT_WINDOWS, EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, PORT_BLOCK, RUN_SCRIPT_NAME, type AppSettings, type AutoMerge, type ClaudePlan, type CompactWindow, type DeepPartial, type Effort, type HookBuild, type LeadMode, type MergeMethod, type PermissionMode, type Provider, type Role, type RoleChoice, type RoleSide, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type ProjectSettingSource, type ProjectSettings, type ProjectSettingsPatch, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools, REVIEW_KINDS } from '@shared/types'
+import { COMPACT_WINDOWS, EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, PORT_BLOCK, RUN_SCRIPT_NAME, type AppSettings, type AutoMerge, type ClaudePlan, type CompactWindow, type DeepPartial, type Effort, type HookBuild, type MergeMethod, type PermissionMode, type Provider, type Role, type RoleChoice, type RoleSide, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type ProjectSettingSource, type ProjectSettings, type ProjectSettingsPatch, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools, REVIEW_KINDS } from '@shared/types'
 import { effortMemory } from '@shared/effort'
-import { LEAD_MODES } from '@shared/leadMode'
 import { terminalSettingsOf } from './terminalPresets'
 import { addressReviewText, createPrText, fixChecksText, resolveText } from './conventions'
 
@@ -61,7 +60,7 @@ export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSet
     leadPlanMode: true, agentLimit: 0, agentTeams: false, leadUpdates: true, workspacePlanMode: false, effortByModel: {}
   },
   providers: { claude: { path: '', useSystem: false }, codex: { path: '', useSystem: false, personality: 'pragmatic' }, fallback: true },
-  team: { defaultTemplate: 'starter', leadMode: 'handoff' },
+  team: { defaultTemplate: 'starter' },
   permissions: { mode: 'auto', bypassOnlyInWorktrees: true, network: true, alwaysAsk: ['rm -rf', 'git push --force'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
   pr: {
     mergeMethod: 'squash', draft: false, requireGreen: true, requireReviewer: true, leadMerge: false, evidenceComment: false,
@@ -255,7 +254,8 @@ export async function loadAppSettings(file: string, home: string, plan: ClaudePl
   // A file that still has them loads without them.
   if (general) delete general.menuBar
   const team = group('team')
-  if (team) { delete team.showNames; delete team.addNewAgents }
+  // Chats with Kernel have no modes (one-lead-chat), so team.leadMode went. A file's `[agents] lead_mode` is not read.
+  if (team) { delete team.showNames; delete team.addNewAgents; delete team.leadMode }
   // The big terminal's switches moved out of Experimental. A value the terminal table already has wins (KERNEL-248).
   const exp = group('experimental')
   if (exp) {
@@ -595,8 +595,6 @@ function projectValues(doc: Record<string, any>): Record<Group, Record<string, u
     agents: {
       ...picked(doc.agents, ['unlistedTools'], (v) => UNLISTED_TOOLS.includes(v as UnlistedTools)),
       ...picked(doc.agents, ['openWorkspaces'], (v) => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 12),
-      // `lead_mode` is `handoff` or `build` (KERNEL-770).
-      ...picked(doc.agents, ['leadMode'], (v) => LEAD_MODES.includes(v as LeadMode)),
       ...(Object.keys(allow).length ? { allow } : {})
     }
   }

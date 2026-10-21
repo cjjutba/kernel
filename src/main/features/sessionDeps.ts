@@ -1,5 +1,5 @@
 import { chatProvider } from '@shared/providers'
-import { buildsHere } from '@shared/leadMode'
+import { ownsFolder } from '@shared/leadWorkspace'
 import type { Chat, Workspace } from '@shared/types'
 import type { Kernel } from '../kernel'
 import { bus } from '../bus'
@@ -59,7 +59,6 @@ export function sessionDeps(k: Kernel): SessionDeps {
       if (project && !project.allowTools?.includes(rule)) k.store.saveProject({ ...project, allowTools: [...(project.allowTools ?? []), rule] })
     },
     buildOpen: (chatId) => k.lead.buildOpen(chatId),
-    onBuildPlanApproved: (chatId) => k.lead.recordGoAhead(chatId, 'plan approved'),
     onReply: (ws, chat) => void k.chats.nameChat(ws, chat),
     onSent: (ws, chat, parts) => void k.chats.nameFromFirst(ws, chat, parts),
     // A reply proves the network works, so a failing DNS probe behind a proxy doesn't hold every send (KERNEL-231).
@@ -124,8 +123,8 @@ export function turnFinished(k: Kernel, ws: Workspace, chat: Chat, turn: { ok: b
   // takes.
   const own = k.team.isLeadWorkspace(ws)
   const teammate = !own
-  // A Build here chat's PR takes a teammate's path, and its news comes back to the chat (KERNEL-778).
-  const prPath = teammate || buildsHere(ws)
+  // A chat with Kernel that has its own folder takes a teammate's PR path, and its news comes back to the chat (KERNEL-778).
+  const prPath = teammate || ownsFolder(ws)
   if (prPath) k.leadUpdates.readingPr(ws.id)
   // A limit's cut-off says what Kernel does about it: a switch to another account, or a wait for the reset (KERNEL-777).
   // A carry-on a limit refused again is no news until the third refusal stops the nudges (KERNEL-1031).

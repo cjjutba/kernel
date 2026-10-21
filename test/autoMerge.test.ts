@@ -34,7 +34,7 @@ async function setup(o: { app?: object; main?: Record<string, string>; local?: b
   const repo = await tempRepo({ ...AGENTS, ...o.main })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...(o.app ?? ON) }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...(o.app ?? ON) }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   onTestFinished(() => k.stop({ budgetMs: 0 }))
@@ -51,13 +51,13 @@ async function setup(o: { app?: object; main?: Record<string, string>; local?: b
   const buildChat = async () => {
     const c = await k.lead.newLeadChat(project.id, { prompt: '' })
     await vi.waitFor(() => expect(k.store.workspace(k.store.chat(c.id)!.workspaceId)?.status).toBe('ready'), { timeout: 10_000, interval: 10 })
-    return k.lead.setMode(k.store.chat(c.id)!.workspaceId, 'build')
+    return k.store.workspace(k.store.chat(c.id)!.workspaceId)!
   }
   const activity: ActivityEvent[] = []
   const onActivity = (e: ActivityEvent) => { activity.push(e) }
   bus.on('activity', onActivity)
   onTestFinished(() => { bus.off('activity', onActivity) })
-  /** `build`: the work is a chat with Kernel's own, in Build here (KERNEL-778). */
+  /** `build`: the work is a chat with Kernel's own (KERNEL-778). */
   const pr = async (files: Record<string, string>, r: { checks?: PrCheck[]; blockers?: ReviewKind[]; approved?: ReviewKind[]; build?: boolean } = {}) => {
     const ws = r.build ? await buildChat() : await k.createWorkspace(project.id, { prompt: 'Build it', agentId: 'christian', title: 'Task' })
     for (const [f, c] of Object.entries(files)) { await mkdir(dirname(join(ws.path, f)), { recursive: true }); await writeFile(join(ws.path, f), c) }

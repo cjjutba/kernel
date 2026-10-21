@@ -411,7 +411,7 @@ async function kernel(files: Record<string, string> = {}, o: { settings?: object
   })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...o.settings }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...o.settings }))
   const k = new Kernel({ dataDir, home, ...o.options })
   await k.start()
   const project = await k.addProject(repo)
@@ -424,7 +424,7 @@ describe('kernel recovery paths', () => {
     const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend.\n---\nYou are Christian.', ...files })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     const project = await k.addProject(repo)
@@ -611,7 +611,7 @@ describe('kernel recovery paths', () => {
     await k.stop({ budgetMs: 0 })
   })
 
-  it("Retry now sends a Kernel update first, as Kernel's, and leaves a pending hand-off alone (KERNEL-116)", async () => {
+  it("Retry now sends a Kernel update first, as Kernel's (KERNEL-116)", async () => {
     const { k, project } = await kernel()
     const chat = await k.leadChat(project.id)
     await setUp(k, chat.id)
@@ -623,15 +623,12 @@ describe('kernel recovery paths', () => {
     expect(k.sessions.post(chat.id, [{ type: 'text', text: 'Team update from Kernel, not from the user.' }], { update })).toBe(true)
     const sent = k.store.items(chat.id).filter((i) => i.kind === 'user').pop()!
     await k.sessions.send(chat.id, [{ type: 'text', text: 'later' }])
-    k.sessions.handoffs.approved(chat.id)
     await k.handlers()['chats.retry']({ chatId: chat.id, itemId: sent.id, now: true })
     expect(k.sessions.queued(chat.id).map((q) => q.from)).toEqual(['kernel', undefined])
-    expect(k.sessions.handoffs.due(chat.id)).toBe(true)
     // The interrupted turn ends and the copy goes out before "later".
     call.feed({ type: 'result', subtype: 'error_during_execution', uuid: 'r2', duration_ms: 10 })
     await flush()
     expect(k.store.items(chat.id).filter((i) => i.kind === 'user').pop()).toMatchObject({ from: 'kernel', update })
-    expect(k.sessions.handoffs.due(chat.id)).toBe(true)
     await k.stop({ budgetMs: 0 })
   })
 

@@ -122,9 +122,9 @@ describe('overlap detection across two real worktrees', () => {
     expect(logged.filter((e) => e.kind === 'overlap')).toHaveLength(1)
   })
 
-  it("counts a chat in Build here, whose worktree holds the Lead's own edits (KERNEL-778)", async () => {
+  it("counts a chat with Kernel's own folder, whose worktree holds the Lead's own edits (KERNEL-778)", async () => {
     const { christian, sean } = await project()
-    const build: Workspace = { ...sean, agentId: 'kernel', lead: true, threadId: 't', leadMode: 'build' }
+    const build: Workspace = { ...sean, agentId: 'kernel', lead: true, threadId: 't' }
     await edit(christian.path, 'src/invoices.ts', 1, 3)
     await edit(build.path, 'src/invoices.ts', 2, 4)
     const [o] = await service(() => [christian, build]).check('r')

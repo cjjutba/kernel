@@ -200,15 +200,23 @@ describe('agent tools', () => {
     expect(serverReach(['mcp__linear'], [{ name: 'claude.ai Linear', status: 'connected' }], { aliases: { linear: 'claude.ai Linear' }, complete: true })).toEqual({ reach: ['claude.ai Linear'], blocked: [] })
   })
 
-  it("keeps a Lead's tracker issue writes in Hand off and Build here, as a teammate's (KERNEL-1113)", () => {
-    for (const lead of ['handoff', 'build'] as const) {
-      const p = toolPolicy(undefined, { lead })!
-      for (const t of ['mcp__linear__save_issue', 'mcp__claude_ai_Linear__save_comment', 'mcp__github__issue_write']) {
-        expect(p.hidden, `${lead}: ${t}`).not.toContain(t)
-        expect(p.allows(t), `${lead}: ${t}`).toBe(true)
-        expect(p.modeRefuses(t), `${lead}: ${t}`).toBeUndefined()
-      }
+  it("keeps a Lead's tracker issue writes, as a teammate's (KERNEL-1113)", () => {
+    const p = toolPolicy(undefined, { lead: true })!
+    for (const t of ['mcp__linear__save_issue', 'mcp__claude_ai_Linear__save_comment', 'mcp__github__issue_write']) {
+      expect(p.hidden, t).not.toContain(t)
+      expect(p.allows(t), t).toBe(true)
     }
+  })
+
+  it('gives a Lead the tools that edit files whatever its tools line says, and lets disallowedTools take them away (one-lead-chat)', () => {
+    const edits = ['Edit', 'Write', 'NotebookEdit']
+    const lead = toolPolicy(['Read', 'Grep', 'Bash'], { lead: true })!
+    for (const t of edits) { expect(lead.allows(t), t).toBe(true); expect(lead.hidden, t).not.toContain(t) }
+    const mate = toolPolicy(['Read', 'Grep', 'Bash'])!
+    for (const t of edits) expect(mate.allows(t), t).toBe(false)
+    const barred = toolPolicy(['Read'], { lead: true, disallowed: ['Write'] })!
+    expect(barred.allows('Write')).toBe(false)
+    expect(barred.allows('Edit')).toBe(true)
   })
 
   it('lets an agent use the MCP servers its project allows it, unless disallowedTools takes them (KERNEL-537)', () => {
@@ -222,7 +230,7 @@ describe('agent tools', () => {
   })
 })
 
-describe("Build here's gate on file changes and publishing (KERNEL-992)", () => {
+describe("A Lead's gate on file changes and publishing while it is in plan mode (KERNEL-992, KERNEL-1113)", () => {
   const cwd = '/tmp/ws'
   const plans = '/tmp/plans'
   const deny = { behavior: 'deny', message: BUILD_CLOSED }
@@ -256,7 +264,7 @@ describe("Build here's gate on file changes and publishing (KERNEL-992)", () => 
     expect(guardVerdict('git commit -m x', rules('acceptEdits', () => open))?.behavior).not.toBe('deny')
   })
 
-  it("doesn't gate a step that isn't a Build here Lead's", () => {
+  it("doesn't gate a step that isn't a Lead's", () => {
     expect(guardVerdict('git commit -m x', { ...rules('acceptEdits', () => false), buildClosed: undefined })?.behavior).not.toBe('deny')
   })
 })

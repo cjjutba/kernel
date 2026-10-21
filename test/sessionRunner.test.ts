@@ -11,12 +11,11 @@ import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { askReason, awaitDecision, HOLD_TIMEOUT_SEC, HOOK_ASK_MS, muteShadowedWarning, PROJECT_TOOLS, SHADOWED_WARNING, type ClaudeRunner } from '../src/main/services/providers/claude'
-import { ALWAYS_ASK, NETWORK_OFF, neverAllowed, pushOwnBranch } from '../src/main/services/permissions'
+import { ALWAYS_ASK, BUILD_CLOSED, NETWORK_OFF, neverAllowed, pushOwnBranch } from '../src/main/services/permissions'
 import type { Ask } from '../src/main/services/providers/types'
 import { BYPASS_OFF_AGAIN, BYPASS_WAITS, CRASH_NOTE, freshNudge, isNudge, LIMIT_LIFTED, QUIT_NOTE, RELAUNCH_NUDGE, RESTART_NUDGE, SESSION_GONE_NOTE, Sessions, TOOL_STOPPED, type SessionDeps, type TurnBy } from '../src/main/services/sessions'
 import { LEGACY_UPDATE_HEADER } from '../src/shared/teamUpdate'
-import { HANDOFF_NOW, HANDOFF_REMINDER, LEAD_BUILD_RULE, LEAD_RULE } from '../src/main/services/handoff'
-import { HANDOFF_NO_EDIT, HANDOFF_SWITCHED } from '../src/main/services/agentTools'
+import { CARRY_OUT, LEAD_RULE } from '../src/main/services/handoff'
 import { OpenItems, openReminder } from '../src/main/features/openItems'
 import type { Kernel } from '../src/main/kernel'
 import type { AppSettings } from '../src/main/services/settings'
@@ -536,7 +535,7 @@ describe('model and effort (D-093)', () => {
   })
 })
 
-describe('Approve and hand off (KERNEL-67)', () => {
+describe('Approve and carry out (KERNEL-67, one-lead-chat)', () => {
   // The kernel repo's own Lead, which only plans and says nothing about create_workspace.
   const kernel: AgentDef = { id: 'kernel', file: '.claude/agents/kernel.md', name: 'Kernel', role: 'Lead', description: 'Plans sprint work', lead: true, prompt: "You are Kernel, the lead for building Kernel itself. You plan, you don't write feature code." }
   const sean: AgentDef = { id: 'sean', file: '.claude/agents/sean.md', name: 'Sean', role: 'Backend', description: 'Engine', lead: false, prompt: 'You build the engine.' }
@@ -563,21 +562,22 @@ describe('Approve and hand off (KERNEL-67)', () => {
     expect(lead.append).toContain(LEAD_RULE)
     expect(LEAD_RULE).toContain('mcp__kernel__create_workspace')
     // KERNEL-129: what the rule asks of the Lead beyond the hand-off.
-    for (const part of ['Never hand a task to yourself', 'Team update', 'Never leave a teammate waiting', 'mcp__kernel__ask_user', 'pass on the details', 'tell the user it is ready to merge', 'Call teammates by name, not he or she', 'one or two short lines', 'Leave workspace ids out', 'tell the user what is stuck']) expect(LEAD_RULE).toContain(part)
+    for (const part of ['never yourself', 'Team update', 'Never leave a teammate waiting', 'mcp__kernel__ask_user', 'and the details', 'Call teammates by name', 'one or two short lines', 'without workspace ids', 'tell the user']) expect(LEAD_RULE).toContain(part)
     const builder = (await setup('acceptEdits', { agent: sean })).options.systemPrompt as { append: string }
     expect(builder.append).not.toContain(LEAD_RULE)
   })
 
-  it('tells the Lead to hand off right after the approval, then reminds it once if it tries to stop first', async () => {
+  it('tells the Lead to carry the plan out right after the approval, and never reminds it to hand off', async () => {
     const s = await setup('acceptEdits', { agent: kernel })
     expect(await contexts(s.options, 'Stop')).toEqual([])
     await approvePlan(s)
     const [note] = await contexts(s.options, 'PostToolUse', 'ExitPlanMode')
-    expect(note).toBe(`Plan approved.\n\n${HANDOFF_NOW}`)
+    expect(note).toBe(`Plan approved.\n\n${CARRY_OUT}`)
+    expect(note).toContain("won't see uncommitted edits")
+    expect(note).not.toMatch(/hand each task/i)
     // The settled card says the plan was approved, so the chat adds no note.
     expect(s.store.items('chat').filter((i) => i.kind === 'note')).toEqual([])
-    expect(await contexts(s.options, 'Stop')).toEqual([HANDOFF_REMINDER])
-    // One reminder per approval: the next Stop ends the turn.
+    // No workspace was created, and nothing at Stop asks for one.
     expect(await contexts(s.options, 'Stop')).toEqual([])
   })
 
@@ -594,30 +594,8 @@ describe('Approve and hand off (KERNEL-67)', () => {
     expect(s.sessions.queued('chat')).toEqual([])
   })
 
-  it('stops holding the Lead once it has created a workspace', async () => {
+  it('takes a Kernel post into an idle chat, and refuses one while running (KERNEL-72)', async () => {
     const s = await setup('acceptEdits', { agent: kernel })
-    await approvePlan(s)
-    s.sessions.handoffs.done('chat') // what create_workspace does
-    expect(await contexts(s.options, 'Stop')).toEqual([])
-  })
-
-  it('drops the reminder when the user stops the turn', async () => {
-    const s = await setup('acceptEdits', { agent: kernel })
-    await approvePlan(s)
-    await s.sessions.interrupt('chat')
-    expect(await contexts(s.options, 'Stop')).toEqual([])
-  })
-
-  it('drops the reminder when the user sends something else, even while it waits in the queue', async () => {
-    const s = await setup('acceptEdits', { agent: kernel })
-    await approvePlan(s)
-    expect(await s.sessions.send('chat', [{ type: 'text', text: 'Hold off, post it to Linear instead' }])).toEqual({ queued: true, why: 'running' })
-    expect(await contexts(s.options, 'Stop')).toEqual([])
-  })
-
-  it('takes a Kernel post into an idle chat without cancelling a pending hand-off, and refuses one while running (KERNEL-72)', async () => {
-    const s = await setup('acceptEdits', { agent: kernel })
-    s.sessions.handoffs.approved('chat')
     expect(s.sessions.post('chat', [{ type: 'text', text: 'Team update from Kernel, not from the user.' }])).toBe(false)
     s.call.feed({ type: 'system', subtype: 'init', session_id: s.options.sessionId, apiKeySource: 'none' })
     s.call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 10 })
@@ -625,15 +603,14 @@ describe('Approve and hand off (KERNEL-67)', () => {
     expect(s.sessions.isRunning('chat')).toBe(false)
     expect(s.sessions.post('chat', [{ type: 'text', text: 'Team update from Kernel, not from the user.' }])).toBe(true)
     expect(s.sessions.isRunning('chat')).toBe(true)
-    expect(s.sessions.handoffs.due('chat')).toBe(true)
     // The update is marked as Kernel's, so the transcript and Retry can tell it from the user's messages (KERNEL-116).
     expect(s.store.items('chat').filter((i: ChatItem) => i.kind === 'user').at(-1)).toMatchObject({ from: 'kernel' })
   })
 
-  it('gives agents that are not the Lead no hand-off', async () => {
+  it('gives agents that are not the Lead no instruction to hand off or carry out', async () => {
     const s = await setup('acceptEdits', { agent: sean })
     await approvePlan(s)
-    expect((await contexts(s.options, 'PostToolUse', 'ExitPlanMode'))[0]).not.toContain(HANDOFF_NOW)
+    expect((await contexts(s.options, 'PostToolUse', 'ExitPlanMode'))[0]).not.toContain(CARRY_OUT)
     expect(hooksFor(s.options, 'Stop').length).toBe(1)
     expect(await contexts(s.options, 'Stop')).toEqual([])
   })
@@ -686,10 +663,10 @@ describe('Approve and hand off (KERNEL-67)', () => {
       expect(await contexts(redirected.options, 'Stop')).toEqual([])
     })
 
-    it('reminds about the hand-off and the mention in one Stop', async () => {
+    it('still reminds about the mention after a plan is approved, and about nothing else', async () => {
       const s = await addressed(sean)
       await approvePlan(s)
-      expect(await contexts(s.options, 'Stop')).toEqual([`${HANDOFF_REMINDER}\n\n${reminded('Sean')}`])
+      expect(await contexts(s.options, 'Stop')).toEqual([reminded('Sean')])
     })
 
     it('gives a teammate who is mentioned nothing extra', async () => {
@@ -1023,11 +1000,10 @@ describe('who sent a message (KERNEL-116)', () => {
     expect(turns).toEqual(['user', 'kernel', 'user'])
   })
 
-  it("sends a Kernel update again as Kernel's, with its card, and leaves a pending hand-off alone", async () => {
+  it("sends a Kernel update again as Kernel's, with its card", async () => {
     const s = await setup('acceptEdits', { agent: lead })
     init(s)
     await finish(s, 'r1')
-    s.sessions.handoffs.approved('chat')
     s.sessions.post('chat', [{ type: 'text', text: HEADER }], { update })
     reply(s, 'a2', "Christian's PR #108 passed checks. Artkin is reviewing it.")
     await finish(s, 'r2')
@@ -1036,7 +1012,6 @@ describe('who sent a message (KERNEL-116)', () => {
     expect(await s.sessions.retry('chat', answer.id)).toBeUndefined()
     expect(users(s)).toHaveLength(3)
     expect(users(s).at(-1)).toMatchObject({ from: 'kernel', update })
-    expect(s.sessions.handoffs.due('chat')).toBe(true)
   })
 
   it("treats an update saved before the marker as Kernel's when it is sent again", async () => {
@@ -1044,53 +1019,36 @@ describe('who sent a message (KERNEL-116)', () => {
     init(s)
     await finish(s, 'r1')
     s.store.saveItem('chat', { kind: 'user', id: 'old', ts: 2, parts: [{ type: 'text', text: `${LEGACY_UPDATE_HEADER}\n- Christian · Inbox actions (workspace w2): PR #60 is ready to merge` }] })
-    s.sessions.handoffs.approved('chat')
     // The id of the user message itself works too, as Retry now on the limit banner passes it.
     await s.sessions.retry('chat', 'old')
     expect(users(s).at(-1)).toMatchObject({ from: 'kernel' })
     expect(users(s).at(-1)?.id).not.toBe('old')
-    expect(s.sessions.handoffs.due('chat')).toBe(true)
   })
 
-  it("sends the user's own message again as the user's, which ends a pending hand-off", async () => {
+  it("sends the user's own message again as the user's", async () => {
     const s = await setup('acceptEdits', { agent: lead })
     init(s)
     reply(s, 'a1', 'Done.')
     await finish(s, 'r1')
-    s.sessions.handoffs.approved('chat')
     await s.sessions.retry('chat', s.store.items('chat').find((i: ChatItem) => i.kind === 'text')!.id)
     expect(users(s).map((u) => u.from)).toEqual([undefined, undefined])
-    expect(s.sessions.handoffs.due('chat')).toBe(false)
   })
 
-  it('returns the copy that waits behind a running turn, so Retry now can send it first, and it keeps its marker and the hand-off as it drains', async () => {
+  it('returns the copy that waits behind a running turn, so Retry now can send it first, and it keeps its marker as it drains', async () => {
     const s = await setup('acceptEdits', { agent: lead })
     init(s)
     await finish(s, 'r1')
     s.sessions.post('chat', [{ type: 'text', text: HEADER }], { update })
     expect(await s.sessions.send('chat', [{ type: 'text', text: 'later' }])).toEqual({ queued: true, why: 'running' })
-    s.sessions.handoffs.approved('chat')
     const copy = await s.sessions.retry('chat', users(s).at(-1)!.id)
     expect(copy).toMatchObject({ from: 'kernel', update })
     await s.sessions.sendNow('chat', copy!.id)
     expect(s.call.interrupts).toBe(1)
-    expect(s.sessions.handoffs.due('chat')).toBe(true)
     expect(s.sessions.queued('chat').map((q) => q.id)[0]).toBe(copy!.id)
     s.call.feed({ type: 'result', subtype: 'error_during_execution', uuid: 'r2', duration_ms: 10 })
     await flush()
     expect(users(s).at(-1)).toMatchObject({ from: 'kernel', update })
     expect(s.sessions.kernelTurn('chat')).toBe(true)
-    expect(s.sessions.handoffs.due('chat')).toBe(true)
-  })
-
-  it('still ends a pending hand-off when the user stops the turn', async () => {
-    const s = await setup('acceptEdits', { agent: lead })
-    init(s)
-    await finish(s, 'r1')
-    s.sessions.post('chat', [{ type: 'text', text: HEADER }], { update })
-    s.sessions.handoffs.approved('chat')
-    await s.sessions.interrupt('chat')
-    expect(s.sessions.handoffs.due('chat')).toBe(false)
   })
 
   it("says what a queued message waits for, and a held brief stays the Lead's", async () => {
@@ -2873,49 +2831,45 @@ describe('images in a chat message (KERNEL-545)', () => {
   })
 })
 
-describe('a chat with Kernel in Hand off or Build here, on Claude (KERNEL-770)', () => {
+describe('a chat with Kernel, on Claude (KERNEL-770, one-lead-chat)', () => {
   const lead = { id: 'kernel', name: 'Kernel', role: 'Lead', description: 'Lead.', lead: true, prompt: 'You are Kernel.', file: '/r/kernel.md' } as AgentDef
-  const leadWs = (leadMode?: 'handoff' | 'build') => ({ agentId: 'kernel', lead: true as const, threadId: 'thread', ...(leadMode ? { leadMode } : {}) })
+  const leadWs = { agentId: 'kernel', lead: true as const, threadId: 'thread' }
   const gateOf = (options: Options) => options.hooks!.PreToolUse!.filter((m) => !m.matcher).flatMap((m) => m.hooks).at(-1) as HookCallback
+  const closedGate = (options: Options) => options.hooks!.PreToolUse!.find((m) => m.matcher === 'Edit|Write|MultiEdit|NotebookEdit')!.hooks[0] as HookCallback
   const use = (gate: HookCallback, tool: string, input: Record<string, unknown> = {}) => gate({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, tool_use_id: tool, session_id: 's', transcript_path: '', cwd: '/tmp/ws' } as never, tool, { signal: new AbortController().signal } as never)
-  const refused = { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: HANDOFF_NO_EDIT } }
 
-  it.each([['with no tools line', undefined], ['with Edit and Write on its tools line', ['Read', 'Edit', 'Write', 'Bash']]])('Hand off takes the Hand off rule and refuses every edit but a plan file, %s', async (_what, tools) => {
-    const { options } = await setup('bypassPermissions', { agent: { ...lead, tools }, ws: leadWs() })
+  it.each([['with no tools line', undefined], ['with a tools line that leaves Edit and Write out', ['Read', 'Grep', 'Glob', 'Bash']]])('takes the one Lead rule and may edit files, %s', async (_what, tools) => {
+    const { options } = await setup('acceptEdits', { agent: { ...lead, tools }, ws: leadWs })
     const prompt = (options.systemPrompt as { append: string }).append
     expect(prompt).toContain(LEAD_RULE)
-    expect(prompt).not.toContain(LEAD_BUILD_RULE)
-    expect(options.disallowedTools).toContain('NotebookEdit')
-    const gate = gateOf(options)
-    for (const tool of ['Edit', 'Write', 'MultiEdit', 'NotebookEdit']) expect(await use(gate, tool, { file_path: '/tmp/ws/src/app.ts' }), tool).toEqual(refused)
-    // Plan mode still writes its plan before it asks (D-023).
-    expect(await use(gate, 'Write', { file_path: join(homedir(), '.claude', 'plans', 'plan.md') })).toEqual({})
-    for (const tool of ['Read', 'Bash', 'mcp__kernel__create_workspace']) expect(await use(gate, tool), tool).toEqual({})
-  })
-
-  it('a turn that started in Hand off still refuses edits after a switch to Build here, and says the switch applies from the next message', async () => {
-    const { options, store } = await setup('acceptEdits', { agent: lead, ws: leadWs() })
-    const gate = gateOf(options)
-    store.saveWorkspace({ ...store.workspace('ws')!, leadMode: 'build' })
-    expect(await use(gate, 'Edit', { file_path: '/tmp/ws/src/app.ts' })).toEqual({ hookSpecificOutput: { ...refused.hookSpecificOutput, permissionDecisionReason: HANDOFF_SWITCHED } })
-    store.saveWorkspace({ ...store.workspace('ws')!, leadMode: 'handoff' })
-    expect(await use(gate, 'Edit', { file_path: '/tmp/ws/src/app.ts' })).toEqual(refused)
-  })
-
-  it('Build here takes the Build here rule and edits even when the tools line leaves Edit and Write out', async () => {
-    const { options } = await setup('acceptEdits', { agent: { ...lead, tools: ['Read', 'Grep', 'Glob', 'Bash'] }, ws: leadWs('build') })
-    const prompt = (options.systemPrompt as { append: string }).append
-    expect(prompt).toContain(LEAD_BUILD_RULE)
-    expect(prompt).not.toContain(LEAD_RULE)
     expect(options.disallowedTools ?? []).not.toContain('Edit')
+    expect(options.disallowedTools ?? []).not.toContain('NotebookEdit')
     const gate = gateOf(options)
     for (const tool of ['Edit', 'Write', 'MultiEdit']) expect(await use(gate, tool, { file_path: '/tmp/ws/src/app.ts' }), tool).toEqual({})
+    for (const tool of ['Read', 'Bash', 'mcp__kernel__create_workspace', 'mcp__kernel__link_issue']) expect(await use(gate, tool), tool).toEqual({})
     // What the tools line leaves out otherwise stays out.
-    expect(await use(gate, 'WebFetch')).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } })
+    if (tools) expect(await use(gate, 'WebFetch')).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } })
   })
 
-  it('Build here with no tools line hides nothing, tracker issue writes included (KERNEL-1113)', async () => {
-    const { options, runGuard } = await setup('acceptEdits', { agent: lead, ws: leadWs('build') })
+  it('leaves out only what disallowedTools names', async () => {
+    const { options } = await setup('acceptEdits', { agent: { ...lead, disallowedTools: ['Write'] }, ws: leadWs })
+    expect(options.disallowedTools).toContain('Write')
+    expect(options.disallowedTools).not.toContain('Edit')
+  })
+
+  it('denies an edit while the chat is in plan mode, and while it still sits on the shared main folder, but not a plan file', async () => {
+    let open = false
+    const { options } = await setup('acceptEdits', { agent: lead, ws: leadWs, deps: { buildOpen: () => open } })
+    const gate = closedGate(options)
+    const denied = { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: BUILD_CLOSED } }
+    expect(await use(gate, 'Edit', { file_path: '/tmp/ws/src/app.ts' })).toEqual(denied)
+    expect(await use(gate, 'Write', { file_path: join(homedir(), '.claude', 'plans', 'plan.md') })).toEqual({})
+    open = true
+    expect(await use(gate, 'Edit', { file_path: '/tmp/ws/src/app.ts' })).toEqual({})
+  })
+
+  it('hides nothing, tracker issue writes included (KERNEL-1113)', async () => {
+    const { options, runGuard } = await setup('acceptEdits', { agent: lead, ws: leadWs })
     expect(options.disallowedTools ?? []).not.toContain('mcp__linear__save_issue')
     expect(await runGuard('g1', 'gh issue edit 41 --body done')).toEqual({})
   })
@@ -2924,23 +2878,5 @@ describe('a chat with Kernel in Hand off or Build here, on Claude (KERNEL-770)',
     const { options, runGuard } = await setup('bypassPermissions')
     expect(options.disallowedTools ?? []).not.toContain('mcp__linear__save_issue')
     expect(await runGuard('g1', 'gh issue edit 41 --body done')).toEqual({})
-  })
-
-  it('a switch takes effect from the next turn: the running turn finishes, then the process starts again with the new rule and tools', async () => {
-    const { sessions, call, options, chat, store } = await setup('acceptEdits', { agent: lead, ws: leadWs() })
-    call.feed({ type: 'system', subtype: 'init', session_id: options.sessionId, apiKeySource: 'none' })
-    await flush()
-    store.saveWorkspace({ ...store.workspace('ws')!, leadMode: 'build' })
-    sessions.restartIdle(['ws'])
-    expect((options.abortController as AbortController).signal.aborted).toBe(false)
-    call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 5 })
-    await flush()
-    expect((options.abortController as AbortController).signal.aborted).toBe(true)
-    await sessions.send(chat.id, [{ type: 'text', text: 'Fix the button padding' }])
-    const next = sdk.calls[sdk.calls.length - 1].options as Options
-    expect(next.resume).toBe(options.sessionId)
-    expect((next.systemPrompt as { append: string }).append).toContain(LEAD_BUILD_RULE)
-    // Hand off's hidden writers are back (KERNEL-1113: nothing else is hidden).
-    expect(next.disallowedTools ?? []).not.toContain('NotebookEdit')
   })
 })
