@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { readWidth } from '../ResizeHandle'
 
-export const SIDEBAR_DEFAULT = 236
+export const SIDEBAR_DEFAULT = 300
 export const SIDEBAR_MIN = 200
 const SIDEBAR_MAX = 480
 export const SIDEBAR_KEY = 'kernel.sidebarWidth'

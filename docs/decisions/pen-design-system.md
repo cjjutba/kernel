@@ -3,3 +3,5 @@
 Tokens that Pen doesn't have now take the value of the Pen token that plays their role, so a screen that uses either looks the same: `card-line` is `line-2`, `chip-line` and `pill-line` are `line-3`, `code-bg` is `canvas`, `hover` is `surface-3`, `tint-muted` is `surface-2`, `danger` is `del` and `panel-line` is `line`. `merged-solid` is Pen's `#8b45f5`. They stay separate tokens because `test/theme.test.ts` checks each one.
 
 Pen draws buttons, tabs and selects at radius 7, the chat tab group at 9 and tags at 5, none of which the scale had. `--r-ctl`, `--r-group` and `--r-tag` add them. Menus are `--surface` at radius 10 and tooltips `--surface-3` at radius 6, as in Pen. The sidebar's Search field is `--surface` with no outline.
+
+The sidebar starts at 300px instead of 236px, the width Pen draws it at. Chat titles cut off early at 236px (KERNEL-600), and the diff counts on workspace rows only show at 300px or wider (KERNEL-601). At a 1440px window the chat column keeps about 750px beside the Session rail. A width the user already dragged to stays, since it is saved in `kernel.sidebarWidth`.

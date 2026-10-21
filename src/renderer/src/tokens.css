@@ -280,7 +280,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .menu, [role='menu'], [role='listbox'], [role='dialog'], [role='separator'] { -webkit-app-region: no-drag; }
 
 /* sidebar */
-.sidebar { width: 236px; flex-shrink: 0; display: flex; flex-direction: column; padding: 0 8px 0 10px; background: var(--panel); border-right: 1px solid var(--line); }
+.sidebar { width: 300px; flex-shrink: 0; display: flex; flex-direction: column; padding: 0 8px 0 10px; background: var(--panel); border-right: 1px solid var(--line); }
 .nav-item { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); text-align: left; width: 100%; }
 .nav-item:hover { background: var(--nav-hover); color: var(--ink-2); }
 .nav-item[aria-current='page'] { background: var(--surface-3); color: var(--ink); }
