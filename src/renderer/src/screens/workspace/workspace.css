@@ -374,7 +374,7 @@ button.fold-head:hover { color: var(--ink-2); }
 .stage-ico { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; }
 .stage[data-mark='done'] .stage-ico { color: var(--add); }
 .stage[data-mark='failed'] .stage-ico { color: var(--del); }
-.stage-ring { display: block; flex: none; width: 12px; height: 12px; margin: 2px; box-sizing: border-box; border: 1.5px solid var(--line-3); border-radius: var(--r-pill); }
+.stage-ring { display: block; flex: none; width: 12px; height: 12px; margin: 2px; box-sizing: border-box; border: 1.5px solid var(--pending); border-radius: var(--r-pill); }
 .stage[data-mark='current'] .stage-ring { border-color: var(--ink-2); }
 .stage-conn { flex: 1; width: 1px; background: var(--line-3); }
 .stage-body { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
@@ -463,6 +463,7 @@ button.rail-row:hover { background: var(--surface); color: var(--ink-2); }
 /* The commits and the branches scroll under the rows that stay put. */
 .compare-commits, .compare-list { display: flex; flex-direction: column; flex-shrink: 1; min-height: 0; overflow-y: auto; }
 .compare-note { margin: 0; padding: 6px 8px; font-size: var(--fs-meta); color: var(--muted); }
+.compare-note[data-loading], .where-note[data-loading], .link-note[data-loading] { display: flex; align-items: center; gap: 8px; }
 .compare-filter { display: flex; align-items: center; gap: 8px; height: 30px; margin-bottom: 6px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: var(--r); background: var(--input-bg); color: var(--muted); }
 .compare-filter:focus-within { border-color: var(--line-3); }
 .compare-filter input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: var(--fs-ui); }

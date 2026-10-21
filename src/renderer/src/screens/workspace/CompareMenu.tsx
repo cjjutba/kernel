@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
 import type { BranchCommit, Workspace } from '@shared/types'
 import { call } from '../../api'
-import { Icon, listKeyAction, type IconName } from '../../ui'
+import { Icon, listKeyAction, Spinner, type IconName } from '../../ui'
 import { useLayer } from '../../ui/hooks'
 import { commitAge, compareLabel, setCompare, shortSha, type Compare } from './compare'
 
@@ -124,7 +124,7 @@ function CompareMenu({ ws, compare, anchorRef, onClose }: { ws: Workspace; compa
           <input type="text" aria-label="Filter branches" placeholder="Filter branches" value={text} onChange={(e) => setText(e.target.value)} autoComplete="off" autoCapitalize="off" spellCheck={false} />
         </div>
         <div className="compare-list" role="group" aria-label="Branches">
-          {branches === null && <p className="compare-note">Loading branches</p>}
+          {branches === null && <p className="compare-note" data-loading><Spinner label={null} pattern="arrow-down" />Loading branches</p>}
           {branches && 'failed' in branches && <p className="compare-note">Could not list branches</p>}
           {list.map((b) => (
             <button key={b} type="button" role="menuitemradio" aria-checked={b === branch} className="compare-row" onClick={() => pick({ branch: b === ws.baseRef ? undefined : b })}>
@@ -144,7 +144,7 @@ function CompareMenu({ ws, compare, anchorRef, onClose }: { ws: Workspace; compa
       <div ref={ref} className="menu compare-menu" role="menu" aria-label="Commits" onKeyDown={onKey}>
         {header('Back to compare options')}
         <div className="compare-commits" role="group" aria-label="Commits">
-          {commits === null && <p className="compare-note">Loading commits</p>}
+          {commits === null && <p className="compare-note" data-loading><Spinner label={null} pattern="arrow-down" />Loading commits</p>}
           {commits && 'failed' in commits && <p className="compare-note">Could not read the commits</p>}
           {commits && 'ok' in commits && !commits.ok.length && <p className="compare-note">No commits since {ws.baseRef}</p>}
           {commits && 'ok' in commits && commits.ok.map((c) => (

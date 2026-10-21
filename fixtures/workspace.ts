@@ -3315,13 +3315,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'setup'),
     ui: { ...open, workspace: { right: 'changes', bottom: 'setup' } }
   })),
-  WorkspaceToast: prScene('merged', [], {
-    prs: prInfo('merged'),
-    ui: { toasts: [
-      { id: 't1', title: 'PR #42 merged', sub: 'Squashed into main', action: { label: 'View', href: pr.prUrl } },
-      { id: 't2', title: 'Copied', sub: 'Message copied to clipboard' }
-    ] }
-  }),
+  // Redesign 18 (Pen 18.1): two toasts over the merged chat with its Session rail, the newest at the bottom: a PR that merged, with its View, then a plain Copied.
+  WorkspaceToast: scene((f) => pr10(f, { state: 'merged', ws: { reviews: [p10Review()], mergedAt: J(59) }, ui: { toasts: [
+    { id: 't1', glyph: 'merged', title: 'PR #1153 merged', sub: 'Noor squashed it into main.', action: { label: 'View', href: P10_URL } },
+    { id: 't2', glyph: 'done', title: 'Copied', sub: 'The message is on the clipboard.' }
+  ] } })),
   // The picker with the cursor moved up one row by the arrow key.
   WorkspaceModelPickerKeys: scene((f) => ({
     settings: codexRoleSettings(),

@@ -76,16 +76,19 @@ export function AgentEdit({ projectId, agentId }: { projectId?: string; agentId:
         }
       }
       setAsking(false)
-    } catch (e) { setError(cleanError(e)) }
+    } catch (e) {
+      // The scope dialog is one the user opened, so it keeps its own line. The page's save is a toast, with the page as it was.
+      if (asking) setError(cleanError(e))
+      else actions.ui.toast({ title: `Could not save ${agent.name}`, sub: cleanError(e) })
+    }
   })
   const retire = () => actions.ui.openModal({ name: 'confirm', kind: 'retire', projectId: projectId!, agentId: agent.id })
   const customize = () => run('customize', async () => {
-    setError(null)
     try {
       const def = await call('agents.customize', { projectId: projectId!, agentId: agent.id })
       actions.ui.toast({ title: `${def.name} is in ${shortFile(def.file)} now`, sub: 'Edit it here like any agent.' })
       go({ name: 'settings', page: 'project', projectId, section: 'agents', agentId: def.id })
-    } catch (e) { setError(cleanError(e)) }
+    } catch (e) { actions.ui.toast({ title: `Could not customize ${agent.name}`, sub: cleanError(e) }) }
   })
 
   const openPlugin = () => run('plugin', async () => {
@@ -113,7 +116,6 @@ export function AgentEdit({ projectId, agentId }: { projectId?: string; agentId:
       {projectId && agent.lead && !builtIn && !plugin && <p className="set-desc">{agent.name} leads this project. Pick another lead in <SettingsLink to={{ page: 'project', projectId, section: 'agents' }}>Settings, {project?.name ?? 'project'}, Agents</SettingsLink> first.</p>}
       <form className="ae-form" onSubmit={(e) => { e.preventDefault(); submit() }}>
         <AgentFields agent={agent} form={form} set={set} skillNames={skillNames} readOnly={plugin} noSkillsHint={projectId ? undefined : 'No skills found.'} />
-        {error && !asking && <p role="alert" className="ae-error">{error}</p>}
       </form>
       {asking && <AgentSaveScope agent={agent} form={form} busy={busy === 'save'} error={error} onCancel={() => { setAsking(false); setError(null) }} onSave={(scope) => void save(scope)} />}
     </Page>

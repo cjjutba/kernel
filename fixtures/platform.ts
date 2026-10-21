@@ -1147,14 +1147,17 @@ export const platformFixtures: Record<string, Fixture> = {
   // The home screen while an update downloads, a quiet footer line, or when the download failed: the footer goes back to its round button and a toast says why.
   AuditHomeUpdateDownloading: { ...teamFixtures.UpdateReady, update: { status: 'downloading', current: '0.43.0', version: '0.44.0', progress: 62 } },
   AuditHomeUpdateError: { ...teamFixtures.UpdateReady, update: { status: 'error', current: '0.43.0', version: '0.44.0', error: 'net::ERR_CONNECTION_TIMED_OUT' }, ui: { ...teamFixtures.UpdateReady.ui, toasts: [{ id: 'upd-download', title: "Couldn't download Kernel 0.44.0", sub: "GitHub releases didn't answer.", glyph: 'error', action: { label: 'Try again', retry: 'update-check', primary: true } }] } },
-  // Toasts: three at once (merged, failed with a second action, plain), and one with a long title and sub, over a workspace.
-  ToastsStacked: { ...workspaceFixtures.WorkspaceTurnRunning, ui: { ...workspaceFixtures.WorkspaceTurnRunning.ui, toasts: [
-    { id: 't1', glyph: 'merged', title: 'PR #1151 merged', sub: 'Squashed into main', action: { label: 'View', href: 'https://github.com/kernel/kernel/pull/1151' } },
-    { id: 't2', glyph: 'error', title: "Couldn't push to origin", sub: 'The remote rejected the push.', action: { label: 'Try again', primary: true, route: { name: 'inbox' } } },
-    { id: 't3', title: 'Copied' }
+  // Redesign 18 (Pen 18.3): three toasts at once (merged, failed, plain), one with a long title and sub, and one over the Session rail and the composer, to see where a toast sits.
+  AuditToastsStacked: { ...workspaceFixtures.WorkspaceTurnRunning, ui: { ...workspaceFixtures.WorkspaceTurnRunning.ui, toasts: [
+    { id: 't1', glyph: 'merged', title: 'PR #1151 merged', sub: 'Noor squashed it into main.', action: { label: 'View', href: 'https://github.com/kernel/kernel/pull/1151' } },
+    { id: 't2', glyph: 'error', title: "Couldn't push to origin", sub: 'git rejected the push: authentication failed.', action: { label: 'Try again', primary: true, route: { name: 'inbox' } } },
+    { id: 't3', glyph: 'done', title: 'Copied', sub: 'The message is on the clipboard.' }
   ] } },
-  ToastLong: { ...workspaceFixtures.WorkspaceTurnRunning, ui: { ...workspaceFixtures.WorkspaceTurnRunning.ui, toasts: [
-    { id: 'long', glyph: 'error', title: "Couldn't start the dev server for kernel-232a-clean-account", sub: 'The port 4300 is already in use by another process. Stop it, then try again.', other: { label: 'Open Scripts', route: { name: 'inbox' } }, action: { label: 'Try again', primary: true, route: { name: 'inbox' } } }
+  AuditToastLong: { ...workspaceFixtures.WorkspaceTurnRunning, ui: { ...workspaceFixtures.WorkspaceTurnRunning.ui, toasts: [
+    { id: 'long', glyph: 'error', title: "Couldn't start the dev server for kernel-232a-clean-account", sub: "Port 4400 is in use by another process, and Kernel couldn't free it. Stop that process, or change the port in Project settings, Scripts.", other: { label: 'Open Scripts', route: { name: 'inbox' } }, action: { label: 'Try again', primary: true, route: { name: 'inbox' } } }
+  ] } },
+  AuditToastPlacement: { ...workspaceFixtures.Workspace, ui: { ...workspaceFixtures.Workspace.ui, toasts: [
+    { id: 'place', glyph: 'done', title: 'Branch copied', sub: 'test/kernel-232a-clean-account' }
   ] } },
   // A turn running and a toast up, and Settings with a toast up: Escape goes to the open thing first, the screen next, the toast last (KERNEL-878).
   AuditEscapeTurnToast: { ...workspaceFixtures.WorkspaceTurnRunning, ui: { ...workspaceFixtures.WorkspaceTurnRunning.ui, toasts: [{ id: 'esc', title: 'Could not save the setting' }] } },
