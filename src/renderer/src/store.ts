@@ -812,12 +812,29 @@ const serverList = (servers: string[]) => {
   return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }
 
+/** The name Claude Code lists a server by, without a connector's "claude.ai ". */
+const serverName = (server: string) => server.replace(/^claude\.ai\s+/i, '')
+
+/**
+ * A sign-in that ends with a server refused says so in a toast, with Try again opening Set up this account. The run's own rows keep the server as "Not signed in".
+ * The Set up dialog lists what failed itself, so it gets no toast, and a failure already told is not told again when the call's answer follows its push.
+ */
+function mcpRunToasts(run: McpSignInAll) {
+  const had = state.mcpRuns[mcpRunKey(run.provider ?? 'claude', run.accountId)]
+  if (!run.finished || state.ui.modal?.name === 'mcpSetUp') return
+  for (const f of run.failed) {
+    if (had?.finished && had.failed.some((h) => h.server === f.server && h.error === f.error)) continue
+    actions.ui.toast({ title: `Couldn't sign in to ${serverName(f.server)}`, sub: f.error, action: { label: 'Try again', modal: { name: 'mcpSetUp', provider: run.provider ?? 'claude', accountId: run.accountId } } })
+  }
+}
+
 /** The notice after adding an account whose MCP servers need the user: how many, which, and for which account. Its action opens that account on Settings, MCP servers. */
 async function mcpNeededToast(n: McpNeeded) {
   const count = await call('mcp.accounts', undefined).then((all) => all.find((a) => a.provider === n.provider && a.accountId === n.accountId)?.needsYou).catch(() => undefined)
   const total = count || n.servers.length
   const label = state.accounts.find((a) => a.provider === n.provider && a.id === n.accountId)?.label
   actions.ui.toast({
+    glyph: 'plug',
     title: `${total} MCP server${total === 1 ? '' : 's'} need${total === 1 ? 's' : ''} a sign-in`,
     ...(n.servers.length ? { sub: `${serverList(n.servers)}${label ? `, for ${label}` : ''}.` } : {}),
     action: { label: 'Open MCP servers', route: mcpRoute(n.provider, n.accountId) }
@@ -941,7 +958,7 @@ export function apply(e: PushEvent) {
     case 'providerFellBack': return setState((s) => ({ fellBack: { ...s.fellBack, [e.workspaceId]: { from: e.from, to: e.to } } }))
     case 'accountSwitched': return accountSwitchedToast(e)
     case 'account.add': return actions.accounts.adding(e.add)
-    case 'account.mcpSignInAll': return actions.accounts.mcpRun(e.run)
+    case 'account.mcpSignInAll': mcpRunToasts(e.run); return actions.accounts.mcpRun(e.run)
     case 'account.mcpNeeded': return mcpNeededToast(e.needed)
     case 'online': return actions.system.setOnline(e.online)
     case 'settings.projectChanged': return actions.settings.setProject(e.projectId, e.settings)
