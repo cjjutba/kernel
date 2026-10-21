@@ -36,7 +36,7 @@ export function AgentSaveScope({ agent, form, busy, error, onCancel, onSave }: {
   return (
     <Modal
       title={`Save changes to ${agent.name}`} onClose={onCancel} width={520} top={150}
-      footer={<><span className="grow">{error && <span role="alert" className="del">{error}</span>}</span><Button variant="ghost" size="lg" disabled={busy} onClick={onCancel}>Cancel</Button><Button variant="primary" size="lg" busy={busy} busyLabel="Saving" onClick={() => onSave(scope)}>{scope === 'me' ? 'Save for me' : 'Open pull request'}</Button></>}
+      footer={<><span className="grow">{error && <span role="alert" className="del">{error}</span>}</span><Button variant="ghost" size="lg" disabled={busy} onClick={onCancel}>Cancel</Button><Button variant="primary" size="lg" busy={busy} busyLabel="Saving" onClick={() => onSave(scope)}>{scope === 'me' ? 'Save' : 'Open pull request'}</Button></>}
     >
       <div className="ae-scope">
         <p>{WORDS[Math.min(count, 5)] ?? count} {count === 1 ? 'line' : 'lines'} of {agent.name}’s file {count === 1 ? 'changes' : 'change'}.</p>
