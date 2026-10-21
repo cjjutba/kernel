@@ -9,7 +9,7 @@ const read = (f: string) => readFileSync(join(dir, f), 'utf8')
 /** The files that draw each page, so a keyword's row is looked for on its own page. */
 const APP_FILES: Record<string, string[]> = {
   general: ['General'], appearance: ['Appearance'], notifications: ['Notifications'], accounts: ['Accounts'], models: ['Models'], agents: ['Agents'],
-  permissions: ['Permissions'], git: ['Git'], prs: ['PRs'], bigterm: ['BigTerminal'], integrations: ['Integrations'], hooks: ['Hooks'], privacy: ['Privacy'], about: ['About']
+  permissions: ['Permissions'], git: ['Git'], prs: ['PRs'], bigterm: ['BigTerminal'], integrations: ['Integrations'], hooks: ['Hooks'], privacy: ['Privacy'], remote: ['Remote'], about: ['About']
 }
 const PROJECT_FILES: Record<string, string[]> = {
   general: ['Project', 'ProjectIconRow', 'ProjectTrackerRow'], git: ['ProjectGit'], setup: ['ProjectSetup', 'RunScripts', 'PreviewUrls'], environment: ['Environment', 'FilesToCopy'], agents: ['Team', 'TeamPermissions'], prs: ['ProjectPrs']

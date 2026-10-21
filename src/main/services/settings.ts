@@ -78,6 +78,8 @@ export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSet
   terminal: { enabled: true, preset: 'claude', onlyInWorktrees: true, custom: [] },
   experimental: { sharing: true },
   privacy: { telemetry: 'ask' },
+  // Off until the user turns it on, and this Mac only until they choose the network (remote-access-server).
+  remote: { enabled: false, host: 'local', port: 47100 },
   onboarding: { done: false, out: [], reviewer: 'artkin' }
 })
 
@@ -158,7 +160,22 @@ export function resolveSettings(defaults: AppSettings, saved: DeepPartial<AppSet
   s.models.compact = compactWindows(s.models.compact, base.models.compact)
   s.terminal = terminalSettingsOf(s.terminal, defaults.terminal)
   s.pr.autoMerge = autoMergeOf(s.pr.autoMerge, defaults.pr.autoMerge)
+  s.remote = remoteAccessOf(s.remote, defaults.remote)
   return { ...s, plan, planDefaulted: PLAN_KEYS.filter((k) => at(saved, k) === undefined) }
+}
+
+/**
+ * `remote` as Kernel reads it (remote-access-server): on only when `enabled` is `true`, `host` one of the two names, and `port` a
+ * whole number from 1024. A value of the wrong type takes the fallback's, so a hand-edited `"enabled": "yes"` stays off.
+ */
+export function remoteAccessOf(v: unknown, fallback: AppSettings['remote']): AppSettings['remote'] {
+  const t = isTable(v) ? v : {}
+  const port = t.port
+  return {
+    enabled: typeof t.enabled === 'boolean' ? t.enabled : fallback.enabled,
+    host: t.host === 'local' || t.host === 'network' ? t.host : fallback.host,
+    port: Number.isInteger(port) && (port as number) >= 1024 && (port as number) <= 65535 ? (port as number) : fallback.port
+  }
 }
 
 /** The most lines `pr.autoMerge.maxLines` may say. */
@@ -324,6 +341,7 @@ export function applySettingsPatch(current: AppSettings, patch: DeepPartial<AppS
   next.models.compact = compactWindows(next.models.compact, current.models.compact)
   next.terminal = terminalSettingsOf(next.terminal, current.terminal)
   next.pr.autoMerge = autoMergeOf(next.pr.autoMerge, current.pr.autoMerge)
+  next.remote = remoteAccessOf(next.remote, current.remote)
   return next
 }
 

@@ -269,6 +269,17 @@ const projectRules = [
   'rm -rf node_modules site/node_modules && pnpm install --frozen-lockfile 2>&1 | grep -E "Done|completed installing"; pnpm -C site install --frozen-lockfile 2>&1 | grep -E "Done|completed" | tail -3',
   'gh pr create --title "build: move the Kernel repo from npm to pnpm (KERNEL-110)" --body-file - <<\'EOF\'\n## Summary\nThe app at the root and the website in site/ now use pnpm 12.3.4.\nEOF'
 ]
+/** Settings, Remote access switched on for the network, with two paired devices (remote-access-server). */
+const remoteOn = (): Partial<Fixture> => ({
+  settings: { ...DEFAULT_SETTINGS('/Users/you'), remote: { enabled: true, host: 'network', port: 47100 } },
+  remote: {
+    status: { enabled: true, running: true, host: '0.0.0.0', port: 47100, url: 'http://192.168.1.20:47100' },
+    devices: [
+      { id: 'dev-phone', name: 'Sam’s iPhone', createdAt: at(9, 12), lastSeenAt: Date.now() - 20_000, expiresAt: at(9, 12) + 30 * 24 * 3600_000, connected: true },
+      { id: 'dev-laptop', name: 'MacBook Air', createdAt: at(8, 5), lastSeenAt: Date.now() - 3 * 3600_000, expiresAt: at(8, 5) + 30 * 24 * 3600_000, connected: false }
+    ]
+  }
+})
 /** The tools saved the same way (KERNEL-455), as Claude Code writes a rule. */
 const projectToolRules = ['mcp__linear__get_issue', 'mcp__github__create_pull_request', 'WebFetch(domain:docs.stripe.com)']
 /** Auto is the app's mode, as the canvas draws it (KERNEL-455). A8 makes it the default for new installs. */
@@ -691,6 +702,12 @@ export const platformFixtures: Record<string, Fixture> = {
     { event: { name: 'room.created', source: 'folder' }, at: at(10, 41), sent: false },
     { event: { name: 'app.started' }, at: at(10, 40), sent: false }
   ] } }),
+  // remote-access-server: off by default, with nothing paired.
+  SettingsRemoteOff: settingsPage('remote'),
+  // remote-access-server: on for the network, one phone connected and one laptop that was last seen a while ago.
+  SettingsRemote: settingsPage('remote', remoteOn()),
+  // remote-access-server: Pair a device shows the one-time link and its QR code over the device list.
+  SettingsRemotePairing: { ...settingsPage('remote', remoteOn()), motion: { action: { click: 'Pair a device' }, ms: 600 } },
   // KERNEL-397: the one question about usage data, over Home, in a build that can send.
   TelemetryAsk: { ...scene(() => ({ telemetry: { canSend: true }, ui: { route: { name: 'inbox' }, modal: { name: 'telemetryAsk' } } })), motion: { action: { press: ['Escape'] }, ms: 600 } },
   SettingsGit: settingsPage('git', { branches: ['origin/main', 'origin/dev', 'main'] }),
