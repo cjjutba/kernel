@@ -5,7 +5,7 @@
 .prs-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--line-3); }
 .prs-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px 16px; }
 .prs-list { margin: 0; padding: 0; list-style: none; }
-.prs-group { position: sticky; top: 0; z-index: 2; margin: 0; padding: 0; background: var(--panel); border-bottom: 1px solid var(--line-2); }
+.prs-group { position: sticky; top: 0; z-index: 2; margin: 0; padding: 0; background: var(--canvas); border-bottom: 1px solid var(--line-2); }
 .prs-fold { display: flex; align-items: center; gap: 8px; width: 100%; height: 34px; padding: 0 12px 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: inherit; font: inherit; text-align: left; }
 .prs-fold:hover { background: var(--nav-hover); }
 .prs-gname { font-size: var(--fs-code); font-weight: var(--fw-medium); color: var(--ink-2); }

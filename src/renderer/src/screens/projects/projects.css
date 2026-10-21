@@ -126,7 +126,7 @@
 
 /* Project setup's team review, for a repo that brought its own agents (ProjectSetupTeam.png, KERNEL-397). */
 .ob-page.rs-review { padding-top: 48px; padding-bottom: 32px; overflow-y: auto; }
-.rs-team { margin-top: 20px; border: 1px solid var(--panel-line); border-radius: var(--r-lg); background: var(--panel); }
+.rs-team { margin-top: 20px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--surface); }
 .rs-team-head { display: flex; flex-direction: column; gap: 2px; padding: 14px 16px 12px; }
 .rs-team-head h2 { margin: 0; font-size: var(--fs-chat); font-weight: var(--fw-medium); color: var(--ink); }
 .rs-team-head p { margin: 0; font-size: var(--fs-code); color: var(--muted); }

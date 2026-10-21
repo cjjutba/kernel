@@ -25,7 +25,7 @@
 .is-body { flex: 1; min-height: 0; display: flex; }
 .is-list { width: clamp(420px, 40%, 560px); flex-shrink: 0; overflow-y: auto; padding: 8px; border-right: 1px solid var(--line); }
 .is-list ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 1px; }
-.is-group { position: sticky; top: -8px; z-index: 1; margin: 0; padding: 0; font-size: var(--fs-code); font-weight: var(--fw-medium); color: var(--ink-2); background: var(--panel); }
+.is-group { position: sticky; top: -8px; z-index: 1; margin: 0; padding: 0; font-size: var(--fs-code); font-weight: var(--fw-medium); color: var(--ink-2); background: var(--canvas); }
 .is-group-plain { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px 0 28px; }
 .is-fold { display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; padding: 0 10px 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: inherit; font: inherit; text-align: left; }
 .is-fold:hover { background: var(--nav-hover); }
@@ -60,7 +60,7 @@
 .is-hint { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; padding: 10px; font-size: var(--fs-code); color: var(--muted); }
 
 /* The open issue is not in the list: one line above it and the way to show it */
-.is-hidden { display: flex; align-items: center; gap: 12px; flex-shrink: 0; padding: 8px 12px 8px 16px; border-bottom: 1px solid var(--line); background: var(--panel); font-size: var(--fs-ui); color: var(--ink-2); }
+.is-hidden { display: flex; align-items: center; gap: 12px; flex-shrink: 0; padding: 8px 12px 8px 16px; border-bottom: 1px solid var(--line); background: var(--canvas); font-size: var(--fs-ui); color: var(--ink-2); }
 
 /* Detail */
 .is-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; }

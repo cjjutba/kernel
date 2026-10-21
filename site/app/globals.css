@@ -42,7 +42,7 @@
   /* Purple means merged, nothing else. */
   --color-merged: #b9a3f5;
   --color-merged-edge: #4b3d86;
-  --color-merged-fill: #7c5ce0;
+  --color-merged-fill: #8b45f5;
 
 
   /* Claude's own orange, for its mark in the hero only (the app's --claude). */

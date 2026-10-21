@@ -23,7 +23,7 @@ describe('the width the sidebar and the Settings nav share', () => {
   it('falls back to the default when nothing is saved', () => {
     vi.stubGlobal('localStorage', { getItem: () => null })
     expect(readWidth(SIDEBAR_KEY, SIDEBAR_MIN, 480)).toBeNull()
-    expect(sidebarDefault()).toBe(236)
+    expect(sidebarDefault()).toBe(300)
   })
   it('caps the limit by the window but never below the minimum', () => {
     vi.stubGlobal('window', { innerWidth: 1440 })

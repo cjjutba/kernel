@@ -52,14 +52,14 @@ button.ws-issue:hover { background: var(--surface-3); }
 /* One-row header (a Lead chat): the project, then the tabs in one `$surface` pill. The open tab is `$surface-3` with its close button, and + closes the pill. The header's hairline is the only one. */
 .header[data-one-row] { padding-left: 12px; gap: 4px; }
 .header[data-one-row] .crumb { margin-left: 2px; }
-.ws-tabs[data-inline] { align-self: center; flex: 0 1 auto; height: 32px; min-width: 0; padding: 2px; gap: 2px; align-items: center; border: 0; border-radius: var(--r-sm); background: var(--surface); }
+.ws-tabs[data-inline] { align-self: center; flex: 0 1 auto; height: 32px; min-width: 0; padding: 2px; gap: 2px; align-items: center; border: 0; border-radius: var(--r-group); background: var(--surface); }
 .ws-tabs[data-inline] > [role='tablist'] { height: 100%; flex: 0 1 auto; min-width: 0; align-items: center !important; gap: 2px; }
 /* The project avatar and name, + and the right side keep their size. The tabs are what gives way, and a title truncates. */
 .header[data-one-row] .crumb-avatar, .ws-tabs[data-inline] .tab-new { flex-shrink: 0; }
-.ws-tabs[data-inline] .tab-group { height: 28px; padding-right: 4px; border-bottom: 0; border-radius: var(--r-xs); }
+.ws-tabs[data-inline] .tab-group { height: 28px; padding-right: 4px; border-bottom: 0; border-radius: var(--r-ctl); }
 .ws-tabs[data-inline] .tab-group[data-on] { background: var(--surface-3); }
 .ws-tabs[data-inline] .tab-new { align-self: center; margin: 0; }
-.ws-tabs[data-inline] .tab-new .icon-btn, .ws-tabs[data-inline] .tab-new > button { width: 28px; height: 28px; border-radius: var(--r-xs); }
+.ws-tabs[data-inline] .tab-new .icon-btn, .ws-tabs[data-inline] .tab-new > button { width: 28px; height: 28px; border-radius: var(--r-ctl); }
 .ws-tabs[data-inline] .ws-tab { padding: 0 8px 0 9px; gap: 7px; }
 
 /* transcript */
@@ -425,8 +425,8 @@ button.rail-row:hover { background: var(--surface); color: var(--ink-2); }
 .tab-strip .tab:focus-visible { outline-offset: -2px; }
 /* Under .tab-strip so it outranks the base .icon-btn size, which comes later in the bundle. The arrow and its fade fill the strip's height, so the arrow centers on the labels. */
 .tab-strip .tab-more { position: absolute; top: 0; bottom: 0; width: var(--tab-fade); height: auto; padding: 0 3px; border-radius: 0; }
-.tab-more[data-side='left'] { left: 0; justify-content: flex-start; background: linear-gradient(to left, transparent, var(--panel) 58%); }
-.tab-more[data-side='right'] { right: 0; justify-content: flex-end; background: linear-gradient(to right, transparent, var(--panel) 58%); }
+.tab-more[data-side='left'] { left: 0; justify-content: flex-start; background: linear-gradient(to left, transparent, var(--canvas) 58%); }
+.tab-more[data-side='right'] { right: 0; justify-content: flex-end; background: linear-gradient(to right, transparent, var(--canvas) 58%); }
 .tab-more[data-side='left'] svg { transform: rotate(180deg); }
 /* The Lead's strip, as LeadPrs.png draws it (KERNEL-354): 12.5px tabs with a faint count. */
 .panel-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
