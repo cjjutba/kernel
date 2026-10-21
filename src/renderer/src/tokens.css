@@ -12,7 +12,7 @@
   --surface: #212121;
   --surface-2: #252525;
   --surface-3: #292929;
-  --hover: #2c2c2c;
+  --hover: #292929;
   --line: #232323;
   --line-2: #2a2a2a;
   --line-3: #333333;
@@ -26,14 +26,14 @@
   --add: #4cb782;
   --del: #f36b6b;
   --merged: #b9a3f5;
-  --merged-solid: #7c5ce0;
+  --merged-solid: #8b45f5;
   --merge: #1f8a55;
   --needs: #f2c55c;
   /* Amber and red as a fill: meter bars and warning icons. In dark they equal the text tokens. Light needs brighter ones, since
      text-safe amber reads brown on a bar (feat-providers-redesign). */
   --needs-fill: #f2c55c;
   --del-fill: #f36b6b;
-  --tint-muted: #262626;
+  --tint-muted: #252525;
   --aside: #181818;
   --plan: #5aa2ff;
   --on-plan: #06101e;
@@ -41,18 +41,18 @@
   --pr-merged-text: #b88fff;
   --pr-ready-text: #62d69d;
   --pr-fail-text: #ff8a8a;
-  --danger: #e5484d;
+  --danger: #f36b6b;
   --on-solid: #ffffff;
   --on-ink: #141414;
-  --panel-line: #212121;
-  --nav-hover: #1c1c1c;
+  --panel-line: #232323;
+  --nav-hover: #212121;
   --panel-hover: #262626;
   --input-bg: #1e1e1e;
   --card-bg: #212121;
-  --card-line: #2c2c2c;
-  --code-bg: #171717;
-  --chip-line: #353535;
-  --pill-line: #262626;
+  --card-line: #2a2a2a;
+  --code-bg: #141414;
+  --chip-line: #333333;
+  --pill-line: #333333;
   --track: #454545;
   /* The ring of a step that has not started, in the Session rail: the dark theme's outline, and a step darker than --line-3 in light, where the outline is too faint to read as a ring (Pen 18.2). */
   --pending: #333333;
@@ -76,7 +76,7 @@
   --surface: #f8f8f8;
   --surface-2: #f3f3f3;
   --surface-3: #e9e9e9;
-  --hover: #e6e6e6;
+  --hover: #e9e9e9;
   --line: #ececec;
   --line-2: #e2e2e2;
   --line-3: #d8d8d8;
@@ -88,12 +88,12 @@
   --add: #166a45;
   --del: #b32e2e;
   --merged: #6b4bd0;
-  --merged-solid: #7c5ce0;
+  --merged-solid: #8b45f5;
   --merge: #1f8a55;
   --needs: #7a4f00;
   --needs-fill: #d97706;
   --del-fill: #dc3e42;
-  --tint-muted: #e8e8e8;
+  --tint-muted: #f3f3f3;
   --aside: #f7f7f7;
   --plan: #1f5fbf;
   --on-plan: #ffffff;
@@ -101,18 +101,18 @@
   --pr-merged-text: #5e3fc6;
   --pr-ready-text: #166a45;
   --pr-fail-text: #b32e2e;
-  --danger: #bd2b2b;
+  --danger: #b32e2e;
   --on-solid: #ffffff;
   --on-ink: #f2f2f2;
-  --panel-line: #e8e8e8;
-  --nav-hover: #ebebeb;
+  --panel-line: #ececec;
+  --nav-hover: #f3f3f3;
   --panel-hover: #ebebeb;
   --input-bg: #f8f8f8;
   --card-bg: #f8f8f8;
   --card-line: #e2e2e2;
   --code-bg: #f2f2f2;
-  --chip-line: #d4d4d4;
-  --pill-line: #e6e6e6;
+  --chip-line: #d8d8d8;
+  --pill-line: #d8d8d8;
   --track: #bebebe;
   --pending: #c6c6c6;
   --scrim: rgba(20, 21, 24, 0.14);
@@ -167,7 +167,7 @@
   }
 }
 :root {
-  --r-2xs: 4px; --r-xs: 6px; --r-sm: 8px; --r: 10px; --r-md: 12px; --r-lg: 16px; --r-xl: 18px; --r-modal: 14px; --r-pill: 999px; --menu-gap: 8px;
+  --r-2xs: 4px; --r-tag: 5px; --r-xs: 6px; --r-ctl: 7px; --r-group: 9px; --r-sm: 8px; --r: 10px; --r-md: 12px; --r-lg: 16px; --r-xl: 18px; --r-modal: 14px; --r-pill: 999px; --menu-gap: 8px;
   /* Agent avatar palettes: two stops each, the same in both themes. Ivy and Rio are drawn in the Pen; the rest are picked by name. */
   --agent-ivy-a: #6ee7b7; --agent-ivy-b: #0ea5e9;
   --agent-rio-a: #fdba74; --agent-rio-b: #f43f5e;
@@ -258,28 +258,29 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .hist-in-header { margin-top: 1px; }
 .drag { -webkit-app-region: drag; }
 .nodrag { -webkit-app-region: no-drag; }
-.main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 8px 0; }
-.panel { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--panel-line); border-radius: var(--r-md); overflow: hidden; }
+/* Main sits flush on the canvas, beside the sidebar's panel fill (Pen, every screen). Its top 9px is the strip over the header row, so the row
+   still spans y 9 to 53 and the traffic lights and sidebar toggle stay centered on it (KERNEL-431). */
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.panel { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; padding-top: 9px; background: var(--canvas); overflow: hidden; }
 /* Every screen is a size container named panel, so `@container panel (max-width: ...)` lays it out for the space it has, sidebar or not (D-084). */
 .panel { container: panel / inline-size; }
-.header { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 16px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.header { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 16px; white-space: nowrap; }
 /* A header never wraps. Its mono detail (repo, branch, task count) gives way first. */
 .header > .mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .header .menu { white-space: normal; }
 .header h1 { margin: 0; font-size: var(--fs-ui); font-weight: var(--fw-medium); color: var(--ink); }
 /* Sidebar hidden: the header clears the traffic lights, which always sit on its row (KERNEL-431), and drags the window. */
-.app[data-sidebar='hidden'] .main { padding-left: 8px; }
 .app[data-sidebar='hidden'] .panel > .header { padding-left: 78px; }
-/* The top row drags the window, sidebar shown or hidden (KERNEL-657): a screen header and the 8px strip above the panels.
+/* The top row drags the window, sidebar shown or hidden (KERNEL-657): a screen header and the 9px strip above it.
    Controls inside them, and any menu or popover that opens over them, opt out, since Electron's drag regions swallow clicks. Pick by kind, not by position. */
 .panel > .header { -webkit-app-region: drag; }
 .main { position: relative; }
-.main::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 8px; -webkit-app-region: drag; }
+.main::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 9px; -webkit-app-region: drag; }
 .panel > .header :is(button, a, input, select, textarea, label, summary, [role='button'], [role='tab'], [role='menu'], [role='menuitem'], [role='listbox'], [role='dialog'], [role='separator'], [tabindex], [data-tip], .menu) { -webkit-app-region: no-drag; }
 .menu, [role='menu'], [role='listbox'], [role='dialog'], [role='separator'] { -webkit-app-region: no-drag; }
 
 /* sidebar */
-.sidebar { width: 236px; flex-shrink: 0; display: flex; flex-direction: column; padding: 0 8px 0 10px; }
+.sidebar { width: 236px; flex-shrink: 0; display: flex; flex-direction: column; padding: 0 8px 0 10px; background: var(--panel); border-right: 1px solid var(--line); }
 .nav-item { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); text-align: left; width: 100%; }
 .nav-item:hover { background: var(--nav-hover); color: var(--ink-2); }
 .nav-item[aria-current='page'] { background: var(--surface-3); color: var(--ink); }
@@ -294,7 +295,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .hv:hover .more, .hv:has(:focus-visible) .more { opacity: 1; }
 
 /* controls */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 28px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--line-3); background: transparent; color: var(--ink-2); font-size: var(--fs-code); font-weight: var(--fw-medium); white-space: nowrap; transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 28px; padding: 0 12px; border-radius: var(--r-ctl); border: 1px solid var(--line-3); background: transparent; color: var(--ink-2); font-size: var(--fs-code); font-weight: var(--fw-medium); white-space: nowrap; transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
 .btn.primary { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
 .btn.ghost { border-color: transparent; color: var(--ink-2); }
 .btn.danger { background: var(--del); border-color: var(--del); color: var(--on-solid); }
@@ -312,13 +313,13 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .btn.merged:where(:not(:disabled):active) { background: color-mix(in srgb, var(--merged-solid) 76%, var(--on-solid)); border-color: color-mix(in srgb, var(--merged-solid) 76%, var(--on-solid)); }
 .btn.merge:where(:not(:disabled):hover) { background: color-mix(in srgb, var(--merge) 88%, var(--on-solid)); border-color: color-mix(in srgb, var(--merge) 88%, var(--on-solid)); }
 .btn.merge:where(:not(:disabled):active) { background: color-mix(in srgb, var(--merge) 76%, var(--on-solid)); border-color: color-mix(in srgb, var(--merge) 76%, var(--on-solid)); }
-.btn.lg { height: 32px; font-size: var(--fs-ui); padding: 0 14px; border-radius: var(--r); }
+.btn.lg { height: 32px; font-size: var(--fs-ui); padding: 0 14px; border-radius: var(--r-ctl); }
 .btn:disabled { opacity: 0.55; cursor: default; }
 /* Busy: the work the button started is running (DESIGN.md). Every variant takes the canvas's Creating PR look. */
 .btn[aria-busy='true']:disabled { opacity: 1; background: var(--surface-3); border: 1px solid var(--line-3); color: var(--ink-3); }
 /* A Merge that is merging keeps its green with its text, a step dimmer, since the pull request stays green while it lands (Pen 10.9, WorkspacePRMerging). */
 .btn.merge[aria-busy='true']:disabled { --spin-ink: var(--on-solid); background: color-mix(in srgb, var(--merge) 88%, var(--on-solid)); border-color: color-mix(in srgb, var(--merge) 88%, var(--on-solid)); color: var(--on-solid); }
-.icon-btn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: var(--r); background: transparent; color: var(--muted); transition: color var(--dur-fast) var(--ease-out); }
+.icon-btn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: var(--r-ctl); background: transparent; color: var(--muted); transition: color var(--dur-fast) var(--ease-out); }
 /* Hover brightens the icon with no fill behind it. A fill means on or open (`aria-pressed`, `aria-expanded`), never hover (DESIGN.md). */
 .icon-btn:hover { color: var(--ink); }
 .icon-btn:disabled { color: var(--faint); cursor: default; }
@@ -326,7 +327,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .pill:where(:not(:disabled, [aria-pressed='true'], [aria-current='page']):hover) { border-color: var(--line-3); color: var(--ink); }
 @media (prefers-reduced-motion: reduce) { .btn, .icon-btn, .pill { transition: none; } }
 .pill[aria-pressed='true'], .pill[aria-current='page'] { border-color: var(--line-3); background: var(--surface-3); color: var(--ink); }
-.tab { height: 28px; padding: 0 10px; border: 0; border-radius: var(--r); background: transparent; color: var(--muted); font-weight: var(--fw-medium); }
+.tab { height: 28px; padding: 0 10px; border: 0; border-radius: var(--r-ctl); background: transparent; color: var(--muted); font-weight: var(--fw-medium); }
 .tab[aria-selected='true'] { background: var(--surface-3); color: var(--ink); }
 /* Underline tabs (Settings, Providers): text tabs on a hairline, the selected one ink with a 2px bar under it. */
 .tabs-underline { gap: 24px; border-bottom: 1px solid var(--panel-line); }
@@ -334,7 +335,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .tabs-underline .tab:hover { color: var(--ink-2); }
 .tabs-underline .tab[aria-selected='true'] { background: transparent; color: var(--ink); }
 .tabs-underline .tab[aria-selected='true']::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px; background: var(--ink); }
-.input { height: 34px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--input-bg); color: var(--ink-2); outline: none; }
+.input { height: 34px; padding: 0 12px; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--input-bg); color: var(--ink-2); outline: none; }
 .card { border: 1px solid var(--card-line); border-radius: var(--r-md); background: var(--card-bg); }
 .code { padding: 9px 11px; border-radius: var(--r-md); background: var(--code-bg); font: var(--fs-meta)/var(--lh-relaxed) var(--mono); color: var(--ink-3); white-space: pre-wrap; user-select: text; }
 .chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 7px; border-radius: var(--r-sm); border: 1px solid var(--chip-line); background: var(--surface-3); font: var(--fs-chip) var(--mono); color: var(--ink-2); vertical-align: middle; }
@@ -346,7 +347,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 @media (prefers-reduced-motion: no-preference) {
   .dots > i { animation: dots-dip var(--loop) linear infinite, dots-dip-fade var(--loop) linear infinite; animation-delay: calc(var(--k) * var(--step) - var(--loop)); }
 }
-.menu { position: absolute; z-index: var(--z-popover); min-width: 220px; padding: 6px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }
+.menu { position: absolute; z-index: var(--z-popover); min-width: 220px; padding: 6px; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--surface); }
 .menu-item { display: flex; align-items: center; gap: 10px; width: 100%; height: 32px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); text-align: left; font-size: var(--fs-ui); }
 .menu-item:hover { background: var(--hover); }
 
@@ -365,13 +366,12 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .modal-head { display: flex; align-items: center; padding: 18px 14px 4px 20px; }
 .modal-head h2 { flex: 1; margin: 0; font-size: var(--fs-dialog); font-weight: var(--fw-semibold); line-height: 21px; color: var(--ink); }
 .modal-foot { display: flex; align-items: center; gap: 8px; padding: 12px 16px 12px 20px; border-top: 1px solid var(--line); }
-.modal-foot .btn { height: 34px; padding: 0 14px; border-radius: var(--r-sm); font-size: var(--fs-ui); }
+.modal-foot .btn { height: 34px; padding: 0 14px; border-radius: var(--r-ctl); font-size: var(--fs-ui); }
 
 /* A window under 800px or over 900px tall moves every dialog in proportion to the canvas's 900px height (D-080, KERNEL-577). */
 @media (max-height: 799px), (min-height: 901px) { .modal { --modal-top: calc(var(--modal-y) * 100vh / 900); } }
 
 /* composer */
-.composer { display: flex; flex-direction: column; gap: 10px; padding: 12px 10px 10px 14px; border-radius: var(--r-lg); border: 1px solid var(--line-2); background: var(--surface); }
-.composer:focus-within { border-color: var(--line-3); }
+.composer { display: flex; flex-direction: column; gap: 10px; padding: 12px 10px 10px 14px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--input-bg); }
 .composer input { flex: 1 1 160px; min-width: 120px; height: 24px; padding: 0; border: 0; outline: none; background: transparent; font-size: var(--fs-chat); }
 

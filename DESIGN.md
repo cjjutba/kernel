@@ -30,12 +30,12 @@ Every token in `tokens.css`, with its role. A screen picks a role, not a value.
 
 | Token | Value | Role |
 |---|---|---|
-| canvas | #141414 | window background and the sidebar |
-| panel | #1b1b1b | main panel |
+| canvas | #141414 | window background and main: every screen sits flush on it |
+| panel | #1b1b1b | the sidebar, the Session rail and side panel cards, modals |
 | surface | #212121 | composer and cards that sit on a hairline |
-| surface-2 | #252525 | menus, modals |
+| surface-2 | #252525 | toasts, hover cards |
 | surface-3 | #292929 | selected rows, hover fills |
-| hover | #2c2c2c | menu item hover |
+| hover | #292929 | menu item hover, the same value as surface-3 |
 | line | #232323 | dividers in a header or list |
 | line-2 | #2a2a2a | a chat card's border, dividers inside a card, hairlines on tables |
 | line-3 | #333333 | every outline: dialogs, inputs, selects, buttons, the composer, rail connectors |
@@ -48,12 +48,12 @@ Every token in `tokens.css`, with its role. A screen picks a role, not a value.
 | del | #f36b6b | diff deletions, errors, failing states |
 | mod | #e2c08d | a modified file's name and letter (KERNEL-399) |
 | merged | #b9a3f5 | merged PR text and icons. Merged only |
-| merged-solid | #7c5ce0 | the Merged button fill. Merged only |
+| merged-solid | #8b45f5 | the Merged button fill. Merged only |
 | merge | #1f8a55 | the Merge button fill, with `on-solid` text |
 | needs | #f2c55c | amber text. Waiting only |
 | needs-fill | #f2c55c | amber as a fill: the waiting icon and hourglass, meter bars from 75% |
 | del-fill | #f36b6b | red as a fill: meter bars from 90%, the context ring, the limit banner icon |
-| tint-muted | #262626 | the pill behind a muted status word in a hover card |
+| tint-muted | #252525 | the pill behind a muted status word in a hover card |
 | aside | #181818 | the stage behind a shared preview |
 | plan | #5aa2ff | plan mode: composer border and glow, caret, send, Approve |
 | on-plan | #06101e | text on a plan fill |
@@ -61,19 +61,19 @@ Every token in `tokens.css`, with its role. A screen picks a role, not a value.
 | pr-merged-text | #b88fff | the glyph of a merged pull request on a chip or a note |
 | pr-ready-text | #62d69d | the glyph of an open pull request on a chip or a note, and the green words on Work |
 | pr-fail-text | #ff8a8a | the glyph of a failing pull request on a note |
-| danger | #e5484d | red as a fill |
+| danger | #f36b6b | red as a fill, the same value as del |
 | on-solid | #ffffff | text on danger and merged fills |
 | on-ink | #141414 | text on the primary button |
 | ink-hover | #ffffff | text and icon on hover where ink-2 is not bright enough |
-| panel-line | #212121 | the main panel's border, Settings tab underline and the Settings search field |
-| nav-hover | #1c1c1c | hover fill of a sidebar or Settings nav row |
-| panel-hover | #262626 | hover fill of a row that sits on panel (Inbox, Issues, Projects, Pull requests, History) |
+| panel-line | #232323 | Settings tab underline and the sidebar rule, the same value as line |
+| nav-hover | #212121 | hover fill of a sidebar or Settings nav row, on panel |
+| panel-hover | #262626 | hover fill of a row that sits on main (Inbox, Issues, Projects, Pull requests, History) |
 | input-bg | #1e1e1e | input fill |
 | card-bg | #212121 | card fill |
-| card-line | #2c2c2c | a divider inside a card, the modal footer rule |
-| code-bg | #171717 | code block fill |
-| chip-line | #353535 | chip border |
-| pill-line | #262626 | pill border. Used only with --r-pill |
+| card-line | #2a2a2a | a divider inside a card, the modal footer rule |
+| code-bg | #141414 | code block fill, the same value as canvas |
+| chip-line | #333333 | chip border, the same value as line-3 |
+| pill-line | #333333 | pill border, the same value as line-3. Used only with --r-pill |
 | track | #454545 | meter and toggle tracks |
 | pending | #333333 | the ring of a Session rail step that has not started |
 | scrim | rgba(0, 0, 0, 0.3) | the blur scrim behind a modal |
@@ -88,12 +88,12 @@ Light values are in `src/renderer/src/tokens.css`. Where text failed 4.5:1 on an
 
 | Token | Value | Role |
 |---|---|---|
-| canvas | #f2f2f2 | window background and the sidebar |
-| panel | #fcfcfc | main panel |
+| canvas | #f2f2f2 | window background and main: every screen sits flush on it |
+| panel | #fcfcfc | the sidebar, the Session rail and side panel cards, modals |
 | surface | #f8f8f8 | composer and cards that sit on a hairline |
 | surface-2 | #f3f3f3 | menus, modals |
 | surface-3 | #e9e9e9 | selected rows, hover fills |
-| hover | #e6e6e6 | menu item hover |
+| hover | #e9e9e9 | menu item hover, the same value as surface-3 |
 | line | #ececec | dividers in a header or list |
 | line-2 | #e2e2e2 | a chat card's border, dividers inside a card, hairlines on tables |
 | line-3 | #d8d8d8 | every outline: dialogs, inputs, selects, buttons, the composer, rail connectors |
@@ -106,12 +106,12 @@ Light values are in `src/renderer/src/tokens.css`. Where text failed 4.5:1 on an
 | del | #b32e2e | diff deletions, errors, failing states |
 | mod | #895503 | a modified file's name and letter (KERNEL-399) |
 | merged | #6b4bd0 | merged PR text and icons. Merged only |
-| merged-solid | #7c5ce0 | the Merged button fill. Merged only |
+| merged-solid | #8b45f5 | the Merged button fill. Merged only |
 | merge | #1f8a55 | the Merge button fill, with `on-solid` text |
 | needs | #7a4f00 | amber text. Waiting only |
 | needs-fill | #d97706 | amber as a fill: the waiting icon and hourglass, meter bars from 75% |
 | del-fill | #dc3e42 | red as a fill: meter bars from 90%, the context ring, the limit banner icon |
-| tint-muted | #e8e8e8 | the pill behind a muted status word in a hover card |
+| tint-muted | #f3f3f3 | the pill behind a muted status word in a hover card |
 | aside | #f7f7f7 | the stage behind a shared preview |
 | plan | #1f5fbf | plan mode: composer border and glow, caret, send, Approve |
 | on-plan | #ffffff | text on a plan fill |
@@ -119,19 +119,19 @@ Light values are in `src/renderer/src/tokens.css`. Where text failed 4.5:1 on an
 | pr-merged-text | #5e3fc6 | the glyph of a merged pull request on a chip or a note |
 | pr-ready-text | #166a45 | the glyph of an open pull request on a chip or a note, and the green words on Work |
 | pr-fail-text | #b32e2e | the glyph of a failing pull request on a note |
-| danger | #bd2b2b | red as a fill |
+| danger | #b32e2e | red as a fill, the same value as del |
 | on-solid | #ffffff | text on danger and merged fills |
 | on-ink | #f2f2f2 | text on the primary button |
 | ink-hover | #000000 | text and icon on hover where ink-2 is not bright enough |
-| panel-line | #e8e8e8 | the main panel's border, Settings tab underline and the Settings search field |
-| nav-hover | #ebebeb | hover fill of a sidebar or Settings nav row |
-| panel-hover | #ebebeb | hover fill of a row that sits on panel (Inbox, Issues, Projects, Pull requests, History) |
+| panel-line | #ececec | Settings tab underline and the sidebar rule, the same value as line |
+| nav-hover | #f3f3f3 | hover fill of a sidebar or Settings nav row, on panel |
+| panel-hover | #ebebeb | hover fill of a row that sits on main (Inbox, Issues, Projects, Pull requests, History) |
 | input-bg | #f8f8f8 | input fill |
 | card-bg | #f8f8f8 | card fill |
 | card-line | #e2e2e2 | a divider inside a card, the modal footer rule |
 | code-bg | #f2f2f2 | code block fill |
-| chip-line | #d4d4d4 | chip border |
-| pill-line | #e6e6e6 | pill border. Used only with --r-pill |
+| chip-line | #d8d8d8 | chip border, the same value as line-3 |
+| pill-line | #d8d8d8 | pill border, the same value as line-3. Used only with --r-pill |
 | track | #bebebe | meter and toggle tracks |
 | pending | #c6c6c6 | the ring of a Session rail step that has not started, a step darker than line-3 so it reads as a ring |
 | scrim | rgba(20, 21, 24, 0.14) | the blur scrim behind a modal |
@@ -165,7 +165,7 @@ Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so th
 
 ## Shape
 
-- Radii (KERNEL-666), one scale in `tokens.css` and never a hard-coded px value: `--r-2xs` 4px checkboxes and highlights, `--r-xs` 6px 18 to 20px marks (kbd, tags, letter tiles, avatars, inline code), `--r-sm` 8px rows, list items, 22 to 26px controls and chips, `--r` 10px buttons, inputs, tabs and segmented controls (28 to 34px tall), `--r-md` 12px cards, panels, menus, code blocks, the composer and its queue tray, `--r-lg` 16px sent bubbles and the drop frame, `--r-xl` 18px large surfaces, `--r-modal` 14px modals, `--r-pill` 999px pills, toggles and meters. A control's radius is about 0.35 times its height. An inner radius is never larger than its outer one: the outer minus the padding, and `calc(<outer token> - 1px)` inside a 1px border
+- Radii (KERNEL-666), one scale in `tokens.css` and never a hard-coded px value: `--r-2xs` 4px checkboxes and highlights, `--r-tag` 5px 16 to 18px tags (Optional, In use), `--r-xs` 6px 18 to 20px marks (kbd, letter tiles, avatars, inline code), tooltips and the options inside a segmented control, `--r-ctl` 7px buttons, icon buttons, tabs, split buttons and selects (26 to 34px tall), `--r-sm` 8px rows, list items, inputs, the sidebar's Search field, segmented controls and chips, `--r-group` 9px the chat tab group, `--r` 10px menus and the larger inset boxes, `--r-md` 12px cards, panels, popovers, code blocks, toasts, the composer and its queue tray, `--r-lg` 16px sent bubbles and the drop frame, `--r-xl` 18px large surfaces, `--r-modal` 14px modals, `--r-pill` 999px pills, toggles and meters. A control's radius is about 0.35 times its height. An inner radius is never larger than its outer one: the outer minus the padding, and `calc(<outer token> - 1px)` inside a 1px border
 - 1px borders, no drop shadows anywhere. Every outline is `--line-3`: dialogs, inputs, selects, buttons, the composer and rail connectors. A hover or focus never moves an outline to another token. Dividers inside a card stay `--line` or `--line-2`.
 - Hover previews (image, pasted text, issue chips and the transcript's image rows) share one frame, `.peek-frame`, a popover card: `--surface`, a 1px `--line-3` outline, radius 10 and 8px of padding (KERNEL-1095, replacing the bezel and its glow). The picture sits inset behind a 1px `--line-2` outline with its name and size under it, a paste shows its first lines and its line count, and an issue shows its tracker's mark, key and state, its title, the first words of its description and who has it with its labels. The frame is at most 480 by 320 and never takes the pointer.
 - Icons: Hugeicons free stroke-rounded set (`@hugeicons/core-free-icons`), drawn by `Icon` on one stroke, 2.1 on its 24px grid (the old 1.4 on a 16px grid), round caps. `Icon` has no `stroke` prop, so a glyph is never bolder or lighter than its neighbours. Four sizes, typed as `IconSize`, so the compiler enforces the scale: 12 for carets, chips and inline meta, 14 for rows, buttons and menu items, 16 as the default (headers, the sidebar), 20 for empty states. `name` is an `IconName`, never a free string. `LargeMark` is the one escape, for the 34px and 120px marks on Welcome, and nothing else uses it (icon-sizes-and-stroke)
@@ -181,13 +181,14 @@ Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so th
 - Segmented controls (KERNEL-680): every option is the same width, so none reads as the default.
 - File names (KERNEL-399): wherever a repo file shows (file trees, the Changes list, file and diff tabs, view headers, the @ menu, file chips, Read, Edit and Write rows, approvals, the Inbox, Settings file lists), its Material icon sits in front, drawn by `FileIcon` or `FileLabel`. Pasted text and folders on disk keep their stroke glyphs, colored by kind (see Content kinds), and an image's chip shows its file icon. A tree row is 24px with 12px steps, a 16px chevron, the icon, the name and the status letter (M, A, U, R, D) at the right. 1px indent guides in `line-2` run down each open folder, the one beside the focused row in `line-3`. A folder with changes inside takes its strongest child's color, modified over deleted over the rest, with no dot. Folders that hold only one folder share a row (`src/renderer/src`). The open file's row is selected in `surface-3`. A tree is one tab stop: arrows move, open and close, Home and End jump.
 - Hover actions: message actions (copy, retry, edit, and a reply's `...` menu with its forks) and sidebar `...` menus appear on hover and on keyboard focus. A finished turn's reply ends in one line: the turn's time (`4m 12s · 10:31`), always shown, then those actions (KERNEL-346).
-- Hover fills: a sidebar or Settings nav row hovers on `--nav-hover`, and a row that sits on `--panel` (Inbox, Issues, Projects, Pull requests, History) on `--panel-hover`. A menu item hovers on `--hover`.
+- Hover fills: a sidebar or Settings nav row hovers on `--nav-hover`, and a row that sits on main (Inbox, Issues, Projects, Pull requests, History) on `--panel-hover`. A menu item hovers on `--hover`.
 - Sidebar rows sit 3px apart, so hover and selected fills never touch.
 - Unread is a bold title, never a dot. A chat row, workspace row, collapsed project and chat tab take 600 weight in `--ink`, and the icon keeps its state, so a row that needs you shows its blue plan or amber question icon and the bold title together. The chat on screen is read (KERNEL-508).
 - Check rows (KERNEL-437): a readiness check, a project setup step and a project's Push access row say their result with an icon and a word. A green check passes, a red x-circle fails, and an amber triangle warns. A failing row gives its one fix under it, a command in a code box with Copy or a single button. A warning never blocks. Continue stays on and the row's own button is bordered, so the one ink button is the way forward. A line that passes with more to say, like the gh login's source or Bedrock, adds a muted note under its detail. A warning about files names the file and the variable, never the value. A failed hooks install in Check hooks follows the same shape in its own card. `docs/decisions/KERNEL-437.md` lists the copy.
 - Toasts: every error is a toast, never an inline row, card or banner. A toast is 400px wide: a glyph, a title that wraps, one line on why, a close button and up to two actions. It sits 20px above the window's bottom edge (the composer's gap) and 16px from its right edge (the Session card's gap), on every screen whether the rail is open or not. Toasts stack upward with an 8px gap, newest at the bottom. The surface, hairline and radius are the Usage popover's. A toast leaves by itself after 5s (6s for a heads-up, see (4)), or sooner when you close it, use its action or swipe it right or down. A toast is for something you can't see on screen: (1) a call that failed ("Could not ..."), (2) something Kernel or an agent did without your click, like a PR created or merged, an archive after a merge, a config mistake or the window reloading after a crash, (3) an action that changes nothing on screen, like Path copied, Branch copied, Logs exported or the Check for updates result, (4) a heads-up about a cost you just took on that the screen doesn't show, like switching models in a chat that has run a turn (KERNEL-771, KERNEL-1095: "Switched to Opus 5.5", what the next turn re-reads, and Undo). A click whose result you can see gets no toast: the archived row is gone, the restored workspace opens (KERNEL-495).
 - Errors and what failed: the thing that failed stays as a quiet row ("Skipped", "Not sent") and the toast carries the error and its action. Not toasts: Session rail stages, setup log output, a failed tool call's red text, dialogs the user opens, field validation and "Kernel could not start". A list, panel or page that fails to load shows a calm empty state with Try again, plus a toast. Provider, network and Mac errors are toasts, and the composer placeholder says why it can't send.
 - Limits: a limit that needs a choice is a banner above the composer, on `surface` with a 28px glyph tile and its action, never a red background. The tile's glyph is amber (`needs-fill`) when a choice is offered, red (`del-fill`) for a hard limit with nowhere to move, and quiet ink for a heads-up. Work held on you uses the same banner. A heads-up about a cost has a Not now. Provider, network and Mac errors (offline, signed out, overloaded, hooks down) are toasts raised once when the condition starts, and the composer's placeholder says why a message can't go ("You're offline. Messages queue until you're back."). A chat whose folder is gone has no banner: its placeholder says so (KERNEL-1101).
+- Window shell (pen-design-system): the sidebar is filled with `--panel` and ends in a 1px `--line` right border. Main sits flush on `--canvas`, with no card, border or inset around it, and a screen header has no divider under it. The Session rail and the side panel are `--panel` cards with a `--line-2` border on that canvas. Menus are `--surface`, toasts and hover cards `--surface-2`, tooltips `--surface-3`.
 - Sidebar top (KERNEL-1105): the account button, then the Search field with New chat as a 30px icon beside it (`surface` fill, `surface-3` while New chat is open, ⌘N in its tooltip), then Inbox and Work. There is no New chat row.
 - Sidebar footer (KERNEL-1101): a 48px strip at the bottom of the sidebar with Settings, Help and Usage as 32px icon buttons, and a round 34px download button at the right once an update is ready. The Usage icon is the one meter there: muted, amber from 75% and red from 90% of the tightest window, and a dot loader while an account switches. Hovering it lists each provider's account numbers, and pressing it opens the Usage popover upward, 430px wide, lined up with the sidebar's left padding. The popover only reports. The account menu at the top of the sidebar names the Claude account agents run on and switches accounts, and every switch says so in a toast with Undo.
 - Icon buttons: hover brightens the icon to `--ink` with no fill behind it, because a fill around a small glyph reads louder than the glyph. A fill means the button is on or its menu is open (`aria-pressed`, `aria-expanded`), never hover. Buttons with a label, menu items, rows, and the filled send and stop circles keep their hover fills.

@@ -6,7 +6,7 @@
 .ob-col { width: 560px; display: flex; flex-direction: column; }
 .ob-h1 { margin: 0; font-size: var(--fs-title); font-weight: var(--fw-semibold); color: var(--ink); letter-spacing: -0.4px; }
 .ob-sub { margin: 6px 0 0; color: var(--muted); font-size: var(--fs-ui); }
-.ob-list { margin-top: 24px; border: 1px solid var(--panel-line); border-radius: var(--r-lg); background: var(--panel); }
+.ob-list { margin-top: 24px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: transparent; }
 .ob-check { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; min-height: 66px; box-sizing: border-box; }
 .ob-check + .ob-check { border-top: 1px solid var(--line); }
 .ob-ico { width: 15px; margin-top: 2px; flex-shrink: 0; display: inline-flex; color: var(--add); }
@@ -97,15 +97,15 @@
 .ob-time { font-size: var(--fs-meta); color: var(--muted); }
 .ob-enter { margin-left: 8px; opacity: .6; }
 
-.ob-card { margin-top: 24px; border: 1px solid var(--line-3); border-radius: var(--r-md); background: transparent; }
+.ob-card { margin-top: 24px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: transparent; }
 .ob-card + .ob-card { margin-top: 12px; }
 .ob-card.ob-settings { margin-top: 24px; }
 .ob-row { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; min-height: 64px; box-sizing: border-box; text-align: left; }
-.ob-row + .ob-row { border-top: 1px solid var(--line); }
 .ob-row > .ob-ico { margin-top: 2px; color: var(--ink); }
+.ob-row .ob-ico[data-state="ok"] { color: var(--add); }
 .ob-row .ob-ico[data-state="fail"] { color: var(--del); }
-.ob-row .ob-ico[data-state="skip"] { color: var(--muted); }
-.ob-tag { margin-left: 8px; padding: 1px 6px; border-radius: var(--r-2xs); background: var(--surface); font-size: var(--fs-meta); font-weight: var(--fw-regular); color: var(--muted); }
+.ob-row .ob-ico[data-state="skip"] { color: var(--faint); }
+.ob-tag { margin-left: 8px; padding: 1px 6px; border-radius: var(--r-tag); background: var(--surface-3); font-size: var(--fs-badge); font-weight: var(--fw-regular); color: var(--ink-3); }
 .ob-meta { margin-left: auto; font: var(--fs-meta) var(--mono); color: var(--muted); flex-shrink: 0; }
 .ob-row .btn { align-self: center; flex-shrink: 0; }
 .ob-cmd { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 7px 8px 7px 12px; border-radius: var(--r); background: var(--code-bg); }

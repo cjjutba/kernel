@@ -27,7 +27,7 @@
 
 /* select (Select.tsx, KERNEL-680): a button and a .menu listbox. The fill means the list is open, never hover alone (DESIGN.md). */
 .select { position: relative; display: inline-flex; align-items: center; max-width: 100%; flex-shrink: 0; }
-.select-trigger { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; height: 28px; padding: 0 9px 0 11px; border: 1px solid var(--line-3); border-radius: var(--r); background: var(--surface); color: var(--ink-2); font-weight: var(--fw-medium); font-size: var(--fs-code); text-align: left; }
+.select-trigger { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; height: 28px; padding: 0 9px 0 11px; border: 1px solid var(--line-3); border-radius: var(--r-ctl); background: var(--surface); color: var(--ink-2); font-weight: var(--fw-medium); font-size: var(--fs-code); text-align: left; }
 .select-trigger:hover:not(:disabled) { border-color: var(--ink-3); }
 .select-trigger[aria-expanded='true'] { background: var(--surface-3); border-color: var(--ink-3); }
 .select-trigger:disabled { opacity: 0.5; cursor: default; }
@@ -52,8 +52,8 @@
 .select-opt:disabled .select-opt-desc { color: var(--faint); }
 
 /* segmented control: equal-width options, labels centred (KERNEL-680) */
-.segmented { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 2px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--input-bg); flex-shrink: 0; }
-.segmented button { height: 24px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: var(--fs-code); text-align: center; white-space: nowrap; }
+.segmented { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 2px; border: 1px solid transparent; border-radius: var(--r-sm); background: var(--surface); flex-shrink: 0; }
+.segmented button { height: 24px; padding: 0 10px; border: 0; border-radius: var(--r-xs); background: transparent; color: var(--muted); font-size: var(--fs-code); text-align: center; white-space: nowrap; }
 .segmented button:has(.dots) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .segmented button[aria-checked='true'] { background: var(--surface-3); color: var(--ink); font-weight: var(--fw-medium); }
 
@@ -80,7 +80,7 @@
 .popover { position: absolute; z-index: var(--z-popover); top: calc(100% + var(--menu-gap)); min-width: 220px; padding: 12px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }
 .popover[data-side='top'] { top: auto; bottom: calc(100% + var(--menu-gap)); }
 /* The one tooltip (Tooltips.tsx). Fixed at 0,0 and moved into place with a transform once measured. */
-.tooltip { position: fixed; top: 0; left: 0; z-index: var(--z-tooltip); max-width: 280px; padding: 4px 8px; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--surface-2); color: var(--ink-2); font-size: var(--fs-meta); line-height: 16px; pointer-events: none; }
+.tooltip { position: fixed; top: 0; left: 0; z-index: var(--z-tooltip); max-width: 280px; padding: 4px 8px; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface-3); color: var(--ink-2); font-size: var(--fs-meta); line-height: 16px; pointer-events: none; }
 .tooltip[data-mono] { font-family: var(--mono); }
 .tooltip-kbd { margin-left: 8px; font: var(--fs-chip) var(--mono); color: var(--muted); }
 /* With a hint: the text is a mono line (a branch, which can be long) and the hint a muted line under it (HeaderBranchTooltip). */
@@ -115,7 +115,7 @@
 .toast-title { font-weight: var(--fw-semibold); color: var(--ink); }
 .toast-sub { color: var(--muted); font-size: var(--fs-code); line-height: var(--lh-ui); }
 .toast-detail { color: var(--muted); font-size: var(--fs-meta); line-height: var(--lh-ui); }
-.toast-action { height: 28px; padding: 0 11px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: var(--fs-code); font-weight: var(--fw-medium); cursor: pointer; transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
+.toast-action { height: 28px; padding: 0 11px; border: 1px solid var(--line-3); border-radius: var(--r-ctl); background: transparent; color: var(--ink-2); font-size: var(--fs-code); font-weight: var(--fw-medium); cursor: pointer; transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
 .toast-action:hover { background: var(--surface-3); color: var(--ink); }
 .toast-action[data-primary] { border-color: var(--ink); background: var(--ink); color: var(--on-ink); }
 .toast-action[data-primary]:hover { background: color-mix(in srgb, var(--ink) 88%, var(--on-ink)); color: var(--on-ink); }

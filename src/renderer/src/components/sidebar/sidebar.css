@@ -61,9 +61,9 @@
    right padding is 8px less that, and the gutter is always held so rows line up with the ones above whether or not the list scrolls. The thumb itself,
    shown only while the list scrolls and fading out after, is the app-wide scrollbar in tokens.css (KERNEL-602). */
 .sb-scroll { min-height: 0; overflow-y: auto; scrollbar-gutter: stable; margin: 0 -8px 0 -10px; padding: 0 2px 0 10px; }
-/* The resize handle sits just outside the column, on the panel's 8px edge, so it never covers the thumb. Its glow stays on the panel's border. */
-.sidebar > .resize-handle[data-edge='right'] { right: -8px; }
-.sidebar > .resize-handle[data-edge='right']::after { right: auto; left: -1px; }
+/* The resize handle straddles the sidebar's 1px right border, and its glow is centered on that border. */
+.sidebar > .resize-handle[data-edge='right'] { right: -4px; }
+.sidebar > .resize-handle[data-edge='right']::after { right: 3px; }
 
 /* A row's hover card (HoverCard.tsx): The workspace card in Kernel's shell, a hairline and no shadow. The outer box is transparent
    and spans the gap to the row, so the pointer can cross to the card. The state icon is monochrome; only a merged PR takes a color. */
@@ -139,12 +139,12 @@ button.hc-pr:hover { color: var(--ink); }
 
 /* The Search field, with New chat beside it: the Search settings box (.set-search) as a button that opens the ⌘K palette (KERNEL-930). */
 .sb-search-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-shrink: 0; }
-.sb-search { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; height: 30px; padding: 0 10px 0 9px; border-radius: var(--r-sm); border: 1px solid var(--panel-line); background: var(--panel); color: var(--muted); text-align: left; flex-shrink: 0; transition: border-color var(--dur-fast); }
+.sb-search { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; height: 30px; padding: 0 10px 0 9px; border-radius: var(--r-sm); border: 1px solid transparent; background: var(--surface); color: var(--muted); text-align: left; flex-shrink: 0; transition: border-color var(--dur-fast); }
 /* New chat, a 30px icon beside Search. It rests on --surface and takes --surface-3 while New chat is open, as a selected row does. */
 .sb-new { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--r-sm); background: var(--surface); color: var(--ink-3); transition: color var(--dur-fast) var(--ease-out); }
 .sb-new:hover { color: var(--ink); }
 .sb-new[aria-current='page'] { background: var(--surface-3); color: var(--ink-2); }
-.sb-search svg { color: var(--faint); flex-shrink: 0; }
+.sb-search svg { color: var(--muted); flex-shrink: 0; }
 .sb-search:hover { border-color: var(--line-3); }
 
 /* The Archived row above the footer opens History (Pen 12.4). It takes the free space above itself, so the footer under it keeps the bottom edge. */
