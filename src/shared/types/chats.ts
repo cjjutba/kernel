@@ -349,10 +349,11 @@ export interface QueuedMessage {
  * a paused project, every project held (`offline` covers a lost connection and a sign-out alike), the agent limit in Settings,
  * Models, or a usage window close to its limit while Settings, Account pauses new work there (`limit`, KERNEL-220),
  * a long chat that waits to move to another account (`move`, KERNEL-841),
- * or Kernel's own message that waits while other chats re-read their history on a new account, two at a time (`moving`, KERNEL-1032).
+ * Kernel's own message that waits while other chats re-read their history on a new account, two at a time (`moving`, KERNEL-1032),
+ * or another chat that can write is running a turn in the same folder (`folder`, one-writer-per-folder).
  * Computed, never saved (KERNEL-271, KERNEL-361).
  */
-export type QueueReason = 'running' | 'worktree' | 'merge' | 'paused' | 'offline' | 'capacity' | 'limit' | 'move' | 'moving'
+export type QueueReason = 'running' | 'worktree' | 'merge' | 'paused' | 'offline' | 'capacity' | 'limit' | 'move' | 'moving' | 'folder'
 
 /** Where a chat's permission mode was picked: in the chat's composer, for its project, or in Settings, Permissions. */
 export type ModeScope = 'chat' | 'project' | 'app'
