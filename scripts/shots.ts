@@ -840,6 +840,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   SettingsPRsClamped: (page) => leaveSizeLimit(page, '999999'),
   SettingsProjectScriptsRuns: (page) => scrollToSection(page, 'Archive script'),
   SettingsProjectAgents: (page) => scrollToSection(page, 'Permissions'),
+  SettingsIntegrationsLinearToken: async (page) => { await page.getByRole('button', { name: 'Connect', exact: true }).click(); await page.getByLabel('Linear API token').fill('lin_api_abcdefghijkl'); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
   SettingsRunScriptAdd: async (page) => { await page.getByRole('button', { name: 'Add', exact: true }).click(); await page.getByRole('dialog', { name: 'Add run script' }).waitFor(); await page.getByRole('textbox', { name: 'Name' }).fill('run'); await page.waitForTimeout(300) },
   SettingsProjectPrsSaved: async (page) => { await page.getByRole('switch', { name: 'UX review' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
   SettingsAccountsMoves: (page) => scrollToSection(page, 'Chats and accounts'),

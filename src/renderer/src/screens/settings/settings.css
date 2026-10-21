@@ -200,7 +200,8 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-fold[aria-expanded='true'] > svg { transform: rotate(90deg); }
 .set-fold:focus-visible { outline-offset: 3px; border-radius: var(--r-xs); }
 .set-badge { display: inline-flex; align-items: center; gap: 5px; height: 20px; box-sizing: border-box; padding: 0 7px; border-radius: var(--r-xs); border: 1px solid var(--line-3); color: var(--muted); font-size: var(--fs-chip); font-weight: var(--fw-medium); white-space: nowrap; }
-.set-section-note { font-size: var(--fs-code); color: var(--muted); }
+.set-section-note { margin-left: auto; font-size: var(--fs-code); color: var(--muted); }
+.set-section-note + .set-section-act { margin-left: 12px; }
 .set-section-act { margin-left: auto; display: inline-flex; gap: 6px; }
 .set-child { padding-left: 44px; border-top-color: transparent; }
 .set-guide { position: absolute; left: 24px; top: 0; height: 100%; width: 1px; background: var(--line-3); }

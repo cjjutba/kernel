@@ -1,13 +1,15 @@
 import type { AppSettings, ToolCalls } from '@shared/types'
-import { SegmentedControl, Toggle } from '../../../ui'
+import { SegmentedControl, Select, Toggle } from '../../../ui'
 import { actions, useStore } from '../../../store'
 import { Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
 import './personal.css'
 
 type Appearance = AppSettings['appearance']
-const TOOL_CALLS: { value: ToolCalls; label: string }[] = [{ value: 'auto', label: 'Show while working, fold when done' }, { value: 'closed', label: 'Always folded' }, { value: 'open', label: 'Always show' }]
-const THEMES: { value: Appearance['theme']; label: string }[] = [{ value: 'dark', label: 'Dark' }, { value: 'light', label: 'Light' }, { value: 'system', label: 'System' }]
+const TOOL_CALLS: { value: ToolCalls; label: string }[] = [{ value: 'auto', label: 'Folded when the turn ends' }, { value: 'closed', label: 'Always folded' }, { value: 'open', label: 'Always show' }]
+const THEMES: { value: Appearance['theme']; label: string }[] = [{ value: 'system', label: 'System' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]
+/** Reduce motion is on or off in the saved settings. Off still follows the Mac's own Reduce motion, which the styles read from the system. */
+const MOTION: { value: string; label: string }[] = [{ value: 'system', label: 'Follow macOS' }, { value: 'reduce', label: 'Always reduce' }]
 
 /** One drawing of the app in a theme. It carries its own `data-theme`, so it keeps that theme whatever the window shows. */
 function Sketch({ theme }: { theme: 'dark' | 'light' }) {
@@ -49,10 +51,10 @@ export function Appearance({ s }: { s: AppSettings }) {
         <Row id="density" label="Density"><SegmentedControl label="Density" value={a.density} onChange={(v) => set({ density: v as Appearance['density'] })} options={[{ value: 'comfortable', label: 'Comfortable' }, { value: 'compact', label: 'Compact' }]} /></Row>
       </Section>
       <Section title="Chat">
-        <Row id="tool-calls" label="Tool calls" desc="How a turn's steps show in a chat."><SegmentedControl label="Tool calls" value={toolCalls} onChange={(v) => actions.ui.setToolCalls(v as ToolCalls)} options={TOOL_CALLS} /></Row>
+        <Row id="tool-calls" label="Tool calls" desc="How a turn's steps show in a chat."><Select label="Tool calls" align="right" value={toolCalls} onChange={(v) => actions.ui.setToolCalls(v as ToolCalls)} options={TOOL_CALLS} /></Row>
       </Section>
       <Section title="Accessibility">
-        <Row id="reduce-motion" label="Reduce motion"><Toggle label="Reduce motion" checked={a.reduceMotion} onChange={(v) => set({ reduceMotion: v })} /></Row>
+        <Row id="reduce-motion" label="Reduce motion"><Select label="Reduce motion" align="right" value={a.reduceMotion ? 'reduce' : 'system'} onChange={(v) => set({ reduceMotion: v === 'reduce' })} options={MOTION} /></Row>
         <Row id="pointer-cursors" label="Use pointer cursors" desc="Show a hand over buttons and links."><Toggle label="Use pointer cursors" checked={a.pointerCursors} onChange={(v) => set({ pointerCursors: v })} /></Row>
       </Section>
     </Page>
