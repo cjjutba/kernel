@@ -364,6 +364,19 @@ button.fold-head:hover { color: var(--ink-2); }
 /* The Session rail (KERNEL-1094): the right side while the panel is closed. A card of stages that finish one after another, then the workspace's branch, port and scripts. */
 .ws-panel[data-rail] > .header { grid-column: 1 / -1; }
 .ws-rail { grid-column: 2; grid-row: 2; display: flex; flex-direction: column; width: 340px; min-height: 0; padding: 4px 16px 16px 0; overflow-y: auto; }
+/* The transcript runs under the rail to the window's edge, so its scrollbar sits on the right edge. Everything else in the chat column keeps
+   clear of the rail, and the rail lets the pointer through where it has no card, so the scrollbar can be dragged and the wheel scrolls the chat. */
+@media (min-width: 1024px) {
+  .ws-panel[data-rail] { --rail-w: 340px; }
+  .ws-panel[data-rail] > .ws-main { grid-column: 1 / -1; padding-right: var(--rail-w); }
+  .ws-panel[data-rail] .ws-scroll { margin-right: calc(-1 * var(--rail-w)); padding-right: calc(32px + var(--rail-w, 0px)); }
+  .ws-rail { position: relative; z-index: 1; pointer-events: none; }
+  .ws-rail > * { pointer-events: auto; }
+}
+@container chat (max-width: 520px) {
+  .ws-panel[data-rail] .ws-scroll { padding-right: calc(16px + var(--rail-w, 0px)); }
+  .ws-panel[data-rail] .ws-chat[data-rail] .ws-scroll { padding-right: calc(32px + var(--rail-w, 0px)); }
+}
 .rail-card { border: 1px solid var(--line-2); border-radius: var(--r-modal); background: var(--panel); }
 .rail-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 44px; padding: 0 16px; }
 .rail-head h2 { margin: 0; color: var(--muted); font-size: var(--fs-meta); font-weight: var(--fw-medium); }
