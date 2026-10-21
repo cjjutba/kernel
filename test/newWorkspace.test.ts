@@ -11,7 +11,7 @@ import { Kernel } from '../src/main/kernel'
 import { fetchedAt } from '../src/main/features/workspaces'
 import { kernelTools, takenWarning } from '../src/main/services/kernelMcp'
 import { issueTaken, keyInBranch, keyInText } from '../src/main/services/issueTaken'
-import { briefParts, leadMessage, pickedLines } from '../src/renderer/src/screens/new-workspace/brief'
+import { briefParts, leadMessage } from '../src/renderer/src/screens/new-workspace/brief'
 import { issueTools } from '../src/main/services/issueMcp'
 import type { AgentDef, ChatPart, IssueTaken } from '../src/shared/types'
 
@@ -669,15 +669,12 @@ describe('New chat message (KERNEL-147)', () => {
     expect(leadMessage([issue, file]).prompt).toBe('')
   })
 
-  it('adds the picked issue as a chip and the pickers as plain lines', () => {
-    expect(pickedLines({ mode: 'worktree', target: 'origin/main', fallback: 'origin/main', picked: '' })).toEqual([])
-    expect(pickedLines({ mode: 'worktree', target: 'origin/dev', fallback: 'origin/main', picked: '' })).toEqual(['Cut the branch from origin/dev.'])
-    expect(pickedLines({ mode: 'worktree', target: 'origin/feat/x', fallback: 'origin/main', picked: 'origin/feat/x' })).toEqual([])
-    expect(pickedLines({ mode: 'current', target: 'origin/dev', fallback: 'origin/main', picked: '' })).toEqual(['Work on the current branch, not a new worktree.'])
+  it('adds the picked issue as a chip and extra lines as plain text, and no line for where the chat works', () => {
     const source = { kind: 'issue', id: 'KERNEL-12', title: 'PDF export', url: 'https://linear.app/x/KERNEL-12' } as const
-    expect(briefParts([{ type: 'text', text: 'KERNEL-12: PDF export' }], source, ['Work on the current branch, not a new worktree.'])).toEqual([
-      issue, { type: 'text', text: 'KERNEL-12: PDF export\n\nWork on the current branch, not a new worktree.' }
+    expect(briefParts([{ type: 'text', text: 'KERNEL-12: PDF export' }], source, ['The user knows someone else may be on it.'])).toEqual([
+      issue, { type: 'text', text: 'KERNEL-12: PDF export\n\nThe user knows someone else may be on it.' }
     ])
+    expect(briefParts([{ type: 'text', text: 'Fix it' }], null, [])).toEqual([{ type: 'text', text: 'Fix it' }])
   })
 
   it('lead.start sends a chip-only message as exactly its parts, once', async () => {

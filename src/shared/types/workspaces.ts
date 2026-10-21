@@ -4,6 +4,12 @@ import type { MergeMethod, ReviewKind } from './settings'
 import type { TrackerKind } from './trackers'
 
 export type WorkspaceMode = 'worktree' | 'current'
+
+/**
+ * Where a new Lead chat works (docs/decisions/workspace-picker.md): a fresh worktree and branch, the project's own checkout, or a new tab in
+ * the open workspace of an earlier chat, so the folder stays that workspace's.
+ */
+export type LeadWhere = { kind: 'worktree' } | { kind: 'current' } | { kind: 'previous'; workspaceId: string }
 export type WorkspaceStatus = 'setup' | 'ready' | 'failed' | 'archived'
 /**
  * The PR header state. `creating`, `resolving` and `merging` are Kernel's own while the agent or gh works;

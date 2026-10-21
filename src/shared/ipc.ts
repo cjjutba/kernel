@@ -3,7 +3,7 @@ import type {
   ChatPart, Checkpoint, CheckpointPreview, ClaudeAccount, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubAuth, GitHubStatus, HookStatus, Hunk,
   GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewProjectRequest, Notification, OpenApp, OpenItem, Overlap, PreflightCheck, PushCheck, PrBlocked, PrInfo, PrPending, PrState,
   PermissionMode, PlanAttention, PrEvidence, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, GitHubOwner, RepoSummary, ResolvedPath, ReviewPatch, Project, ProjectSettings, ProjectSettingsPatch, ProjectSetupStep, ProjectTracker, ScriptKind, ScriptLine, ScriptSuggestion, ChatArchivePreview, MoveChoice, MoveNotice, SharedAnchor, SwitchMove, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
-  RemoteDevice, RemotePairing, RemoteStatus, TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
+  RemoteDevice, RemotePairing, RemoteStatus, TeamPatch, Toast, LeadWhere, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 import type { TelemetryEvent, TelemetryRecord } from './telemetry'
 
@@ -313,8 +313,11 @@ export interface KernelApi {
    * tab and its workspace are saved, before the fetch and the worktree, which the workspace's `worktreePending` covers. The prompt
    * waits in the tab's queue until the worktree exists, never for setup (KERNEL-542, KERNEL-1086). `clientId` is
    * the prompt's id while it waits and its row's once it goes, as in `chats.send` (KERNEL-894).
+   * `where` is the folder the chat works in, as New chat's Workspace menu picks it. Left out, it follows the project's file and Settings,
+   * Workspace type. `previous` adds the chat as a tab of that workspace instead of cutting a folder. It refuses when the checkout is
+   * held by another chat and "One current-branch workspace per project" is on, or when the workspace can't take a tab.
    */
-  'lead.start': { req: { projectId: string; prompt: string; parts?: ChatPart[]; clientId?: string; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode }; res: Chat }
+  'lead.start': { req: { projectId: string; prompt: string; parts?: ChatPart[]; clientId?: string; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode; where?: LeadWhere }; res: Chat }
   /**
    * Starts a fetch of the project's remote and answers without waiting for it, so the fetch Create needs is done or under way by
    * then. New chat calls it when it opens. A failed fetch says nothing (KERNEL-542).

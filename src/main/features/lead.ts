@@ -2,8 +2,8 @@ import { existsSync } from 'node:fs'
 import { cp, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { criterionText } from '@shared/criteria'
-import type { AgentDef, Approval, Chat, ChatItem, ChatArchivePreview, ChatPart, Effort, PermissionMode, PlanCriterion, Provider, QueueReason, QueuedMessage, ReviewKind, Project, Thread, Workspace } from '@shared/types'
-import { isLeadChatWorkspace, leadChatWorkspaceOf, ownsFolder } from '@shared/leadWorkspace'
+import type { AgentDef, Approval, Chat, ChatItem, ChatArchivePreview, ChatPart, Effort, LeadWhere, PermissionMode, PlanCriterion, Provider, QueueReason, QueuedMessage, ReviewKind, Project, Thread, Workspace } from '@shared/types'
+import { canTakeTab, isLeadChatWorkspace, leadChatWorkspaceOf, ownsFolder } from '@shared/leadWorkspace'
 import { providerOf } from '@shared/providers'
 import { isAnswerItem, isSentItem } from '@shared/approvalAnswer'
 import { lensOf } from '@shared/merge'
@@ -130,15 +130,17 @@ export class Lead extends Feature {
    * checkout with no setup, as before KERNEL-355. A `mode` picked in New chat is the chat's own before its first turn (KERNEL-776).
    * Every chat gets a folder of its own, by Settings, Git and worktrees, Workspace type (one-lead-chat): the Lead may edit files.
    */
-  async newLeadChat(projectId: string, o: { prompt: string; parts?: ChatPart[]; clientId?: string; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode }): Promise<Chat> {
+  async newLeadChat(projectId: string, o: { prompt: string; parts?: ChatPart[]; clientId?: string; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode; where?: LeadWhere }): Promise<Chat> {
     const lead = await this.leadOf(projectId)
+    // Previous worktree: no folder is cut. The chat is a new tab in that workspace, which stays the folder's one owner (workspace-picker).
+    if (o.where?.kind === 'previous') return this.tabInPrevious(projectId, o.where.workspaceId, o)
     const role = this.k.team.pickFor(lead)
     // A model picked in New Lead chat runs on its own provider. Otherwise the Lead's pin or its role decides (KERNEL-406).
     const pick = { provider: o.model ? o.provider ?? providerOf(o.model) : role.provider, model: o.model ?? role.model, effort: o.effort ?? role.effort, plan: o.plan ?? this.settings.models.leadPlanMode }
     const thread = this.pushThread({ id: newId(), projectId, title: NEW_TAB, createdAt: Date.now() })
     const said = (workspaceId: string) => { if (!o.model) this.k.team.announce({ id: workspaceId }, role) }
     let cut: Awaited<ReturnType<Workspaces['cutWorkspace']>>
-    try { cut = await this.k.workspaces.cutWorkspace(projectId, { prompt: o.prompt, parts: o.parts, ...pick, baseRef: o.baseRef, lead: { threadId: thread.id }, worktreeLater: true }) }
+    try { cut = await this.k.workspaces.cutWorkspace(projectId, { prompt: o.prompt, parts: o.parts, ...pick, baseRef: o.where?.kind === 'current' ? undefined : o.baseRef, ...(o.where ? { mode: o.where.kind === 'current' ? 'current' as const : 'worktree' as const } : {}), lead: { threadId: thread.id }, worktreeLater: true }) }
     catch (e) { this.store.deleteThread(thread.id); throw e }
     // Its branch and folder take their names from the chat's first title, once (KERNEL-424).
     const ws = this.updateWs(cut.ws.id, { ...(cut.ws.mode === 'worktree' ? { naming: 'branch' as const } : {}) })
@@ -672,17 +674,30 @@ export class Lead extends Feature {
     return ws ? this.tabIn(ws, o) : this.newLeadChat(projectId, o)
   }
 
+  /**
+   * Previous worktree in New chat: a new tab, with the message, in the open workspace of an earlier chat. Refused with a sentence when
+   * the workspace is another project's, archived, still being made, or has lost its folder. The tab joins that chat, so the sidebar
+   * shows one row for it, and the folder, branch and ports stay that workspace's.
+   */
+  private async tabInPrevious(projectId: string, workspaceId: string, o: { prompt: string; parts?: ChatPart[]; clientId?: string; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; mode?: PermissionMode }): Promise<Chat> {
+    const ws = this.store.workspace(workspaceId)
+    const threads = Object.fromEntries(this.store.threads(projectId).map((t) => [t.id, t]))
+    if (!ws || ws.projectId !== projectId || !canTakeTab(ws, threads)) throw new Error("That worktree can't take a new chat. It is archived, still being made, or its folder is gone. Pick New worktree.")
+    return this.tabIn(ws, o)
+  }
+
   /** A new tab in the open chat `ws` hosts, with the message. A chat on the latest main as last fetched catches up first. */
-  private async tabIn(ws: Workspace, o: { prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean }): Promise<Chat> {
+  private async tabIn(ws: Workspace, o: { prompt: string; parts?: ChatPart[]; clientId?: string; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; mode?: PermissionMode }): Promise<Chat> {
     const lead = await this.leadOf(ws.projectId)
     const role = this.k.team.pickFor(lead)
     // A model picked in New Lead chat runs on its own provider. Otherwise the Lead's pin or its role decides (KERNEL-406).
     const pick = { provider: o.model ? o.provider ?? providerOf(o.model) : role.provider, model: o.model ?? role.model, effort: o.effort ?? role.effort, plan: o.plan ?? this.settings.models.leadPlanMode }
     await this.syncLead(ws.projectId, { workspaceId: ws.id })
     if (!o.model) this.k.team.announce(ws, role)
-    const chat = this.saveChat(this.leadTab(this.mustWs(ws.id), NEW_TAB, pick))
+    const tab = this.saveChat(this.leadTab(this.mustWs(ws.id), NEW_TAB, pick))
+    const chat = o.mode ? await this.sessions.configure(tab.id, { mode: o.mode }) : tab
     this.userSpoke(chat.id)
-    await this.sessions.send(chat.id, messageOf(o.prompt, o.parts))
+    await this.sessions.send(chat.id, messageOf(o.prompt, o.parts), { clientId: o.clientId })
     return chat
   }
 
