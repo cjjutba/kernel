@@ -73,6 +73,19 @@ async function place(chatId: string, parts: ChatPart[], o: Placed): Promise<bool
 export const sendMessage = (chatId: string, parts: ChatPart[], o: SendOptions = {}): Promise<boolean> => place(chatId, parts, o)
 
 /**
+ * Sends a message into the running turn (steer). It is drawn like any message sent while a turn runs: a row in the tray, which main's answer replaces with the message's
+ * row, marked as steered. When the turn has ended, or the chat can't steer, main sends it as a next message and the answer says so. Resolves true when main took it.
+ */
+export const steerMessage = (chatId: string, parts: ChatPart[], o: SendOptions = {}): Promise<boolean> =>
+  place(chatId, parts, { ...o, run: (id) => call('chats.steer', { chatId, parts, clientId: id }) })
+
+/** Steer now on a queued message: main takes it out of the tray and puts it into the running turn. Its row and the tray arrive as events, and the answer is the tray as it stands. */
+export async function steerQueued(chatId: string, q: QueuedMessage): Promise<void> {
+  const r = await call('chats.steer', { chatId, id: q.id, clientId: q.id })
+  actions.chats.setQueue(chatId, r.queue)
+}
+
+/**
  * Retry on a failed turn sends the user's message again, as a copy that keeps its sender. The copy is drawn like any send. When the message is gone from the chat
  * nothing is drawn, and main says why.
  */

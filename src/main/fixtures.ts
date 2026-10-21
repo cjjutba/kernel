@@ -271,6 +271,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
       return queue(chatId)
     },
     'chats.sendNow': async ({ chatId, id }) => queue(chatId).filter((q) => q.id !== id),
+    'chats.steer': async ({ chatId, id }) => ({ steered: true, queued: false, queue: queue(chatId).filter((q) => q.id !== id) }),
     'skills.list': async () => f.skills ?? [],
     'commands.list': async () => [],
     'terminal.write': async () => ok,

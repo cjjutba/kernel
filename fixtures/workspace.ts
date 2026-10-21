@@ -694,8 +694,8 @@ const planMode = (f: Fixture): Partial<Fixture> => {
 const PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
 const runningEvent = (chatId: string, running: boolean): PushEvent => ({ type: 'chat.running', chatId, running })
 /** The engine's row for a message the window drew: `$id`, `$now` and `$parts` are filled from the call (src/main/fixtures.ts). */
-const sentRow = (chatId: string, o: { id?: string; parts?: ChatPart[] } = {}): PushEvent =>
-  ({ type: 'chat.item', chatId, item: { kind: 'user', id: o.id ?? '$id', ts: '$now' as unknown as number, parts: o.parts ?? ('$parts' as unknown as ChatPart[]) } })
+const sentRow = (chatId: string, o: { id?: string; parts?: ChatPart[]; steered?: boolean } = {}): PushEvent =>
+  ({ type: 'chat.item', chatId, item: { kind: 'user', id: o.id ?? '$id', ts: '$now' as unknown as number, parts: o.parts ?? ('$parts' as unknown as ChatPart[]), ...(o.steered ? { steered: true as const } : {}) } })
 /** What main pushes once it takes a message: the row under the window's id, then the running turn. */
 const sentAfter = (chatId: string, parts?: ChatPart[]): { afterMs: number; events: PushEvent[] }[] => [{ afterMs: 0, events: [sentRow(chatId, { parts }), runningEvent(chatId, true)] }]
 const errorItems: ChatItem[] = [
@@ -2403,15 +2403,27 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ...withDraft({ items: { [ids.tableChat]: tableItems.slice(0, 1) }, ui: open }, 'Now add a CSV export for the filtered rows.'),
     lag: { 'chats.send': 500 }, fails: { 'chats.send': 'Kernel did not answer.' }
   })), motion: { action: { click: 'Send' }, ms: 1500, area: '.ws-main' } },
-  /** Send now on a queued message: the row leaves the tray and the bubble appears in the same frame. */
+  /** Steer now on a queued message while a turn runs: the row leaves the tray and the steered bubble appears in the same frame, and the turn keeps running. */
   WorkspaceSendNowMotion: { ...scene((f) => ({
     items: { [ids.tableChat]: queuedItems() },
     queue: { [ids.tableChat]: [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 30), clientId: 'q1', parts: [{ type: 'text', text: 'Also add a loading skeleton to the table' }] }] },
-    lag: { 'chats.sendNow': 500 },
-    after: { 'chats.sendNow': [{ afterMs: 0, events: [runningEvent(ids.tableChat, false), { type: 'chat.queue', chatId: ids.tableChat, queue: [] }, sentRow(ids.tableChat), runningEvent(ids.tableChat, true)] }] },
+    lag: { 'chats.steer': 500 },
+    after: { 'chats.steer': [{ afterMs: 0, events: [{ type: 'chat.queue', chatId: ids.tableChat, queue: [] }, sentRow(ids.tableChat, { steered: true })] }] },
     push: [...f.push, runningEvent(ids.tableChat, true)],
     ui: open
-  })), motion: { action: { click: 'Send now' }, ms: 1500, area: '.ws-main' } },
+  })), motion: { action: { click: 'Steer now' }, ms: 1500, area: '.ws-main' } },
+  /** While a turn runs and something is typed, Queue (the default) and Steer replace the round send button. */
+  WorkspaceSteerButtons: scene((f) => ({
+    ...withDraft({ items: { [ids.tableChat]: queuedItems() }, ui: open }, 'Use the money helper in lib, not a new formatter.'),
+    push: [...f.push, runningEvent(ids.tableChat, true)]
+  })),
+  /** A message steered into the running turn sits in the transcript where it was sent, marked Steered, and a second one waits in the tray with Steer now. */
+  WorkspaceSteerRow: scene((f) => ({
+    items: { [ids.tableChat]: [...queuedItems(), { kind: 'user', id: 'steer-1', ts: Date.now() - 4_000, parts: [{ type: 'text', text: 'Keep the date column sorted newest first.' }], steered: true }] },
+    queue: { [ids.tableChat]: [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 30), clientId: 'q1', parts: [{ type: 'text', text: 'Also add a loading skeleton to the table' }] }] },
+    push: [...f.push, runningEvent(ids.tableChat, true)],
+    ui: open
+  })),
   /** A queued message posting when the turn ends: the row leaves the tray and the bubble and the Working line arrive in one frame. Nothing was pressed, main pushes the three events. */
   WorkspaceQueuePostsMotion: { ...scene((f) => ({
     items: { [ids.tableChat]: queuedItems() },

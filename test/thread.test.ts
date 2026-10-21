@@ -578,3 +578,21 @@ describe('a quieter transcript (KERNEL-1025, KERNEL-1094)', () => {
     expect(kinds([shared('a', 1), note('n', 2), shared('b', 3)])).toEqual(['item', 'item', 'item'])
   })
 })
+
+describe('a message steered into a running turn', () => {
+  const tool = (id: string, ts: number, status: 'done' | 'running' = 'done'): ChatItem => ({ kind: 'tool', id, ts, toolUseId: `tu-${id}`, name: 'Bash', label: 'Run the tests', detail: 'pnpm test', status })
+  const user = (id: string, ts: number, steered?: true): ChatItem => ({ kind: 'user', id, ts, parts: [{ type: 'text', text: id }], ...(steered ? { steered } : {}) })
+
+  it('stays inside the turn: it ends nothing, so the step in flight is not cut off', () => {
+    const items = [user('ask', 1000), tool('t1', 2000), user('steer', 3000, true), tool('t2', 4000, 'running')]
+    const blocks = buildThread(items, true)
+    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group', 'item', 'group'])
+    expect(blocks.some((b) => b.kind === 'end')).toBe(false)
+    expect(blocks[2]).toMatchObject({ item: { id: 'steer', steered: true } })
+  })
+
+  it('splits a turn at an ordinary user message, as before', () => {
+    const blocks = buildThread([user('ask', 1000), tool('t1', 2000), user('next', 3000), tool('t2', 4000)])
+    expect(blocks.filter((b) => b.kind === 'item').map((b) => (b as { item: ChatItem }).item.id)).toEqual(['ask', 'next'])
+  })
+})

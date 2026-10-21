@@ -179,6 +179,16 @@ export class ClaudeRunner implements Runner {
   start() { void this.consume() }
 
   push(parts: ChatPart[]) { this.input.push(toUserMessage(parts)) }
+  /**
+   * A message pushed with priority 'next' is read by the running turn at its next step, with no interrupt (SDKUserMessage.priority in
+   * the pinned SDK). The input queue is Kernel's, so a closed session is the only case it can't take it.
+   */
+  readonly canSteer = true
+  async steer(parts: ChatPart[]) {
+    if (this.closed) return false
+    this.input.push({ ...toUserMessage(parts), priority: 'next' })
+    return true
+  }
   async interrupt() { await this.query.interrupt().catch(() => undefined) }
   async setModel(model: string) { await this.query.setModel(model).catch(() => undefined) }
   async setEffort(effort: Effort) { await this.query.applyFlagSettings({ effortLevel: claudeEffort(effort) }).catch(() => undefined) }

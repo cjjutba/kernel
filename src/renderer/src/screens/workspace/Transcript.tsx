@@ -131,6 +131,7 @@ function UserMessage({ item, workspaceId, onEdit }: { item: Extract<ChatItem, { 
         )}
         {item.parts.map((p, i) => (p.type === 'text' ? <span key={i}>{p.text} </span> : <PartChip key={i} part={p} gone={goneOf(p)} />))}
       </div>
+      {item.steered && <span className="msg-steered" data-tip="Went into the turn that was running">Steered</span>}
       {/* An answer to a card (KERNEL-838) is not a prompt the reader can edit, so it keeps Copy only. */}
       <MessageActions align="end" label="Message actions" copy={partsText(item.parts)} items={item.approvalId ? [] : [{ icon: 'pen', label: 'Edit', onClick: () => onEdit(partsText(item.parts)) }]}
         more={more.length ? { menu: `reply:${item.id}`, items: more } : undefined} />
@@ -424,7 +425,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     const placed = new Set(items.flatMap((i) => (i.kind === 'approval' ? [i.approvalId] : [])))
     return approvals.filter((a: Approval) => a.status === 'pending' && !placed.has(a.id) && a.workspaceId === workspaceId && (!a.chatId || a.chatId === chat.id))
   }, [approvals, items, workspaceId, chat.id])
-  const since = useMemo(() => { for (let i = items.length - 1; i >= 0; i--) if (items[i].kind === 'user') return Math.min(items[i].ts, sentAt(items[i].id) ?? Infinity); return Date.now() }, [items])
+  const since = useMemo(() => { for (let i = items.length - 1; i >= 0; i--) if (items[i].kind === 'user' && !(items[i] as { steered?: true }).steered) return Math.min(items[i].ts, sentAt(items[i].id) ?? Infinity); return Date.now() }, [items])
   // What the turn waits on, from the real approvals, and when it asked: the fold says Waiting on your answer or approval, with the time the turn had worked by then (KERNEL-1094).
   const waiting = useMemo((): TurnClockValue['waiting'] => {
     const mine = approvals.filter((a: Approval) => a.status === 'pending' && a.workspaceId === workspaceId && (!a.chatId || a.chatId === chat.id)).sort((x, y) => x.createdAt - y.createdAt)

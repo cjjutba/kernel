@@ -1128,3 +1128,56 @@ describe('a chat with Kernel, on Codex (KERNEL-770, one-lead-chat)', () => {
     expect(inputs[1]).toContain('Carry it out now')
   })
 })
+
+describe('steering a running turn, on Codex', () => {
+  const text = (t: string) => [{ type: 'text' as const, text: t }]
+  const users = (t: Awaited<ReturnType<typeof setup>>) => t.of('user')
+
+  it('sends turn/steer for the running turn with its id, and marks the row', async () => {
+    const t = track(await setup())
+    await t.sessions.send('chat', [{ type: 'text', text: script({ wait: 'interrupt' }) }])
+    await until(async () => (await t.sent('turn/start')).length === 1)
+    // The turn's id reaches the runner with turn/started, a moment after the start is answered.
+    const r = await until(async () => { const x = await t.sessions.steer('chat', { parts: text('also add an index'), clientId: 'c-steer' }); return x.steered ? x : undefined })
+    expect(r).toMatchObject({ steered: true, item: { id: 'c-steer', steered: true } })
+    const [steer] = await t.sent('turn/steer')
+    expect(steer.params).toEqual({ threadId: 'thread-1', input: [{ type: 'text', text: 'also add an index', text_elements: [] }], expectedTurnId: 'turn-1' })
+    expect(await t.sent('turn/interrupt')).toEqual([])
+    expect(await t.sent('turn/start')).toHaveLength(1)
+    expect(users(t).map((u) => u.steered)).toEqual([undefined, true])
+    await t.sessions.interrupt('chat')
+    await t.idle()
+  })
+
+  it('becomes the next turn when the one it meant to steer has ended, without a steered mark or a second copy', async () => {
+    const t = track(await setup())
+    await t.sessions.send('chat', [{ type: 'text', text: 'first' }])
+    await t.idle()
+    const r = await t.sessions.steer('chat', { parts: text('and one more'), clientId: 'c-late' })
+    expect(r).toMatchObject({ steered: false, item: { id: 'c-late' } })
+    await until(async () => (await t.sent('turn/start')).length === 2)
+    await t.idle()
+    expect(await t.sent('turn/steer')).toEqual([])
+    expect((await t.sent('turn/start'))[1].params.input[0].text).toBe('and one more')
+    expect(users(t).filter((u) => u.id === 'c-late')).toHaveLength(1)
+    expect(users(t).some((u) => u.steered)).toBe(false)
+  })
+
+  it('keeps a queued message queued, first in line, when Codex refuses the steer, and sends it once after the turn', async () => {
+    const t = track(await setup())
+    t.fake.env.FAKE_CODEX_NO_STEER = '1'
+    await t.sessions.send('chat', [{ type: 'text', text: script({ wait: 'interrupt' }) }])
+    await until(async () => (await t.sent('turn/start')).length === 1)
+    await t.sessions.send('chat', text('later'), { clientId: 'q-1' })
+    const r = await until(async () => { const x = await t.sessions.steer('chat', { id: 'q-1' }); return (await t.sent('turn/steer')).length ? x : undefined })
+    expect(r).toMatchObject({ steered: false, queued: true })
+    expect(t.sessions.queued('chat').map((q) => q.id)).toEqual(['q-1'])
+    expect(users(t).some((u) => u.steered)).toBe(false)
+    // Send now is what remains: the turn stops and the queued message goes next, once.
+    await t.sessions.sendNow('chat', 'q-1')
+    await until(async () => (await t.sent('turn/start')).length === 2)
+    await t.idle()
+    expect((await t.sent('turn/start'))[1].params.input[0].text).toBe('later')
+    expect(users(t).filter((u) => u.id === 'q-1')).toHaveLength(1)
+  })
+})

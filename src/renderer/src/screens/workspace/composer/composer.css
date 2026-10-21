@@ -280,6 +280,11 @@
 .queue-text:hover { color: var(--ink); }
 .queue-text .ellipsis { min-width: 0; }
 .queue-extra { flex-shrink: 0; color: var(--muted); font-size: var(--fs-meta); }
+/* Queue and Steer, in place of the round send button while a turn runs and something is typed. Queue is the quiet default, Steer is the filled one. */
+.cmp-steer-pair { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
+.cmp-queue, .cmp-steer { height: 24px; padding: 0 10px; font-size: var(--fs-meta); font-weight: var(--fw-medium); }
+.cmp-queue { color: var(--ink-3); }
+.cmp-queue:hover:not(:disabled) { color: var(--ink); }
 .queue-now { flex-shrink: 0; height: 24px; padding: 0 8px; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--ink-3); }
 .queue-now:hover:not(:disabled) { color: var(--ink); }
 .queue-x { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: var(--r-xs); background: transparent; color: var(--muted); }

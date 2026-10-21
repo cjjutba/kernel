@@ -31,7 +31,7 @@ import { buttonName, cyclePatch, cycleRun, leadPlaceholder, modePatch, type Cycl
 import { ComposerShell } from './ComposerShell'
 import type { PlusPanel } from './PlusMenu'
 import { canSendNow, QueueList } from './QueueList'
-import { sendMessage, sendQueuedNow } from './sendMessage'
+import { sendMessage, sendQueuedNow, steerMessage, steerQueued } from './sendMessage'
 import { sendsOn, useSendWith } from './sendKey'
 import { NoteText } from '../NoteText'
 import { UncommittedNote } from './UncommittedNote'
@@ -178,7 +178,7 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
    * Sends what is in the box, or `picked` in its place (a command run from the / menu). While a plan waits, a typed
    * message is the change to ask for instead: the agent reads it as the reason the plan was sent back, and keeps planning.
    */
-  const send = async (picked?: ChatPart[]) => {
+  const send = async (picked?: ChatPart[], steer = false) => {
     const parts = picked ?? d.message()
     if (!parts.length || blocked) return
     if (plan && !picked && pathOnlyFiles(parts).length) {
@@ -203,7 +203,7 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
       catch (e) { undo(); restore(e) }
       return
     }
-    if (await sendMessage(id, parts, { onFail: restore })) noteSent(id, chat.model)
+    if (await (steer ? steerMessage : sendMessage)(id, parts, { onFail: restore })) noteSent(id, chat.model)
   }
 
   noteOpened(chat.id, chat.model)
@@ -255,9 +255,11 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
   const fallback = useDefaultEffort(agent)
   const sendWith = useSendWith()
   const [sendingNow, runNow] = useBusy<string>()
+  // While a turn runs and nothing holds the queue, its first message goes into that turn instead of stopping it.
+  const steersNow = running && !queueWhy
   const sendNow = (q: QueuedMessage) => void runNow(q.id, () => attempt('Could not send now', async () => {
     setTaken((t) => [...t, q.id])
-    try { await sendQueuedNow(chat.id, q) } catch (e) { setTaken((t) => t.filter((x) => x !== q.id)); throw e }
+    try { await (steersNow ? steerQueued : sendQueuedNow)(chat.id, q) } catch (e) { setTaken((t) => t.filter((x) => x !== q.id)); throw e }
   }))
   const [stopping, runStop] = useBusy<'stop'>()
   /**
@@ -298,7 +300,8 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
     if (acOpen && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setDismissed(acKey); return }
     // After the menu, the pickers and the chips have had their Escape, it stops a running turn. It never clears or edits the draft.
     if (e.key === 'Escape' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && escapeStops({ running, stopping: stopping !== null, menuOpen: menu !== null, autocompleteOpen: acOpen })) { e.preventDefault(); stop(); return }
-    // ⌘⇧ Enter sends the first queued message now, whatever Send messages with says.
+    // ⌘⇧ Enter steers what is typed into the running turn, or with an empty box, the first queued message, whatever Send messages with says.
+    if (e.key === 'Enter' && e.shiftKey && (e.metaKey || e.ctrlKey) && steersNow && !d.empty && !plan) { e.preventDefault(); void send(undefined, true); return }
     if (e.key === 'Enter' && e.shiftKey && (e.metaKey || e.ctrlKey) && queue.length && canSendNow(queueWhy)) { e.preventDefault(); sendNow(queue[0]); return }
     // Up in an empty box pulls the last queued message back, as clicking its text does.
     if (e.key === 'ArrowUp' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && d.empty && queue.length && !(queueWhy === 'worktree' && setupShown)) { e.preventDefault(); editQueued(queue[queue.length - 1]); return }
@@ -407,7 +410,7 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
         mode={{ provider, availability, shown, open: menu === 'mode', onOpen: (o) => setMenu(o ? 'mode' : null), onPick: (m) => { setMenu(null); pickMode(m); d.focus() }, onCycle: cycleMode }}
         context={(chat.context !== undefined || !!contextForced) && <ContextRing chat={chat} name={name} blocked={blocked} open={menu === 'context'} onOpen={(o) => setMenu(o ? 'context' : null)} />}
         plus={{ panel: menu === 'model' || menu === 'context' || menu === 'mode' || menu === 'runIn' || menu === 'branch' ? null : menu, onPanel: setMenu, projectId, workspaceId: chat.workspaceId, onMode: () => setMenu('mode'), onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
-        send={{ label: plan ? 'Send plan adjustments' : running ? 'Queue message' : 'Send', ready: hasDraft && !blocked && !d.pending, disabled: blocked, busy: d.pending > 0, busyLabel: 'Attaching', stop: running, stopping: stopping !== null, onSend: () => void send(), onStop: stop }} />}
+        send={{ label: plan ? 'Send plan adjustments' : running ? 'Queue message' : 'Send', ready: hasDraft && !blocked && !d.pending, disabled: blocked, busy: d.pending > 0, busyLabel: 'Attaching', stop: running, stopping: stopping !== null, onSend: () => void send(), onStop: stop, ...(running && !queueWhy && !plan ? { onSteer: () => void send(undefined, true) } : {}) }} />}
       hidden={<input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />}
     />
   )

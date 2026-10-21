@@ -8,8 +8,11 @@ import { PlusMenu } from './PlusMenu'
 
 type Anchored<C extends JSXElementConstructor<any>> = Omit<ComponentProps<C>, 'anchorRef'>
 
-/** The send button's state: ready to send or busy. In a chat that is running, Stop comes before it, and alone while the box is empty. */
-export interface SendState { label: string; ready: boolean; disabled?: boolean; busy?: boolean; busyLabel?: string; stop?: boolean; stopping?: boolean; onSend: () => void; onStop?: () => void }
+/**
+ * The send button's state: ready to send or busy. In a chat that is running, Stop comes before it, and alone while the box is empty. With `onSteer`, a running chat
+ * with something typed offers two buttons in its place: Queue (`onSend`) and Steer, which puts the message into the running turn.
+ */
+export interface SendState { label: string; ready: boolean; disabled?: boolean; busy?: boolean; busyLabel?: string; stop?: boolean; stopping?: boolean; onSend: () => void; onStop?: () => void; onSteer?: () => void }
 
 /**
  * The toolbar of the message box, for a chat's composer and New chat's (KERNEL-805): a teammate's name when the chat is a teammate's,
@@ -49,7 +52,18 @@ export function ComposerToolbar({ agent, model, mode, context, plus, send, disab
       {send.stop && (send.stopping
         ? <span className="stop-pill" role="status" aria-label="Stopping"><Spinner label={null} pattern="ripple" />Stopping</span>
         : <button type="button" className="icon-btn send stop" aria-label="Stop" onClick={send.onStop}><span /></button>)}
-      {!compact && (!send.stop || send.ready || send.busy) && <IconButton className="send" icon="up" size={13} label={send.label} busy={send.busy} busyPattern="ripple" busyLabel={send.busyLabel} disabled={send.disabled} data-ready={send.ready} onClick={send.onSend} />}
+      {!compact && send.stop && send.onSteer && (send.ready || send.busy) && <QueueOrSteer send={send} />}
+      {!compact && (!send.stop || send.ready || send.busy) && !(send.stop && send.onSteer) && <IconButton className="send" icon="up" size={13} label={send.label} busy={send.busy} busyPattern="ripple" busyLabel={send.busyLabel} disabled={send.disabled} data-ready={send.ready} onClick={send.onSend} />}
     </>
+  )
+}
+
+/** What a running chat offers in place of the round send button once something is typed: Queue sends it after the turn, Steer puts it into the turn. */
+export function QueueOrSteer({ send }: { send: SendState }) {
+  return (
+    <span className="cmp-steer-pair">
+      <Button variant="ghost" className="cmp-queue" disabled={send.disabled || send.busy} data-tip="Send after this turn ends" data-tip-kbd="↵" onClick={send.onSend}>Queue</Button>
+      <Button variant="primary" className="cmp-steer" disabled={send.disabled || send.busy} data-tip="Add this to the running turn" data-tip-kbd="⌘⇧↵" onClick={send.onSteer}>Steer</Button>
+    </span>
   )
 }

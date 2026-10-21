@@ -117,6 +117,7 @@ button.ws-issue:hover { background: var(--surface-3); }
 .bubble[data-tokens] { padding-block: 9px; line-height: 30px; }
 /* The setup wait (KERNEL-430): messages waiting for setup sit where they will land, at lower contrast, with one line or card for setup. */
 .msg-user[data-queued] .bubble { color: var(--muted); }
+.msg-steered { color: var(--muted); font-size: var(--fs-meta); }
 /* A message git couldn't send reads as sent, with Not sent under it (KERNEL-1093). */
 .msg-user[data-queued][data-failed] .bubble { color: var(--ink-2); }
 /* The images of a message: 104 by 76, above what was said, each one a token in the words as well. */

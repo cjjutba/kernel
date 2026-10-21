@@ -12,7 +12,7 @@
 //   { "complete": ..., "withStart": true }  as the first step: turn/start's answer, turn/started and turn/completed go out
 //                                           in one write, so Kernel reads them in one chunk (KERNEL-625)
 // FAKE_CODEX_START_MS holds turn/start's answer that long, as a slow Codex does, so Stop can come before the turn has an id.
-// turn/interrupt ends the running turn at any step, as Codex 0.153.4 does: a request still waiting for Kernel's answer is
+// turn/steer is answered for the running turn (see below). turn/interrupt ends the running turn at any step, as Codex 0.153.4 does: a request still waiting for Kernel's answer is
 // cleared with serverRequest/resolved, and the turn completes as interrupted (KERNEL-563).
 // Input that isn't a script ends the turn at once with a short reply.
 import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -119,6 +119,12 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     if (slow) setTimeout(start, slow)
     else start()
     return
+  }
+  // turn/steer adds input to the running turn when expectedTurnId names it, as Codex does, and answers with its id. Any other id, or
+  // FAKE_CODEX_NO_STEER (a turn that can't be steered), is refused.
+  if (method === 'turn/steer') {
+    if (process.env.FAKE_CODEX_NO_STEER || !running || running.stopped || running.turnId !== params.expectedTurnId) return send({ id, error: { code: -32600, message: 'expected active turn id does not match the active turn' } })
+    return send({ id, result: { turnId: running.turnId } })
   }
   if (method === 'turn/interrupt') {
     send({ id, result: {} })
