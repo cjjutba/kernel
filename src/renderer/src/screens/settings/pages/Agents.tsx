@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import type { AgentDef, AppSettings, LeadMode } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions, go, useStore } from '../../../store'
-import { Button, Icon, SegmentedControl } from '../../../ui'
+import { Button, Icon, SegmentedControl, Select } from '../../../ui'
 import { Page, Row, Section } from '../kit'
 import { patchSettings, useSettings } from '../useSettings'
 import { RowMenu } from './RowMenu'
@@ -17,7 +17,6 @@ export function Agents() {
   const list = useStore((st) => st.globalAgents)
   const projectId = useStore((st) => st.projects.find((r) => !r.hidden && !r.archived)?.id)
   const [query, setQuery] = useState('')
-  const [closed, setClosed] = useState<string[]>([])
   useEffect(() => {
     void call('agents.listGlobal', {}).then(actions.agents.setGlobal)
       .catch((e) => actions.ui.toast({ title: 'Could not read the agents', sub: cleanError(e) }))
@@ -30,28 +29,26 @@ export function Agents() {
   const copyPath = (a: AgentDef) => navigator.clipboard.writeText(a.file).catch(() => actions.ui.toast({ title: 'Could not copy', sub: 'Select the path and copy it by hand.' }))
 
   const personal = (list ?? []).filter((a) => a.origin !== 'plugin')
-  const plugins = [...new Set((list ?? []).filter((a) => a.origin === 'plugin').map(pluginOf))]
+  const fromPlugins = (list ?? []).filter((a) => a.origin === 'plugin')
   const groups = [
     { key: 'personal', title: 'Yours', plugin: false, agents: personal },
-    ...plugins.map((p) => ({ key: `plugin:${p}`, title: p, plugin: true, agents: (list ?? []).filter((a) => a.origin === 'plugin' && pluginOf(a) === p) }))
+    { key: 'plugins', title: 'From plugins', plugin: true, agents: fromPlugins }
   ].map((g) => ({ ...g, shown: g.agents.filter((a) => matches(a, q)) })).filter((g) => (q ? g.shown.length : g.key === 'personal' || g.shown.length))
 
   const row = (a: AgentDef, verb: 'Edit' | 'View') => {
-    const role = shownRole(a)
+    const role = verb === 'View' ? pluginOf(a) : shownRole(a)
     const desc = cleanDescription(a.description)
     return (
       <div key={a.id} className="set-row set-hoverable ag-agent">
         <button type="button" className="ag-open" aria-label={`Open ${a.name}${role ? `, ${role}` : ''}. ${desc}`} onClick={() => edit(a)}>
-          <span className="ag-avatar" aria-hidden="true">{a.name.charAt(0).toUpperCase()}</span>
           <span className="ag-lines">
-            <span className="ag-title"><b>{a.name}</b>{role && <span>{role}</span>}</span>
+            <span className="ag-title">{a.name}</span>
             <span className="ag-desc">{desc}</span>
           </span>
         </button>
-        <span className="set-acts">
-          <Button aria-label={`${verb} ${a.name}`} onClick={() => edit(a)}>{verb}</Button>
-          {a.file && <RowMenu label={`More for ${a.name}`} items={[{ id: 'open', label: 'Open file', icon: 'doc', onSelect: () => void openFile(a) }, { id: 'copy', label: 'Copy path', icon: 'copy', onSelect: () => void copyPath(a) }]} />}
-        </span>
+        {role && <span className="ag-tag">{role}</span>}
+        {a.file && <span className="set-acts"><RowMenu label={`More for ${a.name}`} items={[{ id: 'open', label: 'Open file', icon: 'doc', onSelect: () => void openFile(a) }, { id: 'copy', label: 'Copy path', icon: 'copy', onSelect: () => void copyPath(a) }]} /></span>}
+        <Button aria-label={`${verb} ${a.name}`} onClick={() => edit(a)}>{verb}</Button>
       </div>
     )
   }
@@ -61,30 +58,20 @@ export function Agents() {
       {s && <Section title="Kernel">
         <Row id="lead-mode" setting="team.leadMode" label="New chats start in" desc="Hand off plans and gives tasks to teammates. Build here has Kernel make the change itself. Each chat can switch."><SegmentedControl label="New chats start in" value={s.team.leadMode} onChange={(v) => void patchSettings({ team: { leadMode: v as LeadMode } })} options={[{ value: 'handoff', label: 'Hand off' }, { value: 'build', label: 'Build here' }]} /></Row>
       </Section>}
-      {list && (
-        <>
-          <div className="ag-filter wide">
-            <Icon name="search" size={14} />
-            <input type="text" aria-label="Filter agents" placeholder="Filter agents" autoComplete="off" spellCheck={false} value={query} onChange={(e) => setQuery(e.target.value)} />
-          </div>
-          {groups.map((g) => {
-            const open = !closed.includes(g.key) || !!q
-            return (
-              <section key={g.key} className="ag-group" aria-label={g.title}>
-                <button type="button" className="ag-group-head" aria-expanded={open} onClick={() => setClosed(open ? [...closed, g.key] : closed.filter((k) => k !== g.key))}>
-                  <h2>{g.title}<span className="set-count">{g.shown.length}</span></h2>
-                  {g.plugin && <span className="set-badge">Plugin</span>}
-                  <Icon name="right" size={12} />
-                </button>
-                {open && <div className="set-card">{g.shown.length ? g.shown.map((a) => row(a, g.plugin ? 'View' : 'Edit')) : <Row label="No personal agents" desc="Files in ~/.claude/agents join every project." />}</div>}
-              </section>
-            )
-          })}
-          {q && groups.length === 0 && <p className="ag-empty">No agents match “{query}”</p>}
-        </>
-      )}
+      {list && groups.map((g, i) => (
+        <Section key={g.key} title={g.title} plain action={g.plugin ? undefined : <span className="set-section-note ag-where">~/.claude/agents</span>}>
+          {i === 0 && (
+            <div className="ag-filter">
+              <Icon name="search" size={14} />
+              <input type="text" aria-label="Filter agents" placeholder="Filter agents" autoComplete="off" spellCheck={false} value={query} onChange={(e) => setQuery(e.target.value)} />
+            </div>
+          )}
+          <div className="set-card">{g.shown.length ? g.shown.map((a) => row(a, g.plugin ? 'View' : 'Edit')) : <Row label="No personal agents" desc="Files in ~/.claude/agents join every project." />}</div>
+        </Section>
+      ))}
+      {list && q && groups.every((g) => !g.shown.length) && <p className="ag-empty">No agents match “{query}”</p>}
       {s && <Section title="New projects">
-        <Row id="new-projects-team" setting="team.defaultTemplate" label="New projects start with"><SegmentedControl label="New projects start with" value={s.team.defaultTemplate} onChange={(v) => void patchSettings({ team: { defaultTemplate: v as AppSettings['team']['defaultTemplate'] } })} options={[{ value: 'starter', label: 'Starter team' }, { value: 'pair', label: 'Pair' }]} /></Row>
+        <Row id="new-projects-team" setting="team.defaultTemplate" label="New projects start with"><Select label="New projects start with" value={s.team.defaultTemplate} onChange={(v) => void patchSettings({ team: { defaultTemplate: v as AppSettings['team']['defaultTemplate'] } })} options={[{ value: 'starter', label: 'Starter team, 5 agents' }, { value: 'pair', label: 'Pair, 2 agents' }]} /></Row>
       </Section>}
     </Page>
   )

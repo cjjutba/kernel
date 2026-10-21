@@ -15,17 +15,18 @@ export const KeepContext = createContext<{ key: string; target: boolean } | null
 
 /**
  * One settings page: the title and its sections, with nothing under the title (KERNEL-1023). `action` sits at the right of the title, and `note` just before it,
- * for a save that has no field of its own. `back` is the link above it to the page it opened from. `crumb` puts a link before the title, the project on a project's page.
+ * for a save that has no field of its own. `back` is the link above it to the page it opened from. `crumb` puts a link before the title, the project on a project's page. `lead` is a picture beside the title and the line under it, an agent's avatar.
  */
-export function Page({ title, desc, crumb, action, back, note, children }: { title: string; desc?: ReactNode; crumb?: ReactNode; action?: ReactNode; back?: ReactNode; note?: ReactNode; children: ReactNode }) {
+export function Page({ title, desc, lead, crumb, action, back, note, children }: { title: string; desc?: ReactNode; lead?: ReactNode; crumb?: ReactNode; action?: ReactNode; back?: ReactNode; note?: ReactNode; children: ReactNode }) {
   const keep = useContext(KeepContext)
   const scroll = useRef<HTMLDivElement>(null)
   useKeptScroll(scroll, { key: keep?.key ?? '', ready: !!keep, target: keep?.target })
   return (
     <div className="set-scroll" ref={scroll}>
       <div className="set-page">
-        <div className="set-top">
+        <div className="set-top" data-lead={lead ? '' : undefined}>
           {back}
+          {lead && <span className="set-lead-mark">{lead}</span>}
           <div className="set-head">
             <h1>{crumb && <>{crumb}<span className="set-crumb-sep" aria-hidden="true">/</span></>}<span>{title}</span></h1>
             {note}

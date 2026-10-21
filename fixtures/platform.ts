@@ -373,10 +373,13 @@ const sixAgents: AgentDef[] = [
   agentFile('sean', 'Sean', 'Backend', 'Schema, API, migrations'), agentFile('teng', 'Teng', 'QA', 'Runs tests, attaches output'),
   agentFile('artkin', 'Artkin', 'Reviewer', 'Types, security, tenancy'), agentFile('wren', 'Wren', 'Designer', 'Joined today')
 ]
+/** Christian as Pen 15.9 draws him: a repo file with a model, tools and skills of his own. */
+const christianProfile: AgentDef = { ...agentFile('christian', 'Christian', 'Frontend', 'Builds UI from approved plans and checks each screen.'), model: 'sonnet', effort: 'medium', tools: ['Read', 'Edit', 'Write', 'Bash'], skills: ['/shots', '/issue'], prompt: 'You are Christian, the frontend engineer.\nBuild UI from approved plans. Follow DESIGN.md when the repo has one.\nMatch the screenshot or mock in the brief. Check your work with pnpm shots.\n\nKeep each PR to one task.' }
+const christianTeam = sixAgents.map((a) => (a.id === 'christian' ? christianProfile : a))
 /** The agents Settings, Models lists under each row: Frontend and Backend in two projects, one pinned to a model, one with a custom role. */
 /** Settings once onboarding is finished, so a failing check shows as a toast instead of the first-run steps (KERNEL-1088). */
 function setupDone(): AppSettings { const d = DEFAULT_SETTINGS('/Users/you'); return { ...d, onboarding: { ...d.onboarding, done: true } } }
-const modelsPage = () => settingsPage('models', { agents: modelsAgents(), status: {}, settings: withRoles({ frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' } }), models: { codex: codexModels } })
+const modelsPage = (roles: Partial<Record<Role, RoleModel>> = {}) => settingsPage('models', { agents: modelsAgents(), status: {}, settings: withRoles({ frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' }, ...roles }), models: { codex: codexModels } })
 const modelsAgents = (): Fixture['agents'] => {
   const christian = agentFile('christian', 'Christian', 'Frontend', 'UI work, follows DESIGN.md')
   const sean = { ...agentFile('sean', 'Sean', 'Backend', 'Schema, API, migrations'), model: undefined }
@@ -552,18 +555,21 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-988: a role's Model cell opens the model picker under it, on Claude, on Codex, and with the Legacy models flyout open.
   SettingsModelsPicker: modelsPage(),
   SettingsModelsPickerCodex: modelsPage(),
-  SettingsModelsPickerLegacy: modelsPage(),
+  // Pen 15.34: Backend on a legacy model with the flyout open, Frontend moving from Claude to Codex, and QA on Haiku with a search typed.
+  SettingsModelsPickerLegacy: modelsPage({ engineers: { provider: 'claude', model: 'claude-sonnet-4-6', effort: 'medium' } }),
   // KERNEL-995: one chip per role and an agent count. The large fixture is the real setup, to check every row is as tall as the next.
   SettingsModelsLarge: largeModels(),
   SettingsModelsAgents: largeModels(),
-  // No agent follows the QA row, but Teng pins its own model, so the count still opens and lists only that agent.
+  // No agent follows the QA row, but Teng pins its own model, so QA says "No agents" and the count still opens and lists only that agent.
   SettingsModelsAgentsNone: settingsPage('models', { agents: { ...modelsAgents(), [ids.projectA]: [...modelsAgents()[ids.projectA], agentFile('teng', 'Teng', 'QA', 'Runs tests, attaches output')] }, status: {}, settings: withRoles({ frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' } }), models: { codex: codexModels } }),
   SettingsModelsPickerEffort: modelsPage(),
+  // Pen 15.38: Agent teams on, with its two rules under it.
+  SettingsModelsAgentTeams: settingsPage('models', { agents: modelsAgents(), status: {}, settings: ((d) => ({ ...d, models: { ...d.models, agentTeams: true, agentLimit: 4 }, hooks: { ...d.hooks, requireTestOutput: true, keepTeammatesWorking: false } }))(DEFAULT_SETTINGS('/Users/you')), models: { codex: codexModels } }),
   // KERNEL-1116: the five-step track on a Codex model (Pen 8.3, 8.11), and a Claude role's picker with Codex open (Pen 15.34).
   SettingsModelsPickerEffortCodex: modelsPage(),
   SettingsModelsPickerBoth: modelsPage(),
-  SettingsModelsPickerCompact: modelsPage(),
-  SettingsModelsPickerCodexRole: modelsPage(),
+  SettingsModelsPickerCompact: modelsPage({ qa: { provider: 'claude', model: 'claude-haiku-5-5', effort: 'low' } }),
+  SettingsModelsPickerCodexRole: modelsPage({ frontend: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'medium' } }),
   SettingsModelsNarrow: largeModels(),
   // Redesign 15 (Pen 15.4): Claude Code's accounts with their meters, then Limits and Chats and accounts. The window is tall, so the whole page is in the shot.
   SettingsAccounts: providersPage('claude'),
@@ -790,7 +796,11 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsTeamLeadMode: scene((f) => ({ ...clientA({ agents: { leadMode: 'handoff' } }), settings: { ...DEFAULT_SETTINGS('/Users/you'), team: { ...DEFAULT_SETTINGS('/Users/you').team, leadMode: 'build' as const } }, agents: { ...f.agents, [ids.projectA]: sixAgents }, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' } } })),
   SettingsAgents: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents' } } })),
   // KERNEL-641: a personal agent's editor, opened from Settings, Agents: Back says Agents, and there is no status, workspace or recent work.
-  SettingsAgentEdit: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'ops' } } })),
+  // Pen 15.9: a repo agent, so Retire is there, and Pen 15.38: its description changed and Save changes pressed, which asks who gets the change.
+  SettingsAgentEdit: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: christianTeam }, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents', agentId: 'christian' } } })),
+  SettingsAgentSaveScope: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: sixAgents.map((a) => (a.id === 'christian' ? { ...christianProfile, description: 'Builds UI from plans.' } : a)) }, ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents', agentId: 'christian' } } })),
+  // A personal agent's editor, opened from Settings, Agents (KERNEL-641): Back says Agents, and there is no Retire.
+  SettingsAgentEditPersonal: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'ops' } } })),
   // KERNEL-641: a plugin's agent read only: the fields are disabled, the line names the plugin, and there is no Save changes or Retire.
   SettingsAgentEditPicker: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'ops' } } })),
   SettingsAgentPlugin: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'vercel:deployment-expert' } } })),

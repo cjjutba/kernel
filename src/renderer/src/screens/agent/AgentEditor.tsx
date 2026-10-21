@@ -5,21 +5,26 @@ import { roleOf } from '@shared/team'
 import { roleSide } from '@shared/rolePick'
 import { call } from '../../api'
 import { useStore } from '../../store'
-import { Icon, Pill } from '../../ui'
+import { Icon, Menu } from '../../ui'
 import { ModelField } from '../workspace/composer/ModelField'
-import { SettingsLink } from '../settings/kit'
+import { Row, SettingsLink } from '../settings/kit'
+import { agentSource } from '../settings/pages/agentRows'
 import { defaultEffortOf } from '../workspace/composer/modelPrefs'
-import { STANDARD_TOOLS, modelAlias, sameModel, warningText, withExtras } from './model'
+import { STANDARD_TOOLS, modelAlias, sameModel, shortFile, warningText, withExtras } from './model'
 import './agent.css'
 
-export interface AgentForm { description: string; model: string; effort: Effort | undefined; tools: string[] | undefined; skills: string[]; prompt: string }
+export interface AgentForm { role: string; description: string; model: string; effort: Effort | undefined; tools: string[] | undefined; skills: string[]; prompt: string }
 
-export const formOf = (a: AgentDef): AgentForm => ({ description: a.description, model: a.model ?? '', effort: a.effort, tools: a.tools, skills: a.skills ?? [], prompt: a.prompt })
+export const formOf = (a: AgentDef): AgentForm => ({ role: a.role, description: a.description, model: a.model ?? '', effort: a.effort, tools: a.tools, skills: a.skills ?? [], prompt: a.prompt })
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 export const slash = (s: string) => (s.startsWith('/') ? s : `/${s}`)
 
-/** What a save sends. An empty model clears the pin, so the agent follows its role's default in Settings again (KERNEL-406). */
-export const editOf = (form: AgentForm): AgentEdit => ({
+/**
+ * What a save sends. An empty model clears the pin, so the agent follows its role's default in Settings again (KERNEL-406). The role goes only when it changed, since the
+ * one the agent shows can come from its name and a file that never wrote one would start with it.
+ */
+export const editOf = (form: AgentForm, base?: AgentDef): AgentEdit => ({
+  ...(!base || form.role.trim() !== base.role ? { role: form.role.trim() } : {}),
   description: form.description.trim(), model: form.model, effort: form.effort, tools: form.tools, skills: form.skills.map(slash), prompt: form.prompt
 })
 
@@ -70,8 +75,36 @@ function PinHint({ agent, model, onClear, disabled }: { agent: AgentDef; model: 
 }
 
 /**
- * The fields of an agent file, shared by the profile and Settings, Agents: description, model, effort, tools, skills and instructions.
- * `builtIn` is Kernel as it ships, or Theo, shown as it runs (a customized Kernel has a file and edits like any agent), and `readOnly` is a plugin's agent. Both disable every field.
+ * A list of what an agent may use, as tags with × and an Add button that opens the choices left (Tools, Skills; Pen 15.9). `options` are the choices, and a value the agent has that is not one of them is kept as a tag.
+ */
+function PickList({ label, noun, value, options, onChange, disabled, hint }: { label: string; noun: string; value: string[]; options: string[]; onChange: (next: string[]) => void; disabled?: boolean; hint?: string }) {
+  const [open, setOpen] = useState(false)
+  const anchor = useRef<HTMLSpanElement>(null)
+  const button = useRef<HTMLButtonElement>(null)
+  const left = options.filter((o) => !value.includes(o))
+  const close = () => { setOpen(false); button.current?.focus() }
+  return (
+    <div className="set-tags" role="list" aria-label={label}>
+      {value.map((t) => (
+        <span key={t} role="listitem" className="set-tag">
+          <span className="set-tag-text mono" title={t}>{t}</span>
+          <button type="button" className="set-tag-x" aria-label={`Remove ${t}`} disabled={disabled} onClick={() => onChange(value.filter((v) => v !== t))}><Icon name="close" size={12} /></button>
+        </span>
+      ))}
+      {left.length > 0 && (
+        <span ref={anchor} className="ae-add">
+          <button ref={button} type="button" className="set-tag-add" aria-haspopup="menu" aria-expanded={open} disabled={disabled} onClick={() => setOpen(!open)}><Icon name="plus" size={12} />Add {noun}</button>
+          {open && <Menu label={`Add ${noun}`} anchorRef={anchor} onClose={close} style={{ left: 0, top: 30, width: 220, maxHeight: 280, overflowY: 'auto' }} items={left.map((o) => ({ id: o, label: o, onSelect: () => { setOpen(false); onChange([...value, o]) } }))} />}
+        </span>
+      )}
+      {hint && !value.length && <span className="set-desc">{hint}</span>}
+    </div>
+  )
+}
+
+/**
+ * The fields of an agent file, as the rows of one card (Pen 15.9): name, role, description, model and effort, tools and skills, then the instructions under it. `builtIn` is Kernel as it ships, or Theo,
+ * shown as it runs (a customized Kernel has a file and edits like any agent), and `readOnly` is a plugin's agent. Both disable every field. The name is the file's, so it shows and doesn't change.
  */
 export function AgentFields({ agent, form, set, skillNames, readOnly = false, noSkillsHint = 'No skills found in this project.' }: {
   agent: AgentDef; form: AgentForm; set: (patch: Partial<AgentForm>) => void; skillNames: string[]; readOnly?: boolean; noSkillsHint?: string
@@ -81,11 +114,6 @@ export function AgentFields({ agent, form, set, skillNames, readOnly = false, no
   const locked = builtIn || readOnly
   const toolList = withExtras(STANDARD_TOOLS, agent.tools)
   const skillList = withExtras(skillNames, agent.skills?.map(slash))
-  const pick = (list: string[] | undefined, item: string, order: string[]) => {
-    const on = new Set(list ?? [])
-    if (on.has(item)) on.delete(item); else on.add(item)
-    return order.filter((x) => on.has(x))
-  }
   // Kernel's own agents have no model of their own: Settings, Models picks it.
   const modelId = builtIn ? (models ? roleSide(agent.lead ? models.roles.lead : models.roles.reviewer).model : '') : agent.provider === 'codex' ? form.model : MODELS.find((m) => sameModel(form.model, m.id))?.id ?? ''
   const effort = form.effort ?? defaultEffortOf(agent, models)
@@ -104,33 +132,30 @@ export function AgentFields({ agent, form, set, skillNames, readOnly = false, no
         </ul>
       )}
       <fieldset className="ap-fields" disabled={locked}>
-        <div className="ap-field">
-          <label className="ap-label" htmlFor="ap-desc">Description</label>
-          <textarea id="ap-desc" className="ap-text" rows={2} value={form.description} onChange={(e) => set({ description: e.target.value })} />
-          <span className="hint">Kernel reads this to decide what to hand {agent.name}.</span>
-        </div>
-        <div className="ap-field">
-          <span className="ap-label" id="ap-model">Model and effort</span>
-          <ModelField label="Model and effort" provider={agent.provider === 'codex' ? 'codex' : 'claude'} disabled={locked} model={modelId} effort={effort} onChange={(id, e) => set({ model: agent.provider === 'codex' ? id : modelAlias(id), effort: e })} onEffort={(e) => set({ effort: e })} />
-          {builtIn ? <span className="hint">From <SettingsLink to={{ page: 'models' }}>Models and effort</SettingsLink></span> : <PinHint agent={agent} model={form.model} disabled={locked} onClear={() => set({ model: '' })} />}
-        </div>
-        <div className="ap-field">
-          <span className="ap-label" id="ap-tools">Tools</span>
-          <div className="ap-chips" role="group" aria-labelledby="ap-tools">
-            {toolList.map((t) => <Pill key={t} pressed={!!form.tools?.includes(t)} onClick={() => set({ tools: pick(form.tools, t, toolList) })}>{t}</Pill>)}
-          </div>
-          {!form.tools && <span className="hint">{locked ? `${agent.name} can use every tool.` : `No tools line in the file, so ${agent.name} can use every tool. Pick some to limit them.`}</span>}
-        </div>
-        <div className="ap-field">
-          <span className="ap-label" id="ap-skills">Skills</span>
-          <div className="ap-chips" role="group" aria-labelledby="ap-skills">
-            {skillList.map((t) => <Pill key={t} pressed={form.skills.map(slash).includes(t)} onClick={() => set({ skills: pick(form.skills.map(slash), t, skillList) })}>{t}</Pill>)}
-            {!skillList.length && <span className="hint">{noSkillsHint}</span>}
-          </div>
+        <div className="set-card ae-card">
+          <Row label={<label htmlFor="ap-name">Name</label>} desc="Set by the file's name, so renaming the file renames the agent.">
+            <input id="ap-name" className="ae-input" value={agent.name} readOnly disabled />
+          </Row>
+          <Row label={<label htmlFor="ap-role">Role</label>} desc="Shown next to the name in chats and the sidebar.">
+            <input id="ap-role" className="ae-input" value={form.role} onChange={(e) => set({ role: e.target.value })} spellCheck={false} />
+          </Row>
+          <Row label={<label htmlFor="ap-desc">Description</label>} desc="When Kernel hands this agent a task. Kernel needs it to pick who works.">
+            <textarea id="ap-desc" className="ae-input ae-area" rows={2} value={form.description} onChange={(e) => set({ description: e.target.value })} />
+          </Row>
+          <Row label="Model and effort" desc={<>What {agent.name} runs on unless a chat changes it.{builtIn ? <> <SettingsLink to={{ page: 'models' }}>Models and effort</SettingsLink></> : <> <PinHint agent={agent} model={form.model} disabled={locked} onClear={() => set({ model: '' })} /></>}</>}>
+            <span className="ae-model">
+              <ModelField label="Model and effort" provider={agent.provider === 'codex' ? 'codex' : 'claude'} disabled={locked} model={modelId} effort={effort} onChange={(id, e) => set({ model: agent.provider === 'codex' ? id : modelAlias(id), effort: e })} onEffort={(e) => set({ effort: e })} />
+            </span>
+          </Row>
+          <Row label="Tools" desc={form.tools ? `Off for Edit and Write makes ${agent.name} read-only, like a reviewer.` : `${agent.name} can use every tool. Take one off to limit them.`}
+            full={<PickList label="Tools" noun="tool" value={form.tools ?? toolList} options={toolList} disabled={locked} onChange={(next) => set({ tools: next })} />} />
+          <Row label="Skills" desc={`Skills ${agent.name} can use in this project.`}
+            full={<PickList label="Skills" noun="skill" value={form.skills.map(slash)} options={skillList} disabled={locked} onChange={(next) => set({ skills: next })} hint={skillList.length ? undefined : noSkillsHint} />} />
         </div>
         <div className="ap-field">
           <label className="ap-label" htmlFor="ap-prompt">Instructions</label>
           <textarea id="ap-prompt" className="ap-text mono" rows={12} value={form.prompt} onChange={(e) => set({ prompt: e.target.value })} spellCheck={false} />
+          <span className="hint">Markdown.{agent.file ? ` Saved to ${agent.origin === 'personal' ? agentSource(agent) : `${shortFile(agent.file)} in this project`}.` : ''}</span>
         </div>
       </fieldset>
     </>

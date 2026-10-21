@@ -11,9 +11,9 @@ export function changedLines(agent: AgentDef, form: AgentForm): { old?: string; 
   const was = formOf(agent)
   const text = (v: string | string[] | undefined) => (Array.isArray(v) ? v.join(', ') : v ?? '')
   const lines: { old?: string; now?: string }[] = []
-  for (const key of ['description', 'model', 'effort', 'tools', 'skills'] as const) {
+  for (const key of ['role', 'description', 'model', 'effort', 'tools', 'skills'] as const) {
     const a = key === 'skills' ? was.skills.map(slash) : was[key]
-    const b = key === 'skills' ? form.skills.map(slash) : key === 'description' ? form.description.trim() : form[key]
+    const b = key === 'skills' ? form.skills.map(slash) : key === 'description' || key === 'role' ? form[key].trim() : form[key]
     if (JSON.stringify(a) === JSON.stringify(b)) continue
     lines.push({ ...(text(a) ? { old: `${key}: ${text(a)}` } : {}), ...(text(b) ? { now: `${key}: ${text(b)}` } : {}) })
   }
@@ -36,7 +36,7 @@ export function AgentSaveScope({ agent, form, busy, error, onCancel, onSave }: {
   return (
     <Modal
       title={`Save changes to ${agent.name}`} onClose={onCancel} width={520} top={150}
-      footer={<><span className="grow">{error && <span role="alert" className="del">{error}</span>}</span><Button variant="ghost" size="lg" disabled={busy} onClick={onCancel}>Cancel</Button><Button variant="primary" size="lg" busy={busy} busyLabel="Saving" onClick={() => onSave(scope)}>{scope === 'me' ? 'Save for me' : 'Open pull request'}</Button></>}
+      footer={<><span className="grow">{error && <span role="alert" className="del">{error}</span>}</span><Button variant="ghost" size="lg" disabled={busy} onClick={onCancel}>Cancel</Button><Button variant="primary" size="lg" busy={busy} busyLabel="Saving" onClick={() => onSave(scope)}>{scope === 'me' ? 'Save' : 'Open pull request'}</Button></>}
     >
       <div className="ae-scope">
         <p>{WORDS[Math.min(count, 5)] ?? count} {count === 1 ? 'line' : 'lines'} of {agent.name}’s file {count === 1 ? 'changes' : 'change'}.</p>
