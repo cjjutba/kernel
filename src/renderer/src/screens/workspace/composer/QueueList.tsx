@@ -29,19 +29,25 @@ const WAITING: Partial<Record<QueueReason, string>> = {
   limit: 'Close to your usage limit. Sends when it resets or usage drops.'
 }
 
-/** Send now can't help while the Mac is offline or the worktree isn't made yet. It does start a brief held for a merge (KERNEL-259). */
-export const canSendNow = (why?: QueueReason) => why !== 'offline' && why !== 'worktree'
+/** Send now can't help while the Mac is offline, the worktree isn't made yet or another chat is writing in the folder. It does start a brief held for a merge (KERNEL-259). */
+export const canSendNow = (why?: QueueReason) => why !== 'offline' && why !== 'worktree' && why !== 'folder'
+
+/** The chat a `folder` hold waits for, named in the tray's first line. */
+export interface FolderHolder { id: string; workspaceId: string; title: string }
 
 /**
  * Messages typed while the agent works, or held for another reason (`why`), in a tray above the composer. Only the oldest has Send now, since they go out in order. They go out in
  * order once nothing holds them. Edit one to pull it back into the box.
  */
-export function QueueList({ queue, why, held, running, sending, onEdit, onNow, onRemove, setupShown }: {
+export function QueueList({ queue, why, held, folder, onOpenChat, running, sending, onEdit, onNow, onRemove, setupShown }: {
   queue: QueuedMessage[]
   /** What the queue waits for (KERNEL-273). */
   why?: QueueReason
   /** For `merge`, the PRs still to merge, each opening its workspace. */
   held?: WaitLine
+  /** For `folder`, the chat that is writing in this chat's folder. Its name opens it. Without one the line says "another chat". */
+  folder?: FolderHolder
+  onOpenChat?: (holder: FolderHolder) => void
   /** A turn is running, so the first row's button is Steer now: it puts the message into that turn. */
   running?: boolean
   /** The id of the message whose Send now is in flight. */
@@ -54,7 +60,7 @@ export function QueueList({ queue, why, held, running, sending, onEdit, onNow, o
 }) {
   // WorktreeWait shows the messages waiting for the worktree, with their own Edit and Cancel (KERNEL-430). Without it they show here (KERNEL-1018).
   if (!queue.length || (why === 'worktree' && setupShown)) return null
-  const waiting = why ? WAITING[why] : undefined
+  const waiting = why === 'folder' ? 'folder' : why ? WAITING[why] : undefined
   const named = why === 'merge' ? held : undefined
   const stops = !!running && !why
   const many = queue.length > 1
@@ -62,7 +68,7 @@ export function QueueList({ queue, why, held, running, sending, onEdit, onNow, o
     <div className="queue-tray">
       {(waiting || many) && (
         <div className="queue-head" role="status">
-          {waiting && <span className="queue-why">{named ? <NoteText text={named.text} refs={named.refs} /> : waiting}</span>}
+          {waiting && <span className="queue-why">{named ? <NoteText text={named.text} refs={named.refs} /> : why === 'folder' ? <FolderLine folder={folder} onOpen={onOpenChat} /> : waiting}</span>}
           {many && <span className="queue-count">{queue.length} queued</span>}
         </div>
       )}
@@ -89,4 +95,11 @@ export function QueueList({ queue, why, held, running, sending, onEdit, onNow, o
       </ul>
     </div>
   )
+}
+
+/** "Waiting for Invoice schema to finish in this folder.", with the chat's name opening it. */
+function FolderLine({ folder, onOpen }: { folder?: FolderHolder; onOpen?: (holder: FolderHolder) => void }) {
+  const name = folder?.title.trim()
+  if (!folder || !name || !onOpen) return <>Waiting for {name || 'another chat'} to finish in this folder.</>
+  return <>Waiting for <button type="button" className="note-ref" data-tip="Open this chat" onClick={() => onOpen(folder)}>{name}</button> to finish in this folder.</>
 }

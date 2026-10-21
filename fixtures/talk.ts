@@ -204,6 +204,12 @@ export const talkFixtures: Record<string, Fixture> = {
   WorkspaceQueuedMoving: scene((f) => talk(f, running(), { running: true, queue: [QA], why: 'moving' })),
   WorkspaceQueuedMerge: scene((f) => talk(f, running(), { running: true, queue: [q('q1', 'Rebase on main and rerun the journey.')], why: 'merge' })),
   WorkspaceQueuedCapacity: scene((f) => talk(f, jRest(), { queue: [q('q1', 'Start the soak harness for 24 hours.')], why: 'capacity' })),
+  WorkspaceQueuedFolder: scene((f) => {
+    // A second tab of the same workspace is writing in the folder, so this chat's message waits for it.
+    const t = talk(f, jRest(), { queue: [q('q1', 'Rename the column in the migration too.')], why: 'folder' })
+    const writing: Chat = { id: 'chat-invoice-migration', workspaceId: ids.table, title: 'Invoice migration', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: ago(20) }
+    return { ...t, chats: [...(t.chats ?? f.chats), writing], push: [...(t.push ?? f.push), { type: 'chat.running', chatId: writing.id, running: true } as PushEvent] }
+  }),
   WorkspaceQueuedOffline: scene((f) => talk(f, running(), { running: true, queue: [QA, QB], why: 'offline' })),
   WorkspaceWaitedOn: scene((f) => talk(f, running(), { running: true, queue: [q('q1', 'Rebase on main and rerun the journey.')], why: 'merge', ws: { waitsFor: { on: [ids.schema], held: true } }, others: { [ids.schema]: { agentId: 'rio', prNumber: 1153, prState: 'open', prUrl: 'https://github.com/cjjutba/kernel/pull/1153' } } })),
   ChatNewMessages: scene((f) => talk(f, longChat())),

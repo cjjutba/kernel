@@ -371,7 +371,7 @@ describe('agents working at once', () => {
   async function setup(agentLimit: number, leads: string[] = []) {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-limit-')), 'kernel.db'))
     for (const id of ['a', 'b', 'c', ...leads]) {
-      const ws: Workspace = { id: `ws-${id}`, projectId: 'project', name: id, branch: `feat/${id}`, baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: leads.includes(id) ? 'kernel' : id, port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+      const ws: Workspace = { id: `ws-${id}`, projectId: 'project', name: id, branch: `feat/${id}`, baseRef: 'main', path: `/tmp/ws-${id}`, mode: 'worktree', agentId: leads.includes(id) ? 'kernel' : id, port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
       const chat: Chat = { id, workspaceId: ws.id, title: id, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 }
       store.saveWorkspace(ws)
       store.saveChat(chat)

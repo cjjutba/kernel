@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { chmod, mkdtemp, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { CanUseTool, Options, Query, SDKControlGetUsageResponse } from '@anthropic-ai/claude-agent-sdk'
@@ -1050,7 +1050,9 @@ describe('a limit cut-off and its carry-on, for the Lead (KERNEL-777)', () => {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-limit-')), 'kernel.db'))
     const ws: Workspace = { id: 'ws', projectId: 'project', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'sean', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
     store.saveWorkspace(ws)
-    for (const id of o.chats ?? ['chat']) store.saveChat({ id, workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
+    // Each chat has a folder of its own: chats that share one take turns (one-writer-per-folder), and these are about the limit.
+    for (const id of (o.chats ?? ['chat']).slice(1)) store.saveWorkspace({ ...ws, id: `ws-${id}`, path: `/tmp/ws-${id}` })
+    for (const [i, id] of (o.chats ?? ['chat']).entries()) store.saveChat({ id, workspaceId: i ? `ws-${id}` : 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
     const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
     const turns: Parameters<NonNullable<SessionDeps['onTurnDone']>>[2][] = []
     const carried: [string, CutOffReason][] = []
@@ -1608,6 +1610,225 @@ describe('cold re-reads start two at a time (KERNEL-844)', () => {
     await sessions.send('b', text('Go on'))
     expect(sessions.postHold('c')).toBe('capacity')
     expect(await sessions.send('c', text('Carry on'), { from: 'kernel' })).toMatchObject({ queued: true, why: 'capacity' })
+  })
+})
+
+describe('one writer per folder (one-writer-per-folder)', () => {
+  afterEach(() => { sdk.calls = [] })
+  const flush = () => new Promise((r) => setTimeout(r, 10))
+  const sean: AgentDef = { id: 'sean', file: '.claude/agents/sean.md', name: 'Sean', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Sean.' } as AgentDef
+  const text = (t: string) => [{ type: 'text' as const, text: t }]
+
+  /**
+   * Chats `a`, `b` and `c` are tabs of workspace `w1`, whose folder is real. `linked` is a chat of `w2`, another record whose
+   * path is a symlink to the same folder, and `d` is a chat of `w3`, a folder of its own.
+   */
+  async function setup(agentLimit = 0) {
+    const root = await mkdtemp(join(tmpdir(), 'kernel-folder-'))
+    const dir = join(root, 'shared')
+    const other = join(root, 'other')
+    await Promise.all([mkdir(dir), mkdir(other)])
+    await symlink(dir, join(root, 'link'))
+    const store = new Store(join(root, 'kernel.db'))
+    const ws = (id: string, path: string) => store.saveWorkspace({ id, projectId: 'project', name: id, branch: id, baseRef: 'main', path, mode: 'worktree', agentId: 'sean', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    ws('w1', dir)
+    ws('w2', join(root, 'link'))
+    ws('w3', other)
+    const chat = (id: string, workspaceId: string, extra: Partial<Chat> = {}) => store.saveChat({ id, workspaceId, title: `Chat ${id}`, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, ranOn: 'work', createdAt: 1, ...extra })
+    chat('a', 'w1'); chat('b', 'w1'); chat('c', 'w1'); chat('linked', 'w2'); chat('d', 'w3')
+    const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit } } as unknown as AppSettings
+    const state = { freed: 0 }
+    const make = () => new Sessions({ store, approvals: new Approvals(store), settings: () => settings, agentFor: () => sean, mcpFor: () => undefined, projectAllow: () => [], allowInProject: () => {}, onFreed: () => { state.freed++ } })
+    const sessions = make()
+    const started = () => sdk.calls.length
+    /** Ends the turn of the nth process that started. */
+    const finish = async (n: number) => { sdk.calls[n].feed({ type: 'result', subtype: 'success', uuid: `r-${n}`, duration_ms: 5 }); await flush() }
+    return { store, sessions, make, chat, state, started, finish }
+  }
+
+  it('holds a second tab in the folder until the first turn ends, then sends it', async () => {
+    const t = await setup()
+    expect(await t.sessions.send('a', text('First'))).toMatchObject({ queued: false })
+    expect(await t.sessions.send('b', text('Second'))).toEqual({ queued: true, why: 'folder' })
+    expect(t.sessions.queueReason('b')).toBe('folder')
+    expect(t.sessions.folderBlocker('b')).toBe('a')
+    await flush()
+    expect(t.started()).toBe(1)
+    await t.finish(0)
+    expect(t.started()).toBe(2)
+    expect(t.sessions.queued('b')).toEqual([])
+    expect(t.sessions.isRunning('b')).toBe(true)
+  })
+
+  it('counts a symlinked path as the same folder, and a folder of its own as free', async () => {
+    const t = await setup()
+    await t.sessions.send('a', text('First'))
+    expect(await t.sessions.send('linked', text('Same folder'))).toMatchObject({ queued: true, why: 'folder' })
+    expect(await t.sessions.send('d', text('Elsewhere'))).toMatchObject({ queued: false })
+    await flush()
+    expect(t.sessions.isRunning('d')).toBe(true)
+  })
+
+  it('serves the chats that waited in the order they waited', async () => {
+    const t = await setup()
+    await t.sessions.send('a', text('First'))
+    await t.sessions.send('b', text('Second'))
+    await t.sessions.send('c', text('Third'))
+    await t.finish(0)
+    expect([t.sessions.isRunning('b'), t.sessions.isRunning('c'), t.sessions.queueReason('c')]).toEqual([true, false, 'folder'])
+    await t.finish(1)
+    expect(t.sessions.isRunning('c')).toBe(true)
+  })
+
+  it('does not hold a chat for itself: its own turn is a running queue, not a folder hold', async () => {
+    const t = await setup()
+    await t.sessions.send('a', text('First'))
+    expect(await t.sessions.send('a', text('Again'))).toEqual({ queued: true, why: 'running' })
+    expect(t.sessions.folderBlocker('a')).toBeUndefined()
+    await t.finish(0)
+    expect(t.sessions.queued('a')).toEqual([])
+  })
+
+  it('lets a plan mode chat run beside a writer, and never lets one hold a writer up', async () => {
+    const t = await setup()
+    t.chat('plan', 'w1', { plan: true })
+    await t.sessions.send('plan', text('Think'))
+    expect(await t.sessions.send('a', text('Write'))).toMatchObject({ queued: false })
+    await t.sessions.send('c', text('Think more'))
+    t.chat('plan2', 'w1', { plan: true })
+    expect(await t.sessions.send('plan2', text('Think too'))).toMatchObject({ queued: false })
+    await flush()
+    expect(['plan', 'a', 'plan2'].map((id) => t.sessions.isRunning(id))).toEqual([true, true, true])
+    expect(t.sessions.queueReason('c')).toBe('folder')
+  })
+
+  it('lets read-only review chats run side by side in their folder', async () => {
+    const t = await setup()
+    t.chat('code', 'w1', { lens: { kind: 'code' } } as Partial<Chat>)
+    t.chat('ux', 'w1', { lens: { kind: 'ux' } } as Partial<Chat>)
+    await t.sessions.send('code', text('Review'))
+    expect(await t.sessions.send('ux', text('Review'))).toMatchObject({ queued: false })
+    expect(await t.sessions.send('a', text('Write'))).toMatchObject({ queued: false })
+  })
+
+  it('does not hold a terminal, which is no agent turn', async () => {
+    const t = await setup()
+    t.chat('term', 'w1', { kind: 'terminal' })
+    expect(t.sessions.folderBlocker('term')).toBeUndefined()
+    await t.sessions.send('a', text('First'))
+    expect(t.sessions.folderBlocker('term')).toBeUndefined()
+  })
+
+  it('frees the folder when the running turn is stopped or its process dies', async () => {
+    const t = await setup()
+    await t.sessions.send('a', text('First'))
+    await t.sessions.send('b', text('Second'))
+    t.sessions.stop('a')
+    await flush()
+    expect(t.sessions.isRunning('b')).toBe(true)
+    await t.sessions.send('c', text('Third'))
+    expect(t.sessions.queueReason('c')).toBe('folder')
+    sdk.calls[sdk.calls.length - 1].end()
+    await flush()
+    expect(t.sessions.isRunning('c')).toBe(true)
+    expect(t.sessions.queued('c')).toEqual([])
+  })
+
+  it('does not wait on a held chat that is closed, removed or stopped', async () => {
+    const t = await setup()
+    await t.sessions.send('a', text('First'))
+    await t.sessions.send('b', text('Second'))
+    await t.sessions.send('c', text('Third'))
+    // b waited first. Closing it moves c to the front, and c does not wait for b's message.
+    t.sessions.stop('b', { tree: true })
+    expect(t.sessions.queued('b')).toEqual([])
+    expect(t.sessions.folderBlocker('c')).toBe('a')
+    await t.finish(0)
+    expect(t.sessions.isRunning('c')).toBe(true)
+    // Taking the message out of a held chat's tray does the same.
+    await t.sessions.send('b', text('Fourth'))
+    expect(t.sessions.queueReason('b')).toBe('folder')
+    await t.sessions.send('a', text('Fifth'))
+    expect(t.sessions.folderBlocker('a')).toBe('c')
+    t.sessions.unqueue('b', t.sessions.queued('b')[0].id)
+    expect(t.sessions.folderBlocker('a')).toBe('c')
+    await t.finish(1)
+    expect(t.sessions.isRunning('a')).toBe(true)
+  })
+
+  it('holds Kernel\'s own message the same way and tells onFreed when the folder frees', async () => {
+    const t = await setup()
+    await t.sessions.send('a', text('First'))
+    expect(t.sessions.postHold('b')).toBe('folder')
+    expect(t.sessions.post('b', text('An update'))).toBe(false)
+    expect(await t.sessions.send('b', text('Carry on'), { from: 'kernel' })).toMatchObject({ queued: true, why: 'folder' })
+    const before = t.state.freed
+    await t.finish(0)
+    expect(t.state.freed).toBeGreaterThan(before)
+    expect(t.sessions.isRunning('b')).toBe(true)
+  })
+
+  it('does not let Send now write beside another chat in the folder', async () => {
+    const t = await setup()
+    await t.sessions.send('a', text('First'))
+    await t.sessions.send('b', text('Second'))
+    await t.sessions.sendNow('b', t.sessions.queued('b')[0].id)
+    await flush()
+    expect(t.started()).toBe(1)
+    expect(t.sessions.queueReason('b')).toBe('folder')
+  })
+
+  it('steers into the running turn without waiting for the folder', async () => {
+    const t = await setup()
+    await t.sessions.send('a', text('First'))
+    const r = await t.sessions.steer('a', { parts: text('Also this') })
+    expect(r.queued).toBe(false)
+    expect(r.why).toBeUndefined()
+  })
+
+  it('sends a held message after a restart once nothing holds the folder', async () => {
+    const t = await setup()
+    await t.sessions.send('a', text('First'))
+    await t.sessions.send('b', text('Second'))
+    expect(t.sessions.queueReason('b')).toBe('folder')
+    // A crash: nothing was shut down, so the store has the queue and the journal of running chats.
+    const gone = sdk.calls.length
+    const again = t.make()
+    again.restore([], {})
+    await flush()
+    // b's message was held first, so it goes, and a's carry-on after the crash waits for the folder as any message would.
+    expect(again.isRunning('b')).toBe(true)
+    expect(again.queued('b')).toEqual([])
+    expect(again.isRunning('a')).toBe(false)
+    expect(again.folderBlocker('a')).toBe('b')
+    await t.finish(gone)
+    expect(again.isRunning('a')).toBe(true)
+    expect(again.isRunning('b')).toBe(false)
+  })
+
+  it('keeps the agent limit and the folder rule apart', async () => {
+    const t = await setup(2)
+    await t.sessions.send('a', text('First'))
+    await t.sessions.send('d', text('Elsewhere'))
+    // At the limit, a chat that would also wait for the folder says capacity, and goes only when both are free.
+    expect(await t.sessions.send('b', text('Second'))).toMatchObject({ queued: true, why: 'capacity' })
+    await t.sessions.sendNow('b', t.sessions.queued('b')[0].id)
+    await flush()
+    expect(t.sessions.isRunning('b')).toBe(false)
+    await t.finish(1)
+    // A slot is free, but a still holds the folder.
+    expect(t.sessions.queueReason('b')).toBe('folder')
+    expect(t.sessions.isRunning('b')).toBe(false)
+    await t.finish(0)
+    expect(t.sessions.isRunning('b')).toBe(true)
+  })
+
+  it('takes no slot for a chat that waits for its folder', async () => {
+    const t = await setup(2)
+    await t.sessions.send('a', text('First'))
+    await t.sessions.send('b', text('Second'))
+    expect(t.sessions.queueReason('b')).toBe('folder')
+    expect(await t.sessions.send('d', text('Elsewhere'))).toMatchObject({ queued: false })
   })
 })
 
