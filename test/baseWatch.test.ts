@@ -8,7 +8,7 @@ import { baseMessage, catchUpMessage, listFiles } from '../src/main/features/bas
 import { sessionDeps } from '../src/main/features/sessionDeps'
 import { git, run } from '../src/main/services/exec'
 import { behindCount, FETCH_REUSE_MS, mergeTreeConflicts, snapshotCommit } from '../src/main/services/worktrees'
-import { tempRepo, freePort } from './helpers'
+import { oldSharedChat, tempRepo, freePort } from './helpers'
 
 // KERNEL-180: Kernel tells a teammate with no PR when main moves under its branch in a way that would conflict.
 
@@ -250,12 +250,20 @@ describe('telling a teammate that main moved (KERNEL-180)', () => {
     expect(s.notes()).toHaveLength(1)
   })
 
-  it("doesn't check the Lead's turn ends", async () => {
+  it("checks a chat with Kernel's turn ends as a teammate's, since it builds in a folder of its own (one-lead-chat)", async () => {
     const s = await setUp()
     const leadChat = await s.k.lead.leadChat(s.project.id)
     const lead = s.k.store.workspace(leadChat.workspaceId)!
     const check = vi.spyOn(s.k.baseWatch, 'check')
     sessionDeps(s.k).onTurnDone!(lead, leadChat, { ok: true, interrupted: false, by: 'user' })
+    expect(check).toHaveBeenCalledWith(s.project.id, { fetch: false, only: lead.id })
+  })
+
+  it("doesn't check the turn ends of a chat still on the shared main folder", async () => {
+    const s = await setUp()
+    const { chat, ws } = await oldSharedChat(s.k, s.project.id)
+    const check = vi.spyOn(s.k.baseWatch, 'check')
+    sessionDeps(s.k).onTurnDone!(ws, chat, { ok: true, interrupted: false, by: 'user' })
     expect(check).not.toHaveBeenCalled()
   })
 
@@ -297,9 +305,9 @@ describe('telling a teammate that main moved (KERNEL-180)', () => {
     expect(s.posts).toEqual([])
   })
 
-  it('tells a chat in Build here, as it tells a teammate, and checks at its turn ends (KERNEL-778)', async () => {
+  it('tells a chat with Kernel, as it tells a teammate, and checks at its turn ends (KERNEL-778)', async () => {
     const s = await setUp()
-    const leadChat = await s.k.lead.newLeadChat(s.project.id, { prompt: 'Go', leadMode: 'build' })
+    const leadChat = await s.k.lead.newLeadChat(s.project.id, { prompt: 'Go' })
     // Only a workspace whose setup finished is watched, and a slow machine is still setting it up once the worktree exists.
     await vi.waitFor(() => expect(s.k.store.workspace(leadChat.workspaceId)?.status).toBe('ready'), { timeout: 10_000, interval: 10 })
     const lead = s.k.store.workspace(leadChat.workspaceId)!

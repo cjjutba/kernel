@@ -1,10 +1,9 @@
 import { useEffect, useRef, type KeyboardEvent } from 'react'
-import { getState } from '../../../store'
-import type { LeadMode, Provider } from '@shared/types'
+import type { Provider } from '@shared/types'
 import type { ModeAvailabilities } from '../../../permissionModes'
 import { Button, Icon, Kbd, listKeyAction } from '../../../ui'
 import { useLayer } from '../../../ui/hooks'
-import { MODE_ICON, buttonName, leadModeRows, modeAria, modeRows, type ComposerMode, type Shown } from './modes'
+import { MODE_ICON, buttonName, modeAria, modeRows, type ComposerMode, type Shown } from './modes'
 
 /**
  * The permission mode of one chat (ComposerModeMenu.png, KERNEL-456): the five modes with a line each, a check on the picked one and
@@ -69,39 +68,5 @@ export function ModeButton({ provider, availability, shown, open, onOpen, onPick
       </Button>
       {open && <ModeMenu anchorRef={anchor} provider={provider} availability={availability} shown={shown} onPick={onPick} onCycle={onCycle} onClose={() => onOpen(false)} />}
     </span>
-  )
-}
-
-/**
- * How a chat with Kernel works (KERNEL-780): Hand off or Build here, as a two-part switch first in the composer row. The picked side is filled, one click
- * switches, and a pick applies from the next turn. Both sides are buttons, so Tab reaches each and Enter or Space picks. At narrow widths the labels
- * give way to the icons, which keep their names. Each side's tooltip says what it does and where new chats start (`footer`). ⌘⇧H picks the other
- * side from anywhere in the page while the switch is on screen, as a click on it does. It leaves a text field outside the box and an open modal
- * alone. Shift+Tab stays with the permission modes.
- */
-export function LeadModeSwitch({ mode, footer, onPick }: { mode: LeadMode; footer: string; onPick: (mode: LeadMode) => void }) {
-  useEffect(() => {
-    const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.defaultPrevented || e.isComposing || getState().ui.modal) return
-      if (!(e.metaKey && e.shiftKey && !e.altKey && !e.ctrlKey && e.code === 'KeyH')) return
-      const t = e.target as HTMLElement | null
-      const typing = !!t && (t.isContentEditable || t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement)
-      if (typing && !t.closest('.cmp-box')) return
-      const other = leadModeRows(mode).find((r) => !r.checked)
-      if (!other) return
-      e.preventDefault()
-      onPick(other.mode)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  })
-  return (
-    <div className="cmp-switch" role="group" aria-label="How Kernel works in this chat">
-      {leadModeRows(mode).map((r) => (
-        <button key={r.mode} type="button" className="cmp-switch-side" aria-pressed={r.checked} aria-label={r.name} data-tip={r.name} data-tip-kbd="⌘⇧H" data-tip-hint={`${r.desc} ${footer}`} onClick={() => { if (!r.checked) onPick(r.mode) }}>
-          <Icon name={r.icon} size={14} /><span className="cmp-switch-name">{r.name}</span>
-        </button>
-      ))}
-    </div>
   )
 }

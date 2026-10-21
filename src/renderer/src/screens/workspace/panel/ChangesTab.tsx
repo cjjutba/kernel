@@ -19,11 +19,9 @@ import { usePick } from './picks'
 
 const split = (path: string) => { const i = path.lastIndexOf('/'); return { dir: i < 0 ? '' : path.slice(0, i), name: path.slice(i + 1) } }
 
-/** A chat on the shared main folder has no changes, setup or run of its own until it switches to Build here (KERNEL-1052). */
+/** A chat still on the shared main folder has no changes, setup or run of its own until its next message makes it a working copy (KERNEL-1052, one-lead-chat). */
 export const SHARED_NOTHING = 'Nothing of its own yet'
-export const sharedWhy = (ws: Workspace) => ws.leadMode === 'build'
-  ? 'This chat gets a working copy of its own when you send your next message.'
-  : 'This chat reads the project’s main folder. Switch to Build here and it gets a working copy of its own.'
+export const sharedWhy = () => 'This chat gets a working copy of its own when you send your next message.'
 
 /** One changed file the way Pen 9.5 lists it: icon, its name (green when it is new, red when it is gone), the folder after it, then its git letter. A file a local merge would conflict in reads C. */
 function ChangeRow({ f, active, conflicted, ranges, onOpen }: { f: ChangedFile; active: boolean; conflicted?: boolean; ranges: [number, number][]; onOpen: () => void }) {
@@ -101,7 +99,7 @@ export function ChangesTab({ ws, changes: base, onOpenDiff, diffPath }: { ws: Wo
     : files === null
       ? <LoadingRow what="changes" />
       : onSharedFolder(ws)
-        ? <EmptyList icon="branch" title={SHARED_NOTHING}>{sharedWhy(ws)}</EmptyList>
+        ? <EmptyList icon="branch" title={SHARED_NOTHING}>{sharedWhy()}</EmptyList>
         : !changes.length
           ? <EmptyList icon={compare.only?.kind === 'uncommitted' ? 'check' : 'doc'} title={empty.title}>{empty.sub}</EmptyList>
           : filter.filtering && !shown.length

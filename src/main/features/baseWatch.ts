@@ -1,5 +1,5 @@
 import type { ChatPart, Workspace } from '@shared/types'
-import { buildsHere } from '@shared/leadMode'
+import { ownsFolder } from '@shared/leadWorkspace'
 import { bus } from '../bus'
 import { exec, git } from '../services/exec'
 import { behindCount, fastForward, fetchOrigin, folderGone, isPushed, mergeTreeConflicts, snapshotCommit } from '../services/worktrees'
@@ -68,14 +68,14 @@ export class BaseWatch extends Feature {
 
   /**
    * Workspaces an open PR doesn't cover yet: GitHub's own conflict check takes over once it exists, and its news reaches the
-   * chat as a Team update. A Build here chat's own work counts as a teammate's (KERNEL-778).
+   * chat as a Team update. A chat with Kernel's own folder counts as a teammate's (KERNEL-778).
    */
   private watched(ws: Workspace): boolean {
     return ws.status === 'ready' && ws.mode === 'worktree' && !ws.reviewOf && this.teammateLike(ws) && (ws.prState === 'none' || ws.prState === 'creating')
   }
 
-  /** A teammate's workspace, or a Build here chat's, which builds like one (KERNEL-778). */
-  private teammateLike(ws: Workspace) { return !ws.shared && (!this.isLeadWorkspace(ws) || buildsHere(ws)) }
+  /** A teammate's workspace, or a chat with Kernel's own folder, which builds like one (KERNEL-778). */
+  private teammateLike(ws: Workspace) { return !ws.shared && (!this.isLeadWorkspace(ws) || ownsFolder(ws)) }
 
   /** One read and one write, with nothing awaited between them, so two projects' checks never undo each other's change. */
   private put(id: string, state?: Watched) {

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { modelLabelOf, useCodexInUse, useProviderModels } from './composer/providerModels'
-import type { ChatPart, IssueTakenFinding, LeadMode, NewChatPicks, WorkspaceMode, WorkspaceSource } from '@shared/types'
+import type { ChatPart, IssueTakenFinding, NewChatPicks, WorkspaceMode, WorkspaceSource } from '@shared/types'
 import { bypassConfirmed } from '../../bypassConfirm'
 import { useModeAvailability } from '../../permissionModes'
 import { providerOf } from '@shared/providers'
@@ -22,14 +22,12 @@ import { ComposerInput } from './composer/ComposerInput'
 import { ComposerShell } from './composer/ComposerShell'
 import { loadPicks, moveDraft, newChatDraftOf, onPicksChange, savePicks, type DraftPicks } from './composer/draftStore'
 import { ComposerToolbar } from './composer/ComposerToolbar'
-import { cyclePatch, cycleRun, leadDefaultLine, leadPlaceholder, modePatch, nextMode, offLine, shownMode, type ComposerMode, type CycleRun } from './composer/modes'
+import { cyclePatch, cycleRun, leadPlaceholder, modePatch, nextMode, offLine, shownMode, type ComposerMode, type CycleRun } from './composer/modes'
 import { useLeadBox } from './composer/modelPrefs'
 import type { PlusPanel } from './composer/PlusMenu'
 import { sendsOn, useSendWith } from './composer/sendKey'
 import { ProjectPicker } from './composer/WherePickers'
 import { useModelKeys } from './composer/useModelKeys'
-import { newChatLeadMode } from '@shared/leadMode'
-import { useProjectSettings } from '../settings/useSettings'
 import { stripRemote } from '../settings/remote'
 import { UpNext } from './UpNext'
 import { SetupLine } from './SetupLine'
@@ -64,17 +62,10 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
   const boxPicks = useSyncExternalStore(onPicksChange, () => loadPicks(draftKey))
   // The issue warning's way back brings what the box had picked (KERNEL-500).
   useLayoutEffect(() => {
-    if (picks) savePicks(draftKey, { ...(picks.leadMode ? { leadMode: picks.leadMode } : {}), place: picks.mode === appPlace ? undefined : picks.mode, ...(picks.baseRef ? { baseRef: picks.baseRef } : {}) })
+    if (picks) savePicks(draftKey, { place: picks.mode === appPlace ? undefined : picks.mode, ...(picks.baseRef ? { baseRef: picks.baseRef } : {}) })
   }, [])
-  // Hand off or Build here starts from the project's default, else the app's (KERNEL-770). A pick stays with the project, through sends, until
-  // it is picked again, and picking the default goes back to following it.
-  const projectLeadMode = useProjectSettings(projectId)?.agents?.leadMode
-  const appLeadMode = useStore((s) => s.settings?.team.leadMode)
-  const defaultLeadMode = newChatLeadMode({ team: { leadMode: appLeadMode } }, { agents: { leadMode: projectLeadMode } })
-  const leadMode = boxPicks?.leadMode ?? defaultLeadMode
-  const pickLeadMode = (m: LeadMode) => savePicks(draftKey, { leadMode: m === defaultLeadMode ? undefined : m })
-  // Worktree or Local starts from Settings' workspace mode, and a pick stays with the project the same way. Kernel's own chat is a worktree
-  // either way (KERNEL-405), so Local only tells Kernel how teammates run.
+  // Worktree or Local starts from Settings' workspace mode, and a pick stays with the project the same way. The chat gets the folder it
+  // names, since Kernel may edit files in it (one-lead-chat).
   const appPlace: WorkspaceMode = useStore((s) => s.settings?.workspace.mode) ?? 'worktree'
   const place: WorkspaceMode = boxPicks?.place ?? appPlace
   const pickPlace = (m: WorkspaceMode) => savePicks(draftKey, { place: m === appPlace ? undefined : m })
@@ -164,7 +155,7 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
     if (!found.length) return false
     if (getState().ui.modal) return true
     const held: WorkspaceSource = { kind: 'issue', id: issue.name, title: issue.title, ...(issue.url ? { url: issue.url } : {}), tracker: issue.source }
-    actions.ui.openModal({ name: 'confirm', kind: 'issueTaken', issue: issue.name, findings: found, held: { projectId, source: held, parts, picks: { mode: place, model, effort, plan, baseRef: picked, leadMode: boxPicks?.leadMode } } })
+    actions.ui.openModal({ name: 'confirm', kind: 'issueTaken', issue: issue.name, findings: found, held: { projectId, source: held, parts, picks: { mode: place, model, effort, plan, baseRef: picked } } })
     return true
   }
 
@@ -189,7 +180,7 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
       if (issue && (await someoneIsOn(issue, parts))) return
       const at = Date.now()
       setSent({ parts: typed, at })
-      const failed = await startChat({ projectId, parts, model, effort, plan, mode, baseRef: picked && place === 'worktree' ? picked : '', leadMode, at })
+      const failed = await startChat({ projectId, parts, model, effort, plan, mode, baseRef: picked && place === 'worktree' ? picked : '', at })
       if (failed) { setSent(null); actions.ui.toast({ title: 'Could not send', sub: failed }); refocus.current = true }
     })
   }
@@ -284,7 +275,7 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
           {usable
             ? <>
               <h2 className="lead-ask">What's next for {projectPicker('title')}?</h2>
-              <p className="lead-note">Brief the Lead. It plans the work, then hands each task to your team.</p>
+              <p className="lead-note">Brief the Lead. It answers, makes small changes itself, or hands tasks to your team.</p>
             </>
             : projects.length
               ? <>
@@ -301,14 +292,13 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
         above={<>{!projects.length && <FirstProjectPills />}</>}
         input={<>
           {sent && <ComposerInput d={blank} aria-label={`Message ${name}`} disabled placeholder="Add a follow up" />}
-          <div style={sent ? GONE : { display: 'contents' }}><ComposerInput d={d} aria-label={`Message ${name}`} disabled={busy} placeholder={leadPlaceholder(leadMode, name)} onKeyDown={onKey} /></div>
+          <div style={sent ? GONE : { display: 'contents' }}><ComposerInput d={d} aria-label={`Message ${name}`} disabled={busy} placeholder={leadPlaceholder(name)} onKeyDown={onKey} /></div>
         </>}
         box={{ 'data-plan': plan ? 'true' : undefined, 'data-drop': d.over || undefined }}
         foot={<ComposerToolbar disabled={busy}
-          lead={{ mode: leadMode, footer: leadDefaultLine(projectLeadMode, appLeadMode), onPick: (m) => { pickLeadMode(m); d.focus() } }}
           model={{ label: modelLabelOf(model, codexModels), provider: providerOf(model), open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider: providerOf(model), grouped: codexInUse, model, effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x) }, onEffort: pickEffort } }}
           mode={{ provider: providerOf(model), availability, shown, open: menu === 'mode', onOpen: (o) => setMenu(o ? 'mode' : null), onPick: (m) => { setMenu(null); pickMode(m); d.focus() }, onCycle: cycleMode }}
-          plus={{ panel: plusPanel, onPanel: setMenu, projectId, disabled: busy || !usable, where: { lead: leadMode, place, picked, branch: stripRemote(base.target, base.remote), local: stripRemote(base.fallback, base.remote), onPlace: pickPlace, onBranch: (ref) => savePicks(draftKey, { baseRef: ref || undefined }) }, onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
+          plus={{ panel: plusPanel, onPanel: setMenu, projectId, disabled: busy || !usable, where: { place, picked, branch: stripRemote(base.target, base.remote), local: stripRemote(base.fallback, base.remote), onPlace: pickPlace, onBranch: (ref) => savePicks(draftKey, { baseRef: ref || undefined }) }, onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
           send={{ label: 'Send', ready: hasDraft, busy: busy || d.pending > 0, busyLabel: d.pending > 0 ? 'Attaching' : checking ? 'Checking' : 'Sending', onSend: start }} />}
         below={project && setupSteps ? <SetupLine project={project} steps={setupSteps} /> : undefined}
         hidden={<input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />}

@@ -83,8 +83,8 @@ export function pushOwnBranch(branches: string[], branch?: string): string {
   return `Kernel blocks pushes that might reach ${named} in Bypass permissions. Push your own branch by name${own}.`
 }
 
-/** What a file change, commit, push or pull request gets in Build here while the chat is in plan mode (KERNEL-1113). */
-export const BUILD_CLOSED = "Not done: this chat is in plan mode. Plan the change and ask for approval with mcp__kernel__request_plan_approval, then build it."
+/** What a file change, commit, push or pull request gets while a chat with Kernel is in plan mode (KERNEL-1113). */
+export const BUILD_CLOSED = "Not done: this chat can't change files now. In plan mode, plan the change and ask for approval with mcp__kernel__request_plan_approval, then do it. A chat that still sits on the project's shared folder gets a folder of its own when the user sends a message: hand the change to a teammate, or tell the user."
 
 /** Why a command on Always ask goes to the user, for a CLI that takes a reason with an ask. */
 export const ALWAYS_ASK = 'On the Always ask list in Kernel.'
@@ -131,13 +131,13 @@ export interface Rules {
   references?: string[]
   /** The step is a review's: commands that only read run without asking, in every mode (KERNEL-1074). */
   review?: boolean
-  /** A Build here Lead in plan mode now, read at each step: it commits, pushes and opens PRs once plan mode is off (KERNEL-1113). */
+  /** A Lead in plan mode now, read at each step: it commits, pushes and opens PRs once plan mode is off (KERNEL-1113). */
   buildClosed?: () => boolean
 }
 
 /** The rules for a runner's next step: Settings, Permissions and the project as they stand now, in `mode`, else the chat's mode now. */
-export function rulesOf(host: Pick<RunnerHost, 'settings' | 'projectAllow' | 'projectTools' | 'workspace' | 'mode'> & Partial<Pick<RunnerHost, 'agent' | 'leadMode' | 'buildOpen'>>, mode: RunMode = host.mode()): Rules {
-  const buildClosed = host.agent?.lead && host.buildOpen ? () => host.leadMode?.() === 'build' && !host.buildOpen?.() : undefined
+export function rulesOf(host: Pick<RunnerHost, 'settings' | 'projectAllow' | 'projectTools' | 'workspace' | 'mode'> & Partial<Pick<RunnerHost, 'agent' | 'buildOpen'>>, mode: RunMode = host.mode()): Rules {
+  const buildClosed = host.agent?.lead && host.buildOpen ? () => !host.buildOpen?.() : undefined
   return { permissions: host.settings().permissions, mode, projectAllow: () => host.projectAllow(), projectTools: () => host.projectTools(), branch: host.workspace.branch, ...(host.workspace.reviewOf ? { review: true } : {}), ...(buildClosed ? { buildClosed } : {}) }
 }
 
@@ -184,8 +184,8 @@ export const REFERENCE_READ_ONLY = 'Reference folders are read-only.'
 const FILE_WRITES: Record<string, string> = { Edit: 'file_path', Write: 'file_path', MultiEdit: 'file_path', NotebookEdit: 'notebook_path' }
 
 /**
- * Denies Edit, Write, MultiEdit and NotebookEdit in a Build here chat while it is in plan mode (KERNEL-1113), in every mode,
- * Bypass permissions included. A plan file and a file under `.kernel/shared` stay writable, as in Hand off. `open` is read at the call.
+ * Denies Edit, Write, MultiEdit and NotebookEdit in a chat with Kernel while it is in plan mode (KERNEL-1113), in every mode,
+ * Bypass permissions included. A plan file and a file under `.kernel/shared` stay writable. `open` is read at the call.
  */
 export function buildWrite(step: Pick<Step, 'tool' | 'input' | 'cwd'>, open: () => boolean, plans?: string): Verdict {
   const key = FILE_WRITES[step.tool]

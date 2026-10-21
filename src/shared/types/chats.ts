@@ -1,6 +1,6 @@
 import type { PermissionMode, ReviewKind, RunMode } from './settings'
 import type { TrackerKind } from './trackers'
-import type { ChangedFile, LeadMode } from './workspaces'
+import type { ChangedFile } from './workspaces'
 
 /** The agent CLI a chat runs on: Claude Code through the Agent SDK, or Codex through `codex app-server` (KERNEL-406). */
 export type Provider = 'claude' | 'codex'
@@ -242,20 +242,23 @@ export type ChatItem =
   | { kind: 'interrupted'; id: string; ts: number }
   /**
    * A Team update drawn in the transcript and never sent to the session (KERNEL-990). Kernel posts one for a review of the chat's
-   * own PR in Build here, holding only the reviewer's row, so the verdict shows without a turn.
+   * own PR, holding only the reviewer's row, so the verdict shows without a turn.
    */
   | { kind: 'update'; id: string; ts: number; update: TeamUpdate }
   /** Where an approval card sits in the transcript. The card itself reads the Approval, so the Inbox and the transcript stay in sync (D-007). */
   | { kind: 'approval'; id: string; ts: number; approvalId: string }
   /** A file the agent shared with share_file. The card reads the SharedFile, so a later version shows on it (KERNEL-302). */
   | { kind: 'shared'; id: string; ts: number; sharedId: string; version: number }
-  /** The chat with Kernel switched to `mode` from the next turn, drawn as a divider with `leadModeSwitched`'s text (KERNEL-770). */
-  | { kind: 'leadMode'; id: string; ts: number; mode: LeadMode }
   /**
-   * Kernel, in Build here, says the work is too big for one PR and suggests Hand off with suggest_hand_off (KERNEL-770). Drawn
-   * under its reply as a "Switch to Hand off" button that calls `lead.setMode`, while the chat is still in Build here. `why` is Kernel's reason.
+   * Old chats only: the chat was switched between Hand off and Build here (KERNEL-770). Nothing writes it since one-lead-chat. It
+   * draws as a plain note saying so.
    */
-  | { kind: 'modeSuggestion'; id: string; ts: number; mode: LeadMode; why: string }
+  | { kind: 'leadMode'; id: string; ts: number; mode: 'handoff' | 'build' }
+  /**
+   * Old chats only: Kernel, in Build here, suggested Hand off (KERNEL-770). Nothing writes it since one-lead-chat. It draws as a
+   * plain note with Kernel's reason, with no button.
+   */
+  | { kind: 'modeSuggestion'; id: string; ts: number; mode: 'handoff' | 'build'; why: string }
 
 /** What a shared file is, from its extension and first bytes (KERNEL-302). */
 export type SharedKind = 'html' | 'image' | 'pdf' | 'markdown'

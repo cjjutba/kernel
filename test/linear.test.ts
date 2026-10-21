@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo, freePort } from './helpers'
+import { setUp, tempRepo, freePort } from './helpers'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import type { Cipher } from '../src/main/services/env'
@@ -482,9 +482,12 @@ describe('Linear in the kernel', () => {
     // In a Lead chat of its own (KERNEL-337).
     expect(chat.threadId).toBeTruthy()
     expect(chat.threadId).not.toBe(before.threadId)
-    // It starts on the shared main folder, so the brief goes at once (KERNEL-1050).
-    expect(sent.map((s) => s.chatId)).toEqual([out.chatId])
-    const [chip, words] = sent[0].parts
+    // The brief waits in the chat's own queue until its worktree exists, then goes (KERNEL-490, KERNEL-542, one-lead-chat).
+    const [held] = k.sessions.queued(out.chatId)
+    const [chip, words] = held.parts
+    await setUp(k, out.chatId)
+    await vi.waitFor(() => expect(k.sessions.queued(out.chatId)).toEqual([]))
+    expect(sent).toEqual([])
     expect(chip).toEqual({ type: 'issue', name: 'KERNEL-83', title: 'Issues screen', url: 'https://linear.app/cj/issue/KERNEL-83', source: 'linear' })
     expect(words.type === 'text' && words.text).toBe(`${detail.description}\n\nWhen you hand it off, pass KERNEL-83 as issue to create_workspace.`)
   })

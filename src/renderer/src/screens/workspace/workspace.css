@@ -605,7 +605,7 @@ button.rail-row:hover { background: var(--surface); color: var(--ink-2); }
 
 /* Open, the split button by the Port row on the Checks tab (WorkspacePreview.png, KERNEL-250) */
 
-/* The line a switch between Hand off and Build here leaves in the thread (KERNEL-780). */
+/* The line an old chat's switch between Hand off and Build here left in the thread (KERNEL-780). */
 .mode-divider { display: flex; align-items: center; gap: 8px; padding: 6px 0; color: var(--muted); font-size: var(--fs-meta); }
 .mode-divider::before, .mode-divider::after { content: ''; flex: 1; height: 1px; background: var(--card-line); }
 .mode-divider > svg { flex: none; }

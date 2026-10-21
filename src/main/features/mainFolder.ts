@@ -6,12 +6,12 @@ import { linkNodeModules } from '../services/scripts'
 import { createWorktree, fastForward, folderGone, isWorktreeOf, leadBase, projectWorktreeRoot, removeWorktree } from '../services/worktrees'
 import { Feature } from './feature'
 
-/** The hidden folder in the project's worktree root that every chat in Hand off shares (KERNEL-1050). */
+/** The hidden folder in the project's worktree root that chats from before one-lead-chat still share (KERNEL-1050). */
 const MAIN_FOLDER = '.main'
 
 /**
- * The project's one shared folder for chats with Kernel in Hand off (KERNEL-1050): a detached worktree at
- * `<remote>/<default>`, made when a chat first needs it, with no setup, no copied files and no trust prompt. Kernel owns it.
+ * The project's one shared folder for chats with Kernel that started before one-lead-chat (KERNEL-1050): a detached worktree at
+ * `<remote>/<default>`, made when an archived one is restored, with no setup, no copied files and no trust prompt. Kernel owns it.
  * It only ever moves by fast-forward, and never resets, cleans or checks out over a change.
  */
 export class MainFolder extends Feature {
@@ -41,7 +41,7 @@ export class MainFolder extends Feature {
     const path = this.path(projectId)
     if (!(await folderGone(path))) {
       if (await isWorktreeOf(project.path, path)) return path
-      throw new Error(`${path} is in the way of the shared folder for chats in Hand off, and it isn't a worktree of ${project.name}. Move or delete it, then try again.`)
+      throw new Error(`${path} is in the way of the shared folder for older chats, and it isn't a worktree of ${project.name}. Move or delete it, then try again.`)
     }
     // git still lists a worktree whose folder was deleted until a prune, and refuses to add one at that path (KERNEL-355).
     await git(project.path, 'worktree', 'prune')

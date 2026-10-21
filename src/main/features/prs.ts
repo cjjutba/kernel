@@ -80,7 +80,7 @@ export class Prs extends Feature {
   private async create(id: string, draft: boolean) {
     const ws = this.mustWs(id)
     if (ws.prState !== 'none') throw new Error('This workspace already has a pull request.')
-    if (ws.shared) throw new Error('Switch this chat to Build here first.')
+    if (ws.shared) throw new Error('This chat has no working copy of its own yet. Send a message in it first, which gives it one.')
     if (this.isLocal(ws)) throw new Error('This project merges on this Mac, so there is no pull request to open. Its branch can merge once it has commits.')
     const chat = this.prChat(id)
     if (!chat) throw new Error('This workspace has no chat.')
@@ -317,7 +317,7 @@ export class Prs extends Feature {
     this.changedAt = Date.now()
     bus.push({ type: 'pr', workspaceId: id, state: next.prState })
     bus.activity({ kind: 'pr.changed', projectId: ws.projectId, workspaceId: id, agentId: ws.agentId, text: `PR is ${next.prState}`, object: next.prNumber ? `#${next.prNumber}` : undefined })
-    // The chat's own PR in Build here says nothing when it opens, since the Lead's reply does, and nothing when it is ready,
+    // The chat's own PR says nothing when it opens, since the Lead's reply does, and nothing when it is ready,
     // since an approval or the merge button does, except what the screen doesn't show (KERNEL-990).
     if (next.prState === 'ready' && next.prBlocked) this.readyNote(id, `GitHub blocks the merge: ${blockedWhy[next.prBlocked]}`, 'GitHub blocks')
     if (text && next.prState === 'merged') this.noteOnce(id, text, 'merged', next.prNumber)
@@ -332,10 +332,10 @@ export class Prs extends Feature {
     }
   }
 
-  /** Whether the workspace is a Build here chat's own, whose PR news is rows (KERNEL-990). */
+  /** Whether the workspace is a chat with Kernel's own, whose PR news is rows (KERNEL-990). */
   private ownChat(ws: Workspace) { return !!this.k.lead.buildTab(ws) }
 
-  /** Why Kernel is merging each Build here chat's own PR by itself, until the merge shows, so its row says so (KERNEL-990). */
+  /** Why Kernel is merging each chat with Kernel's own PR by itself, until the merge shows, so its row says so (KERNEL-990). */
   private autoWhy = new Map<string, string>()
 
   /** Auto-merge left the chat's own PR, so its ready row says why Kernel didn't merge it (KERNEL-990). */
@@ -345,7 +345,7 @@ export class Prs extends Feature {
 
   /**
    * The chat's own ready row, posted only when it says what the screen doesn't (KERNEL-990): no review ran, auto-merge
-   * refused, or GitHub blocks the merge. `tail` is that reason, added to the row once per `key`. Hand off chats get none.
+   * refused, or GitHub blocks the merge. `tail` is that reason, added to the row once per `key`. A chat still on the shared folder gets none.
    */
   readyNote(id: string, tail?: string, key = tail) {
     const ws = this.k.store.workspace(id)

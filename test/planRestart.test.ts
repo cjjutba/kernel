@@ -8,7 +8,7 @@ import { setUp, tempRepo, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { Store } from '../src/main/db'
 import { kernelTools } from '../src/main/services/kernelMcp'
-import { HANDOFF_NOW, planApproval, planChanges } from '../src/main/services/handoff'
+import { CARRY_OUT, planApproval, planChanges } from '../src/main/services/handoff'
 import { RELAUNCH_NUDGE } from '../src/main/services/sessions'
 
 // A scripted SDK, as in restore.test.ts: each query() records its options and yields what the test feeds it. An interrupt
@@ -311,10 +311,9 @@ describe('plan cards outlive a restart', () => {
 
     await k2.handlers()['approvals.decide']({ id: card.id, decision: { behavior: 'allow' } })
     const note = planApproval({ lead: true, planFile: card.planFile, restarted: true }).text
-    expect(note.startsWith(`Plan approved. Hand off each task from \`${card.planFile}\` now.\n\n${HANDOFF_NOW}`)).toBe(true)
+    expect(note.startsWith(`Plan approved. Carry out each step from \`${card.planFile}\` now.\n\n${CARRY_OUT}`)).toBe(true)
     expect(users(k2, lead).at(-1)).toBe(note)
-    expect(users(k2, lead).filter((u) => u.includes(HANDOFF_NOW))).toHaveLength(1)
-    expect(k2.sessions.handoffs.due(lead.id)).toBe(true)
+    expect(users(k2, lead).filter((u) => u.includes(CARRY_OUT))).toHaveLength(1)
     expect(k2.store.chat(lead.id)?.plan).toBe(false)
   }, 30000)
 })

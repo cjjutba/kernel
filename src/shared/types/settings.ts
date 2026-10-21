@@ -1,7 +1,7 @@
 import type { TeamConfig } from './agents'
 import type { Effort, Provider } from './chats'
 import type { TrackerKind } from './trackers'
-import type { LeadMode, WorkspaceMode } from './workspaces'
+import type { WorkspaceMode } from './workspaces'
 
 export type Theme = 'dark' | 'light'
 export type SettingsPage =
@@ -81,10 +81,10 @@ export interface AppSettings {
     fallback: boolean
   }
   /**
-   * `defaultTemplate` seeds an empty project (Settings, Agents, New projects start with). `leadMode` is how a new chat with Kernel
-   * works, Hand off or Build here, where the project's `[agents] lead_mode` doesn't say (KERNEL-770).
+   * `defaultTemplate` seeds an empty project (Settings, Agents, New projects start with). A `leadMode` saved by an older version
+   * is ignored.
    */
-  team: { defaultTemplate: 'starter' | 'pair'; leadMode: LeadMode }
+  team: { defaultTemplate: 'starter' | 'pair' }
   /**
    * `mode` is the app's permission mode, which a project and a chat can override. `bypassOnlyInWorktrees` keeps Bypass
    * permissions off a current-branch workspace. The modes were `ask`, `acceptEdits` and `bypassInWorktrees` before
@@ -261,9 +261,9 @@ export interface ProjectSettings {
    * `[agents.<id>] allow`: by agent id, the MCP servers the user let it use in this project though its file doesn't list them.
    * Both files merge agent by agent. `openWorkspaces` (`open_workspaces`) is how many teammate workspaces the Lead may have
    * open in the project, 0 to 12, and 0 is no limit. Unset, the project follows Settings, Models' `agentLimit` (KERNEL-492).
-   * `leadMode` (`lead_mode`) is how a new chat with Kernel works in this project, over the app's `team.leadMode` (KERNEL-770).
+   * An old `lead_mode` key is ignored.
    */
-  agents?: { unlistedTools?: UnlistedTools; allow?: Record<string, string[]>; openWorkspaces?: number; leadMode?: LeadMode }
+  agents?: { unlistedTools?: UnlistedTools; allow?: Record<string, string[]>; openWorkspaces?: number }
   /**
    * The project's preview URLs, a `[[preview.urls]]` array of tables, in order. `url` may use `$KERNEL_PORT` forms that
    * `resolvePreviewUrl` fills in. A patch replaces the whole list (KERNEL-246).
@@ -381,7 +381,7 @@ export type ProjectSettingsPatch = {
   /** Only the personal file takes it, so a `shared` save that sets it is refused. An empty list or `null` removes the key (KERNEL-748). */
   references?: string[] | null
   mcp?: { aliases?: Record<string, string | null> }
-  agents?: { unlistedTools?: UnlistedTools | null; allow?: Record<string, string[] | null>; openWorkspaces?: number | null; leadMode?: LeadMode | null }
+  agents?: { unlistedTools?: UnlistedTools | null; allow?: Record<string, string[] | null>; openWorkspaces?: number | null }
 }
 
 /**

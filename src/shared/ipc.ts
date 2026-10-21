@@ -1,7 +1,7 @@
 import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, BuiltinCommand, ChangedFile, Chat, ChatItem, ChatRunMode,
   ChatPart, Checkpoint, CheckpointPreview, ClaudeAccount, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubAuth, GitHubStatus, HookStatus, Hunk,
-  GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, LeadMode, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewProjectRequest, Notification, OpenApp, OpenItem, Overlap, PreflightCheck, PushCheck, PrBlocked, PrInfo, PrPending, PrState,
+  GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewProjectRequest, Notification, OpenApp, OpenItem, Overlap, PreflightCheck, PushCheck, PrBlocked, PrInfo, PrPending, PrState,
   PermissionMode, PlanAttention, PrEvidence, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, GitHubOwner, RepoSummary, ResolvedPath, ReviewPatch, Project, ProjectSettings, ProjectSettingsPatch, ProjectSetupStep, ProjectTracker, ScriptKind, ScriptLine, ScriptSuggestion, ChatArchivePreview, MoveChoice, MoveNotice, SharedAnchor, SwitchMove, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   RemoteDevice, RemotePairing, RemoteStatus, TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
@@ -314,33 +314,18 @@ export interface KernelApi {
    * waits in the tab's queue until the worktree exists, never for setup (KERNEL-542, KERNEL-1086). `clientId` is
    * the prompt's id while it waits and its row's once it goes, as in `chats.send` (KERNEL-894).
    */
-  'lead.start': { req: { projectId: string; prompt: string; parts?: ChatPart[]; clientId?: string; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode; leadMode?: LeadMode }; res: Chat }
+  'lead.start': { req: { projectId: string; prompt: string; parts?: ChatPart[]; clientId?: string; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode }; res: Chat }
   /**
    * Starts a fetch of the project's remote and answers without waiting for it, so the fetch Create needs is done or under way by
    * then. New chat calls it when it opens. A failed fetch says nothing (KERNEL-542).
    */
   'lead.prefetch': { req: { projectId: string }; res: Ok }
   /**
-   * Switches a chat with Kernel to Hand off or Build here, by its workspace (KERNEL-770). It applies from the next turn: a running
-   * turn finishes in the mode it started in. The chat's transcript gets a `leadMode` divider. Refuses a workspace that isn't a
-   * chat with Kernel. On a chat on the shared main folder (`Workspace.shared`) it only records `leadMode` and makes nothing: the
-   * working copy, by Settings, Git and worktrees, Workspace type, is made when the first message is sent in Build here (KERNEL-1053,
-   * amending KERNEL-1051). It throws a sentence, and the chat stays in Hand off, when the copy couldn't be made: a current-branch
-   * copy while another workspace is on the checkout.
-   */
-  'lead.setMode': { req: { workspaceId: string; mode: LeadMode }; res: Workspace }
-  /**
    * Makes the working copy again for a chat whose copy failed (KERNEL-1053): its record has `worktreePending.error` with
-   * `fromShared`, and its first message is still held. Answers at once. The held message goes out in the new copy once it is
+   * `fromShared`, and its message is still held. Answers at once. The held message goes out in the new copy once it is
    * ready, and a failure records the new error. Refuses a chat that has no failed copy.
    */
   'lead.retryCopy': { req: { workspaceId: string }; res: Workspace }
-  /**
-   * Gives up the working copy of a chat whose copy failed (KERNEL-1053) and sends its held message in Hand off on the shared
-   * main folder. The chat is shared again, `leadMode` is `handoff`, and nothing of the failed copy is left. Refuses a chat that
-   * has no failed copy.
-   */
-  'lead.sendAsHandoff': { req: { workspaceId: string }; res: Workspace }
   /** The Lead chats, each holding one or more Lead tabs, in every project or in `projectId`, oldest first (KERNEL-337). */
   'threads.list': { req: { projectId?: string }; res: Thread[] }
   /** Names a Lead chat. Kernel stops naming it after its first tab from then on. */

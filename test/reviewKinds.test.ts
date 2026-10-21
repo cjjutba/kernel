@@ -14,7 +14,7 @@ import { toolPolicy } from '../src/main/services/agentTools'
 import { reviewRule } from '../src/main/services/handoff'
 import { kernelTools } from '../src/main/services/kernelMcp'
 import { NUDGE_LIMIT } from '../src/main/services/nudges'
-import { tempRepo, freePort } from './helpers'
+import { oldSharedChat, tempRepo, freePort } from './helpers'
 
 // KERNEL-549: kinds of review (code, security, UX) that Kernel starts itself when a PR passes checks.
 
@@ -38,7 +38,7 @@ async function setup(o: { settings?: string; files?: Record<string, string>; app
   const repo = await tempRepo({ ...AGENTS, ...(o.settings ? { '.kernel/settings.toml': o.settings } : {}), ...o.files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ version: 2, hookPort: await freePort(), team: { leadMode: 'build' }, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { autoReview: true }, ...o.app }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ version: 2, hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { autoReview: true }, ...o.app }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   onTestFinished(() => k.stop({ budgetMs: 0 }))
@@ -75,27 +75,23 @@ describe('which reviews a PR gets', () => {
     expect(k.store.chats(rws.id)[0].title).toBe('Code review')
   })
 
-  it("reviews a Build here chat's own PR and reports to that chat, and leaves a chat in Hand off alone (KERNEL-778)", async () => {
+  it("reviews a chat with Kernel's own PR and reports to that chat, and leaves a chat still on the shared folder alone (KERNEL-778, one-lead-chat)", async () => {
     const { k, project, reviewsOf, lenses } = await setup()
-    const lead = async (mode: 'build' | 'handoff') => {
-      const c = await k.lead.newLeadChat(project.id, { prompt: '' })
-      await vi.waitFor(() => expect(k.store.workspace(k.store.chat(c.id)!.workspaceId)?.status).toBe('ready'), { timeout: 10_000, interval: 10 })
-      k.lead.setMode(k.store.chat(c.id)!.workspaceId, mode)
-      const ws = k.store.workspace(k.store.chat(c.id)!.workspaceId)!
-      await writeFile(join(ws.path, 'retry.ts'), 'export {}\n')
-      await git(ws.path, 'add', '-A')
-      await git(ws.path, 'commit', '-qm', 'retry')
-      k.store.saveWorkspace({ ...ws, prNumber: mode === 'build' ? 201 : 202, prState: 'ready', prHead: (await git(ws.path, 'rev-parse', 'HEAD')).trim() })
-      return { c, ws }
-    }
-    const build = await lead('build')
-    await k.reviews.onReady(build.ws.id)
-    const [rws] = reviewsOf(build.ws.id)
-    expect(rws).toMatchObject({ reviewOf: build.ws.id, leadChatId: build.c.id, title: 'Review PR #201' })
+    const c = await k.lead.newLeadChat(project.id, { prompt: '' })
+    await vi.waitFor(() => expect(k.store.workspace(k.store.chat(c.id)!.workspaceId)?.status).toBe('ready'), { timeout: 10_000, interval: 10 })
+    const ws = k.store.workspace(k.store.chat(c.id)!.workspaceId)!
+    await writeFile(join(ws.path, 'retry.ts'), 'export {}\n')
+    await git(ws.path, 'add', '-A')
+    await git(ws.path, 'commit', '-qm', 'retry')
+    k.store.saveWorkspace({ ...ws, prNumber: 201, prState: 'ready', prHead: (await git(ws.path, 'rev-parse', 'HEAD')).trim() })
+    await k.reviews.onReady(ws.id)
+    const [rws] = reviewsOf(ws.id)
+    expect(rws).toMatchObject({ reviewOf: ws.id, leadChatId: c.id, title: 'Review PR #201' })
     expect(lenses(rws)).toEqual([{ kind: 'code' }])
-    const handoff = await lead('handoff')
-    await k.reviews.onReady(handoff.ws.id)
-    expect(reviewsOf(handoff.ws.id)).toEqual([])
+    const shared = (await oldSharedChat(k, project.id)).ws
+    k.store.saveWorkspace({ ...shared, prNumber: 202, prState: 'ready' })
+    await k.reviews.onReady(shared.id)
+    expect(reviewsOf(shared.id)).toEqual([])
   })
 
   it('adds the UX review as a second chat of the same review workspace when the PR touches its paths', async () => {

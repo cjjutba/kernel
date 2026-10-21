@@ -4,13 +4,12 @@ import { isAbsolute, relative, resolve, sep } from 'node:path'
 import type { SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
 import type { ChatItem, ChatPart, CodexPersonality, Decision, Effort, TokenCounts, UnlistedTools } from '@shared/types'
 import { linkText } from '@shared/links'
-import { leadModeOf } from '@shared/leadMode'
 import { describeTool } from '../../approvals'
 import { planChanges } from '../../handoff'
 import { exec } from '../../exec'
 import { fileMarker, filesNote, IMAGE_DATA_URL, imageMarker, imagesNote, isAttached } from '../../attachments'
 import { ALWAYS_ASK, BUILD_CLOSED, decide, referenceWrite, REFERENCE_READ_ONLY, rulesOf, saveAlwaysAllow, type Rules, type RunMode, type Step } from '../../permissions'
-import { handoffRefusal, toolPolicy } from '../../agentTools'
+import { toolPolicy } from '../../agentTools'
 import { codexStatus } from '../../mcp'
 import { sharesFile } from '../../sharedFiles'
 export { sharesFile }
@@ -176,8 +175,6 @@ export class CodexRunner implements Runner {
   private model: string
   private effort: Effort
   private plan: boolean
-  /** A chat with Kernel in Hand off, which edits no file but the ones it shares (KERNEL-770). The mode it started in. A switch to Hand off applies at the next file change too (KERNEL-994). */
-  private readonly handoff: boolean
   private gitDir?: string
   /** The running turn's plan, from its `plan` item. A plan-mode turn that ends with one asks for approval. */
   private planText?: string
@@ -217,7 +214,6 @@ export class CodexRunner implements Runner {
     this.model = chat.model
     this.effort = chat.effort
     this.plan = chat.plan
-    this.handoff = !!host.agent?.lead && leadModeOf(host.workspace) === 'handoff'
     this.threadId = chat.sessionId
     if (chat.sessionId) host.managed(chat.sessionId)
   }
@@ -304,12 +300,13 @@ export class CodexRunner implements Runner {
 
   /**
    * The sandbox for the next turn: writes in the workspace and the repo's git folder, network as Settings, Permissions says.
-   * Plan mode only reads, and so does a chat with Kernel in Hand off (KERNEL-770): every file change then asks, and
-   * `approveFiles` declines all but a file it shares. Git reads in the sandbox, and a git command that writes asks to leave it.
+   * Plan mode only reads, and so does a chat still on the shared main folder (KERNEL-1050): every file change then asks, and
+   * `approveFiles` declines a Lead's all but a file it shares. A chat with Kernel writes like a teammate otherwise
+   * (one-lead-chat). Git reads in the sandbox, and a git command that writes asks to leave it.
    */
   private sandbox(): SandboxPolicy {
     const network = this.host.settings().permissions.network !== false
-    if (this.plan || this.handoff) return { type: 'readOnly', networkAccess: network }
+    if (this.plan || this.host.workspace.shared) return { type: 'readOnly', networkAccess: network }
     return { type: 'workspaceWrite', writableRoots: this.gitDir ? [this.gitDir] : [], networkAccess: network, excludeTmpdirEnvVar: false, excludeSlashTmp: false }
   }
 
@@ -355,7 +352,7 @@ export class CodexRunner implements Runner {
   private async mcpConfig(cwd: string): Promise<Record<string, JsonValue> | undefined> {
     const agent = this.host.agent
     // A Lead's tracker issue writes go through file_issue, so Codex turns them off on the Linear and GitHub servers (feat-lead-files-tracker-issues-only-with).
-    const policy = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools, aliases: this.o.aliases, allow: this.o.access?.allow, lead: agent?.lead ? leadModeOf(this.host.workspace) : undefined })
+    const policy = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools, aliases: this.o.aliases, allow: this.o.access?.allow, lead: !!agent?.lead })
     const unlisted = !!this.o.bypass && (this.o.access?.unlisted ?? 'ask') === 'ask'
     const off = this.o.disabled ?? []
     if (!policy && !off.length) return undefined
@@ -646,11 +643,8 @@ export class CodexRunner implements Runner {
     if (touched.some((file) => referenceWrite({ tool: 'Edit', input: { file_path: file }, cwd }, this.o.references))) return this.declined(REFERENCE_READ_ONLY)
     // A review only reads, whatever its agent's file says (KERNEL-549).
     if (this.host.workspace.reviewOf) return { decision: 'decline' }
-    // Hand off edits nothing but the files it shares under .kernel/shared, whatever the file and the mode say (KERNEL-770).
-    // The note says why, and that a switch to Build here during the turn applies from the next message.
-    if ((this.handoff || this.host.leadMode() === 'handoff') && !(change?.changes.length && change.changes.every((c) => sharesFile(this.host.workspace.path, c.path)))) return this.declined(handoffRefusal(this.host.leadMode()))
-    // Build here edits only after a go-ahead, whatever the mode says (KERNEL-992).
-    if (this.host.agent?.lead && this.host.buildOpen && this.host.leadMode() === 'build' && !this.host.buildOpen() && !(change?.changes.length && change.changes.every((c) => sharesFile(this.host.workspace.path, c.path)))) return this.declined(BUILD_CLOSED)
+    // A Lead in plan mode edits nothing but the files it shares under .kernel/shared, whatever the mode says (KERNEL-992, KERNEL-1113).
+    if (this.host.agent?.lead && this.host.buildOpen && !this.host.buildOpen() && !(change?.changes.length && change.changes.every((c) => sharesFile(this.host.workspace.path, c.path)))) return this.declined(BUILD_CLOSED)
     if (decide({ tool: name, sandbox: p.grantRoot ? 'outside' : 'inside' }, this.rules())?.behavior === 'allow') return { decision: 'accept' }
     const d = describeTool(name, { file_path: path })
     const result = await this.host.ask({ kind: 'tool', toolName: name, input: { file_path: path }, title: d.title, detail: p.reason ?? undefined }, { signal })

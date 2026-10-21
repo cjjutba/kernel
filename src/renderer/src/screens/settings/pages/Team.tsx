@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { type AgentDef, type AppSettings, type LeadMode, type TeamPatch } from '@shared/types'
+import { type AgentDef, type AppSettings, type TeamPatch } from '@shared/types'
 import { KERNEL_LEAD, reviewerChoice } from '@shared/team'
-import { leadModeName, newChatLeadMode } from '@shared/leadMode'
 import { call, cleanError } from '../../../api'
 import { actions, go, loadProject, useStore } from '../../../store'
 import { AgentAvatar, Button, ConfirmDialog, Icon, LinkButton, Menu, Select, Toggle, useBusy } from '../../../ui'
@@ -192,18 +191,11 @@ export function Team({ projectId, s }: { projectId?: string; s: AppSettings }) {
     <ProjectPage project={project} rs={rs} title="Agents" desc="The team in this repo, and what it may do without asking." shared>
       <Section title="Roles">
         <Row id="lead" lead={<AgentAvatar name="Kernel" size={22} />} label="Kernel" labelId="rm-lead" className="rm-kernel"
-          desc={customized || elsewhere ? <LinkButton variant="quiet" size="meta" disabled={busy !== null} onClick={openFile}>{elsewhere ? `Customized in ${leadFile}` : shortFile(lead!.file)}</LinkButton> : 'Plans with you and hands out tasks.'}>
+          desc={customized || elsewhere ? <LinkButton variant="quiet" size="meta" disabled={busy !== null} onClick={openFile}>{elsewhere ? `Customized in ${leadFile}` : shortFile(lead!.file)}</LinkButton> : 'Answers, makes small changes itself and hands out the rest.'}>
           <span className="set-actions">
             <span className={customized || elsewhere ? 'rm-pill' : 'set-desc'} role="status">{elsewhere ? 'Customized' : customized ? 'Customized' : 'Default'}</span>
             {kernelAction}
           </span>
-        </Row>
-        <Row id="lead-mode" setting="agents.leadMode" label="New chats with Kernel" labelId="rm-lead-mode" desc="Overrides Settings, Agents for this project.">
-          <Select label="New chats with Kernel" align="right" value={rs?.agents?.leadMode ?? 'app'} disabled={busy !== null} options={[
-            { value: 'app', label: `App default (${leadModeName(newChatLeadMode({ team: { leadMode: s.team.leadMode } }, undefined))})` },
-            { value: 'handoff', label: leadModeName('handoff') },
-            { value: 'build', label: leadModeName('build') }
-          ]} onChange={(v) => void patchProjectSettings(projectId, { agents: { leadMode: v === 'app' ? null : (v as LeadMode) } })} />
         </Row>
         <Row id="reviewer" label="Reviewer" labelId="rm-reviewer" desc="Reviews each pull request.">
           <ReviewerPicker value={reviewerPick} agents={files.filter((a) => !a.lead)} disabled={busy !== null} labelledBy="rm-reviewer" onChange={(id) => void setTeam('reviewer', { reviewer: id })} />

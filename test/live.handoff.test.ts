@@ -49,10 +49,6 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live hand-off', () => {
     const onActivity = (e: ActivityEvent) => activity.push(e)
     bus.on('activity', onActivity)
     const k = new Kernel({ dataDir, home, claudeSettingsFile: join(home, 'claude-settings.json') })
-    // Counts Stop reminders, to tell "handed off on its own" from "handed off after one reminder".
-    let reminders = 0
-    const reminder = k.sessions.handoffs.reminder.bind(k.sessions.handoffs)
-    k.sessions.handoffs.reminder = (id: string) => { const r = reminder(id); if (r) reminders++; return r }
     await k.start()
     const h = k.handlers()
     try {
@@ -64,7 +60,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live hand-off', () => {
       // createWorkspace's own "started <name>" line comes first; the Lead's pick is the "assigned ... to" line (kernelMcp.ts).
       const created = await waitFor('a workspace from the Lead', () => activity.find((a) => a.kind === 'workspace.created' && a.projectId === project.id && a.data?.assignee), 300_000)
       const said = k.store.items(chatId).flatMap((i) => (i.kind === 'text' ? [i.text.slice(0, 200)] : []))
-      console.log(`[live] ${created.text} ${created.object}. Stop reminders: ${reminders}. Kernel's last words: ${JSON.stringify(said.slice(-2))}`)
+      console.log(`[live] ${created.text} ${created.object}. Kernel's last words: ${JSON.stringify(said.slice(-2))}`)
       expect(created.data?.assignee).toBe('sean')
     } finally {
       bus.off('activity', onActivity)
