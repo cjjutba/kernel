@@ -13,6 +13,7 @@ import { writeSaved } from './remember'
 import { startupTheme } from './ui/theme'
 import { setupToasts } from './screens/onboarding/setupToasts'
 import { raiseSetupFailed, raiseWorktreeFailed } from './screens/workspace/setupFailed'
+import { raiseTurnFailed } from './screens/workspace/turnFailed'
 import { closeAllLayers } from './ui/hooks'
 import { installFailedToast } from './components/footer/updateModel'
 import { hasTab, isChatTab, landing, nearest, placeToSave, restorePlace, projectHome, samePlace, stillThere, tabOf, type Place } from './nav'
@@ -921,7 +922,7 @@ export function apply(e: PushEvent) {
   switch (e.type) {
     case 'activity': return actions.activity.add(e.event)
     case 'chat': return actions.chats.upsert(e.chat)
-    case 'chat.item': return actions.chats.upsertItem(e.chatId, e.item)
+    case 'chat.item': actions.chats.upsertItem(e.chatId, e.item); return raiseTurnFailed(e.chatId, e.item)
     case 'chat.cleared': return actions.chats.setItems(e.chatId, [])
     case 'chat.running': pushedLive?.running.add(e.chatId); return actions.chats.setRunning(e.chatId, e.running)
     case 'chat.queue': return actions.chats.setQueue(e.chatId, e.queue, e.why ?? null)

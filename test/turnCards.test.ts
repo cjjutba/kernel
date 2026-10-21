@@ -76,14 +76,17 @@ describe('turn cards', () => {
     })
   })
 
-  it('shows a failed turn as an error and a stopped turn as a marker with its time', () => {
+  it('ends a failed turn and a stopped turn on a quiet line, with the time and actions under it', () => {
     const user: ChatItem = { kind: 'user', id: 'u', ts: 0, parts: [] }
     const tool: ChatItem = { kind: 'tool', id: 't', ts: 1, toolUseId: 'x', name: 'Bash', label: 'Run', detail: 'x', status: 'failed', output: 'boom' }
     const failed = buildThread([user, tool, { kind: 'result', id: 'r', ts: 2, durationMs: 1000, ok: false, error: '2 tests failed' }])
-    expect(failed.at(-1)).toEqual({ kind: 'error', id: 'r', message: '2 tests failed', output: 'boom' })
+    expect(failed.map((b) => b.kind)).toEqual(['item', 'group', 'end', 'meta'])
+    expect(failed.at(-3)).toMatchObject({ kind: 'group', ends: true })
+    expect(failed.at(-2)).toEqual({ kind: 'end', id: 'end-r', why: 'failed', ms: 1000 })
+    expect(failed.at(-1)).toMatchObject({ kind: 'meta', actions: { files: false } })
     const stopped = buildThread([user, { kind: 'interrupted', id: 'i', ts: 1 }, { kind: 'result', id: 'r', ts: 2, durationMs: 28_000, ok: false }])
-    expect(stopped.at(-1)).toMatchObject({ kind: 'meta' })
-    expect(stopped.some((b) => b.kind === 'error')).toBe(false)
+    expect(stopped.map((b) => b.kind)).toEqual(['item', 'end', 'meta'])
+    expect(stopped.at(-2)).toMatchObject({ kind: 'end', why: 'stopped', ms: 28_000 })
   })
 })
 
@@ -183,11 +186,14 @@ describe('who sent a message, as the transcript draws it (KERNEL-120)', () => {
     const { renderToStaticMarkup } = await import('react-dom/server')
     Object.assign(globalThis, { React })
     const path = '../src/renderer/src/screens/workspace/KernelNote'
-    const { KernelNote } = await import(/* @vite-ignore */ path) as { KernelNote: (p: { item: ChatItem }) => React.ReactElement }
-    const html = renderToStaticMarkup(React.createElement(KernelNote, { item: { kind: 'user', id: 'n', ts: 1, from: 'kernel', parts: [{ type: 'text', text: 'Your session ended unexpectedly.' }] } }))
-    expect(html).toContain('note inline knote')
-    expect(html).toContain('aria-expanded="false"')
+    const { KernelNote } = await import(/* @vite-ignore */ path) as { KernelNote: (p: { item: ChatItem; agentName?: string }) => React.ReactElement }
+    const html = renderToStaticMarkup(React.createElement(KernelNote, { agentName: 'Ivy', item: { kind: 'user', id: 'n', ts: 1, from: 'kernel', parts: [{ type: 'text', text: 'Your session ended unexpectedly. Check git status first.' }] } }))
+    // One line with Kernel's avatar and the first sentence, and a toggle that opens the text it gave the agent.
+    expect(html).toContain('kline')
     expect(html).toContain('Your session ended unexpectedly.')
+    expect(html).not.toContain('Check git status first.')
+    expect(html).toContain('Note to Ivy')
+    expect(html).toContain('aria-expanded="false"')
     expect(html).not.toContain('Edit')
   })
 

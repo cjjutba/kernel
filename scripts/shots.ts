@@ -55,20 +55,6 @@ async function hoverPreview(page: Page, target: ReturnType<Page['locator']>) {
   await page.waitForTimeout(300)
 }
 
-// A Read image row clicked: the first one loads and opens its image in a tab, the one for the deleted file opens to its path (KERNEL-671).
-async function clickReadImage(page: Page, name: string) {
-  await page.locator('.trow-btn', { hasText: 'Read image' }).filter({ hasText: name }).first().click()
-  await page.mouse.move(0, 0)
-  await page.waitForTimeout(400)
-}
-
-// KERNEL-1025: the run of grey notes opened from its "and 2 more" button.
-async function openNotes(page: Page) {
-  await page.getByRole('button', { name: /and \d+ more/ }).click()
-  await page.mouse.move(0, 0)
-  await page.waitForTimeout(300)
-}
-
 // WorkspaceScrolledUp is a long chat read from higher up. The scroll position is the transcript's own, so wheel it up like a reader would.
 async function scrollUp(page: Page) {
   await page.locator('.ws-scroll').hover()
@@ -193,25 +179,24 @@ async function openRail(page: Page, row: string) {
   await page.waitForTimeout(300)
 }
 
-// WorkspaceQuestionSteps is drawn on question 2 of 3 with two rows ticked; the step is local to the card.
+// WorkspaceQuestionSteps is drawn on question 1 of 3 with its pick kept: a single-select pick moves on, so the pager goes back to it; the step is local to the card.
 async function stepToSecondQuestion(page: Page) {
-  await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click()
-  await page.getByRole('checkbox', { name: 'Row actions menu' }).click()
-  await page.getByRole('checkbox', { name: 'Invoice detail header' }).click()
+  await page.getByRole('radio', { name: 'File it as its own issue' }).click()
+  await page.getByRole('button', { name: 'Show question 1' }).click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
 
 // WorkspaceKernelNoteOpen is the Kernel note opened to its full text, which is local to the note.
 async function openKernelNote(page: Page) {
-  await page.locator('.knote').click()
+  await page.locator('.knote').first().click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
 
 // WorkspaceQuestion is drawn with option 1 picked, which is local to the card, so Send is ready.
 async function pickFirstOption(page: Page) {
-  await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click()
+  await page.getByRole('radio', { name: 'File it as its own issue' }).click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
@@ -225,19 +210,19 @@ async function askApprove(page: Page) {
 
 // WorkspaceQuestionStates is option 1 picked, option 3 focused from the keyboard and option 2 hovered (KERNEL-676).
 async function questionStates(page: Page) {
-  await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click()
+  await page.getByRole('radio', { name: 'File it as its own issue' }).click()
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
-  await page.getByRole('radio', { name: /Add the client name/ }).hover()
+  await page.getByRole('radio', { name: /Leave it/ }).hover()
   await page.waitForTimeout(300)
 }
 
 // WorkspaceQuestionOther is drawn on question 3 with the first two answered and a Something else answer typed.
 async function typeOtherAnswer(page: Page) {
-  await stepToSecondQuestion(page)
-  await page.getByRole('button', { name: 'Next' }).click()
+  await page.getByRole('radio', { name: 'File it as its own issue' }).click()
+  await page.getByRole('radio', { name: 'The release candidate from Friday' }).click()
   await page.getByRole('radio', { name: 'Something else' }).click()
-  await page.getByRole('textbox', { name: 'Your answer' }).fill('Ask me again after the review')
+  await page.getByRole('textbox', { name: 'Your answer' }).fill('Only moved shots, plus the review screen')
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
@@ -797,30 +782,27 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceQuestionStates: questionStates,
   // UX audit motion runs: scroll up first so the button shows, and pick the first answer so Send is enabled.
   AuditScrollToBottomMotion: scrollUp,
-  AuditQuestionPicked: async (page) => { await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click(); await page.mouse.move(0, 0) },
-  AuditQuestionAnswerMotion: async (page) => { await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click({ force: true }); await page.locator('.tcard').getByRole('button', { name: 'Send', exact: true }).focus() },
+  AuditQuestionPicked: async (page) => { await page.getByRole('radio', { name: 'File it as its own issue' }).click(); await page.mouse.move(0, 0) },
+  AuditQuestionAnswerMotion: async (page) => { await page.getByRole('radio', { name: 'File it as its own issue' }).click({ force: true }); await page.locator('.tcard').getByRole('button', { name: 'Send', exact: true }).focus() },
   AuditRailJumpMotion: async (page) => { await page.getByRole('button', { name: 'Jump to message' }).focus() },
   AuditRailJumpSendMotion: async (page) => { await page.getByRole('button', { name: 'Jump to message' }).focus() },
-  AuditGroupCollapseMotion: async (page) => { await page.locator('.group-btn').first().focus() },
-  AuditGroupOpenMotion: async (page) => { await page.waitForTimeout(800); await page.locator('.group-btn').first().focus() },
+  AuditGroupCollapseMotion: async (page) => { await page.locator('.fold-head').first().focus() },
+  AuditGroupOpenMotion: async (page) => { await page.waitForTimeout(800); await page.locator('.fold-head').first().focus() },
   WorkspacePlanApproveDraft: askApprove,
-  WorkspaceLeadStepOpen: async (page) => { await page.locator('.group-btn').first().click(); await page.locator('.group-item .trow-btn:not(:disabled)').first().click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
-  WorkspaceLeadStepsOpen: async (page) => { for (const g of await page.locator('.group-btn').all()) await g.click(); await openEveryRow(page) },
+  WorkspaceLeadStepOpen: async (page) => { await page.locator('.fold-head').first().click(); await page.locator('.step .trow-btn:not(:disabled)').first().click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
+  WorkspaceLeadStepsOpen: async (page) => { for (const g of await page.locator('.fold-head').all()) await g.click(); await openEveryRow(page) },
   WorkspaceQuestionSteps: stepToSecondQuestion,
   WorkspaceQuestionOther: typeOtherAnswer,
   LeadOpenItemsOpen: async (page) => { await page.getByRole('button', { name: /3 open/ }).click(); await page.waitForTimeout(200) },
   SettingsProjectPrsDefault: (page) => scrollToSection(page, 'Rules'),
   SettingsProjectPrsShared: (page) => scrollToSection(page, 'Rules'),
   SettingsProjectPrsDetails: async (page) => { await page.getByRole('button', { name: 'Show details of the code review' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(200) },
-  WorkspaceRowsOpen: (page) => openRows(page, ['Thought', 'Run unit tests', 'Edited']),
-  WorkspaceRowsFolded: (page) => openRows(page, ['Thought', 'Edited']),
+  WorkspaceRowsOpen: (page) => openRows(page, ['Ran step 6', 'Checked types']),
   WorkspaceTurnFoldedOpen: openEveryRow,
-  WorkspaceTurnFoldedCopy: async (page) => {
-    await page.locator('.trow-btn', { hasText: 'I will build the table first' }).focus()
-    await page.keyboard.press('Enter')
-    await page.keyboard.press('Tab')
-    await page.waitForTimeout(300)
-  },
+  WorkspaceTurnRunning: (page) => openRows(page, ['Ran steps 1 to 5']),
+  WorkspaceToolCalls: (page) => openRows(page, ['test/journey.test.ts', 'Checked types']),
+  WorkspaceHunks: (page) => openRows(page, ['test/journey.test.ts']),
+  AuditLongOutput: openEveryRow,
   WorkspaceStepCardBash: openEveryRow,
   WorkspaceStepCardMcp: openEveryRow,
   WorkspaceStepCardCodexDiff: openEveryRow,
@@ -834,19 +816,18 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   // KERNEL-1068: the breakdown opened from the keyboard, over the rows after the plan card.
   WorkspacePlanFinishedFollowed: async (page) => { await page.locator('.plan-attn-n').focus(); await page.waitForTimeout(300) },
   WorkspacePlanFinishedLong: async (page) => { await page.locator('.plan-attn-n').focus(); await page.waitForTimeout(300) },
-  WorkspaceReadImagePreview: (page) => hoverPreview(page, page.locator('.trow-btn', { hasText: 'Read image' })),
+  WorkspaceReadImagePreview: (page) => openRows(page, ['ReviewRc.png']),
   WorkspacePasteImagePreview: (page) => hoverPreview(page, page.getByRole('button', { name: 'Open image.png' })),
   WorkspacePasteTextPreview: (page) => hoverPreview(page, page.getByRole('button', { name: 'Open pasted_text_1.txt' })),
   WorkspaceIssuePreview: (page) => hoverPreview(page, page.getByRole('button', { name: /^Open issue T-17/ })),
-  WorkspaceReadImageTab: (page) => clickReadImage(page, 'image.png'),
-  WorkspaceReadImageMissing: (page) => clickReadImage(page, 'image-2.png'),
+  WorkspaceReadImageTab: async (page) => { await openRows(page, ['ReviewRc.png']); await page.getByRole('button', { name: 'Open in a tab' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(400) },
+  WorkspaceReadImageMissing: (page) => openRows(page, ['ReviewRc.png']),
   WorkspaceJustSent: sendMessage,
   WorkspaceJustSentLong: sendMessage,
   WorkspaceJustSentDone: sendAndFinish,
   WorkspaceNewChatJustSent: sendFromNewChat,
   WorkspaceLeaveAndReturn: leaveAndReturn,
   WorkspaceScrolledUp: scrollUp,
-  WorkspaceQuietTranscriptNotes: openNotes,
   WorkspaceChatSwitchWorkingMotion: async (page) => { await page.getByRole('tab', { name: 'Snapshot tests' }).click(); await page.waitForTimeout(500); await page.getByRole('tab', { name: 'Empty state copy' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(500) },
   WorkspaceChatSwitchSavedSpotMotion: async (page) => { await scrollUp(page); await page.getByRole('tab', { name: 'Empty state copy' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(500) },
   ChatRestoredSpot: scrollUp,

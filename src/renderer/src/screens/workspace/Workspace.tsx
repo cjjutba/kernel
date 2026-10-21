@@ -28,6 +28,7 @@ import { LeadPrSummary } from './pr/LeadPrSummary'
 import { LocalMergeInfo } from './pr/LocalMerge'
 import { hasChanges } from './pr/model'
 import { copyBranch, PrHeader } from './pr/PrHeader'
+import { SessionRail } from './SessionRail'
 import { SkipNotice } from './terminal/SkipNotice'
 import { TerminalView } from './terminal/Terminal'
 import { WorktreeWait } from './WorktreeWait'
@@ -261,8 +262,10 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   // chrome, not a PR action: there is one, positioned against the screen's top right corner, so it is the same element at the same
   // coordinates whether the panel is open or closed and never takes the band's tone. The header and the band each keep an empty slot
   // under it (KERNEL-769).
+  // A teammate's workspace shows its Session rail on the right while the panel is closed (KERNEL-1094).
+  const rail = !panels && !newChatShown && !isLead
   return (
-    <div className="panel ws-panel">
+    <div className="panel ws-panel" data-rail={rail || undefined}>
       {isLead ? (
         <OneRowHeader project={project} end={!newChatShown && <>
           <IssueKey ws={ws} project={project} />
@@ -310,10 +313,10 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                   : chat?.kind === 'terminal'
                     ? <><SkipNotice chat={chat} /><TerminalView id={chat.id} label="Big terminal" /></>
                   : chat
-                    ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={edit} onOpenDiff={openDiff} onForked={select} />
+                    ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={edit} onOpenDiff={openDiff} onForked={select} moveNotice={banner ? null : moveNotice} />
                     : <div className="grow" />}
           </div>
-          {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} why={problem?.placeholder} setupShown={setupWait} running={running} prefill={prefill} viewer={viewer ? { held: banner ? banner.actions.length > 0 : !!moveNotice } : undefined} banner={<>{isLead && chat.kind === 'chat' && <OpenItems chat={chat} />}{banner ? <WorkspaceBanner view={banner} ws={ws} chat={chat} /> : moveNotice && <ChatMoveNotice chat={chat} notice={moveNotice} />}{chat.kind === 'chat' && <FellBackLine chat={chat} />}</>} />}
+          {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} why={problem?.placeholder ?? (moveNotice && !banner ? 'Pick an account above to keep going' : undefined)} setupShown={setupWait} running={running} prefill={prefill} viewer={viewer ? { held: banner ? banner.actions.length > 0 : !!moveNotice } : undefined} banner={<>{isLead && chat.kind === 'chat' && <OpenItems chat={chat} />}{banner && <WorkspaceBanner view={banner} ws={ws} chat={chat} />}{chat.kind === 'chat' && <FellBackLine chat={chat} />}</>} />}
         </section>
       </OpenIssue.Provider>
       </OpenText.Provider>
@@ -336,6 +339,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
           </div>
         </aside>
       )}
+      {rail && <SessionRail ws={ws} />}
       {!newChatShown && <RightPanelToggle name="panels" />}
     </div>
   )

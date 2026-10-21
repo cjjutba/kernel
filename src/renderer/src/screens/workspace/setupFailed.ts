@@ -8,14 +8,14 @@ type SetupFailed = Extract<PushEvent, { type: 'setup.failed' }>
 type WorktreeFailed = Extract<PushEvent, { type: 'worktree.failed' }>
 
 /** Who keeps working: the teammate by name, or Kernel for the Lead's own chats. */
-function whoWorks(ws: Workspace): string {
+export function whoWorks(ws: Workspace): string {
   if (ws.lead) return 'Kernel'
   const s = getState()
   return s.agents[ws.projectId]?.find((a) => a.id === ws.agentId)?.name ?? ws.agentId
 }
 
 /** The third line: the chat the toast is about, so one that came from another tab says which. */
-function chatTitle(ws: Workspace, chatId: string | undefined): string | undefined {
+export function chatTitle(ws: Workspace, chatId: string | undefined): string | undefined {
   const chat = chatId ? getState().chats[ws.id]?.find((c) => c.id === chatId) : undefined
   return chat?.title ?? ws.title
 }

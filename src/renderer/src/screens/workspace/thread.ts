@@ -21,21 +21,28 @@ export type Entry = { kind: 'item'; item: ChatItem } | { kind: 'run'; run: Run }
 export type ThreadBlock =
   /** `actions` marks the last agent line of a stopped turn, or of one an app restart cut off: it carries the full actions where every other line only offers Copy (KERNEL-828). */
   | { kind: 'item'; item: ChatItem; actions?: true }
-  | { kind: 'group'; id: string; items: ChatItem[]; entries: Entry[]; summary: Summary; turn: FoldTurn }
+  /**
+   * `current` is the one fold of a running turn that is doing the work now: it says Working or Waiting, and the folds before it say Worked.
+   * `ends` is the fold a turn ended on, with no reply after it, so its last step stays in view under the closed header (KERNEL-1094).
+   */
+  | { kind: 'group'; id: string; items: ChatItem[]; entries: Entry[]; summary: Summary; turn: FoldTurn; current?: true; ends?: true }
   | { kind: 'files'; id: string; files: ChangedFile[] }
   /** A turn's time. `actions` is on a finished turn that doesn't end on text: the time line then carries Copy, Retry and the "..." menu, with `copy` the turn's last message when it has one (KERNEL-828). */
-  | { kind: 'meta'; id: string; text: string; actions?: { copy?: string; files: boolean; checkpointId?: string }; quiet?: true }
+  | { kind: 'meta'; id: string; text: string; actions?: { copy?: string; files: boolean; checkpointId?: string } }
   /**
    * A finished turn's reply with the end of its turn under it: the changed files, then one line with how long the turn took
    * and when, and the reply's actions (KERNEL-346).
    */
-  | { kind: 'reply'; id: string; item: Extract<ChatItem, { kind: 'text' }>; files?: ChangedFile[]; meta: string; checkpointId?: string; quiet?: true }
+  | { kind: 'reply'; id: string; item: Extract<ChatItem, { kind: 'text' }>; files?: ChangedFile[]; meta: string; checkpointId?: string }
   /** Two or more grey notes in a row, as one line: the latest and "and N more", which opens to all of them. A PR state note never joins one, and neither does an error. */
   | { kind: 'notes'; id: string; items: NoteItem[] }
   /** Kernel's message right after a quit or crash note, folded into that note's line: the line says what happened, opening it shows the message. */
   | { kind: 'relaunch'; id: string; note: Extract<ChatItem, { kind: 'note' }>; message: Extract<ChatItem, { kind: 'user' }> }
-  /** A turn that ended badly. `output` is what the last failed tool printed. */
-  | { kind: 'error'; id: string; message: string; output?: string }
+  /**
+   * How a turn that didn't finish ended, as one quiet line (KERNEL-1094): you stopped it, it stopped on an error (the error itself is a toast) or at a usage limit, or the app quit under it, which offers Continue.
+   * `ms` is how long it ran. A stopped or failed turn has its time line under this one.
+   */
+  | { kind: 'end'; id: string; why: 'stopped' | 'failed' | 'limit' | 'cut'; ms?: number }
 
 /**
  * What a fold knows about its turn. `live` is a turn that hasn't ended: its folds show their steps. `timer` is on the turn's first fold. A header is
@@ -51,7 +58,18 @@ export const WORKING = 'Working'
 
 export const fmtDuration = (ms: number) => {
   const s = Math.max(0, Math.round(ms / 1000))
+  if (s >= 3600) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
   return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`
+}
+
+/** How long a fold's own steps took: from its first step to the end of its last, for a fold that isn't the turn's first, which has no time of its own. */
+export function foldSpan(items: ChatItem[]): number | undefined {
+  const first = items[0]
+  const last = items[items.length - 1]
+  if (!first || !last) return undefined
+  const ms = last.ts + (last.kind === 'tool' ? last.durationMs ?? 0 : 0) - first.ts
+  // A fold of one quick step has no time worth saying.
+  return ms >= 1000 ? ms : undefined
 }
 
 export const fmtClock = (ts: number) => new Date(ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
@@ -234,8 +252,8 @@ function countOf(run: Run) {
   return { done, failed, denied }
 }
 
-/** The tools whose call is a question to the user: Claude's, and the Lead's through Claude or Codex. Their card shows the question, so a row of raw JSON would say it twice. */
-const QUESTION_TOOLS = new Set(['AskUserQuestion', 'mcp__kernel__ask_user'])
+/** The Lead's question tool, through Claude or Codex. Its card shows the question, and a row of raw JSON would say it twice. Claude's own AskUserQuestion is a step like any other: "Asked a question" and what it asked. */
+const QUESTION_TOOLS = new Set(['mcp__kernel__ask_user'])
 
 const isStep = (i: ChatItem): i is Step => i.kind === 'tool' || i.kind === 'thinking' || i.kind === 'text'
 
@@ -267,7 +285,12 @@ function foldTurn(turn: ChatItem[], blocks: ThreadBlock[], info: FoldTurn) {
   let steps: ChatItem[] = []
   const inFold = info.live && turn.some((i) => i.kind === 'tool')
   const flush = () => {
-    if (steps.length) foldBlocks(steps, blocks, inFold, info)
+    if (!steps.length) return
+    // A running turn's newest message reads under its fold as it is written, and so does the one just before a card, so the reader sees what the agent says without opening the fold (KERNEL-1094).
+    // A step that follows takes it into the fold.
+    const tail = info.live && steps.length > 1 && steps[steps.length - 1].kind === 'text' ? steps.pop() : undefined
+    foldBlocks(steps, blocks, inFold, info)
+    if (tail) blocks.push({ kind: 'item', item: tail })
     steps = []
   }
   for (const item of turn) {
@@ -284,52 +307,56 @@ function foldTurn(turn: ChatItem[], blocks: ThreadBlock[], info: FoldTurn) {
  * When the reply is the turn's last row, those three are one `reply` block, so its actions share the time's line. A turn that ends on a
  * step instead puts the actions on the time's line (KERNEL-828). Every other agent line offers Copy alone.
  * Every agent message before the reply is a step in that fold (KERNEL-840), so the turn reads as the user's message, one fold and the reply.
- * A turn still running folds all its steps, the one in flight too (`running` says whether the chat's turn is). A stopped one, or one an app
- * restart cut off, folds the same way with its stop note and actions under the fold. A failed one shows every item above its error card.
+ * A turn still running folds all its steps, the one in flight too (`running` says whether the chat's turn is). A stopped one, a failed one and one an app
+ * restart cut off fold the same way, with one quiet line under the fold that says how it ended (KERNEL-1094).
  */
 export function buildThread(items: ChatItem[], running = false): ThreadBlock[] {
   const blocks: ThreadBlock[] = []
   let turn: ChatItem[] = []
   let startedAt: number | undefined
-  // Only the last turn keeps its time and actions in view (KERNEL-1025), so each footer remembers its turn until the last one is known.
-  let turns = 0
-  const feet: { block: Extract<ThreadBlock, { kind: 'meta' | 'reply' }>; turn: number }[] = []
-  const foot = (block: Extract<ThreadBlock, { kind: 'meta' | 'reply' }>) => { blocks.push(block); feet.push({ block, turn: turns }) }
+  const foot = (block: Extract<ThreadBlock, { kind: 'meta' | 'reply' }>) => { blocks.push(block) }
   const finish = (open = false) => {
-    turns++
     const result = turn.find((i): i is Extract<ChatItem, { kind: 'result' }> => i.kind === 'result')
     const stop = turn.find((i) => i.kind === 'interrupted')
     const live = open && !result && !stop
-    const durationMs = result ? result.durationMs : stop && startedAt !== undefined ? Math.max(0, stop.ts - startedAt) : undefined
+    // A turn the app quit under has no result and no stop. Its time is from the message to the end of its last step.
+    const last = turn[turn.length - 1]
+    const cutMs = !result && !stop && last && startedAt !== undefined ? Math.max(0, last.ts + (last.kind === 'tool' ? last.durationMs ?? 0 : 0) - startedAt) : undefined
+    const durationMs = result ? result.durationMs : stop && startedAt !== undefined ? Math.max(0, stop.ts - startedAt) : cutMs
     const seen = turn.filter((i) => isStep(i) && hasContent(i) && !(i.kind === 'tool' && viewOf(i).hidden)).length
     // Every fold of the turn shares this, so the first one to be drawn takes the duration.
     const info: FoldTurn = { live, timer: true, startedAt, durationMs, short: seen <= 1 || (durationMs !== undefined && durationMs < SHORT_MS) }
     if (live) {
+      const from = blocks.length
       foldTurn(turn, blocks, info)
-      turn = []
-      return
-    }
-    const stopped = turn.some((i) => i.kind === 'interrupted')
-    if (result && !result.ok && !stopped) {
-      // A failed turn keeps every item and ends on its error card, with Retry.
-      const failedTool = [...turn].reverse().find((i): i is Extract<ChatItem, { kind: 'tool' }> => i.kind === 'tool' && i.status === 'failed')
-      for (const item of turn) {
-        if (item.kind !== 'result') blocks.push({ kind: 'item', item })
-        else blocks.push({ kind: 'error', id: item.id, message: item.error ?? 'The turn failed', output: failedTool?.output })
-      }
+      // Only the last fold is working now. The ones before it, which a card or a note split off, are done.
+      const folds = blocks.slice(from).filter((b): b is Extract<ThreadBlock, { kind: 'group' }> => b.kind === 'group')
+      folds.forEach((g, n) => { if (n < folds.length - 1) g.turn = { ...g.turn, live: false }; else g.current = true })
       turn = []
       return
     }
     if (!result?.ok) {
-      // A stopped turn, or one an app restart cut off, folds like a finished one. Its last message stays out of the fold and offers the actions.
-      const body = turn.filter((i) => i.kind !== 'result')
+      // A turn that ended badly folds like a finished one: you stopped it, it failed, or the app quit under it. Its last message stays out of the fold, then comes one quiet line
+      // that says how it ended, then the time and the actions. A turn a quit note already speaks for gets no line of its own.
+      const over = turn.map((i) => i.kind).lastIndexOf('result')
+      const after = over < 0 ? [] : turn.slice(over + 1)
+      const body = (over < 0 ? turn : turn.slice(0, over)).filter((i) => i.kind !== 'result' && i.kind !== 'interrupted')
       const tail = body.map((i) => i.kind).lastIndexOf('text')
       foldTurn(tail < 0 ? body : body.slice(0, tail), blocks, info)
       if (tail >= 0) {
-        blocks.push({ kind: 'item', item: body[tail], actions: true })
+        blocks.push({ kind: 'item', item: body[tail] })
         foldTurn(body.slice(tail + 1), blocks, info)
       }
-      for (const item of turn) if (item.kind === 'result') foot({ kind: 'meta', id: item.id, text: `${fmtDuration(item.durationMs)} · ${fmtClock(item.ts)}` })
+      const folded = blocks[blocks.length - 1]
+      if (folded?.kind === 'group') folded.ends = true
+      const why = stop ? 'stopped' : result ? (result.limit ? 'limit' : 'failed') : 'cut'
+      if (result || stop || (body.some((i) => i.kind === 'tool') && !body.some(isQuitNote))) blocks.push({ kind: 'end', id: `end-${(result ?? stop ?? last).id}`, why, ...(durationMs !== undefined ? { ms: durationMs } : {}) })
+      if (result) {
+        const copy = tail >= 0 ? (body[tail] as Extract<ChatItem, { kind: 'text' }>).text : undefined
+        foot({ kind: 'meta', id: result.id, text: `${fmtDuration(result.durationMs)} · ${fmtClock(result.ts)}`, actions: { ...(copy ? { copy } : {}), files: false, ...(result.checkpointId ? { checkpointId: result.checkpointId } : {}) } })
+      }
+      // Notes written after the turn ended come after its end, as they do after a turn that finished.
+      for (const item of after) blocks.push({ kind: 'item', item })
       turn = []
       return
     }
@@ -344,6 +371,9 @@ export function buildThread(items: ChatItem[], running = false): ThreadBlock[] {
     foldTurn(before, blocks, info)
     const meta = `${fmtDuration(result.durationMs)} · ${fmtClock(result.ts)}`
     const reply = rest[rest.length - 1]
+    // A turn that ends on a step, with no message after it, keeps that step in view under its fold.
+    const folded = blocks[blocks.length - 1]
+    if (reply?.kind !== 'text' && !rest.length && folded?.kind === 'group') folded.ends = true
     if (reply?.kind === 'text') {
       for (const item of rest.slice(0, -1)) blocks.push({ kind: 'item', item })
       foot({ kind: 'reply', id: reply.id, item: reply, ...(result.files?.length ? { files: result.files } : {}), meta, ...(result.checkpointId ? { checkpointId: result.checkpointId } : {}) })
@@ -369,7 +399,6 @@ export function buildThread(items: ChatItem[], running = false): ThreadBlock[] {
     } else turn.push(item)
   }
   finish(running)
-  for (const f of feet) if (f.turn < turns) f.block.quiet = true
   return foldNotes(blocks)
 }
 
@@ -420,5 +449,5 @@ export function turnFiles(files: ChangedFile[]): { title: string; added: number;
   const hidden = fold ? rows.slice(FOLD_SHOWN) : []
   const { added, removed } = sum(rows)
   const more = sum(hidden)
-  return { title: `${rows.length} ${rows.length === 1 ? 'file' : 'files'} changed in this reply`, added, removed, shown: fold ? rows.slice(0, FOLD_SHOWN) : rows, hidden, hiddenAdded: more.added, hiddenRemoved: more.removed }
+  return { title: `${rows.length} ${rows.length === 1 ? 'file' : 'files'} changed`, added, removed, shown: fold ? rows.slice(0, FOLD_SHOWN) : rows, hidden, hiddenAdded: more.added, hiddenRemoved: more.removed }
 }
