@@ -2390,8 +2390,9 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
   it('holds only the chats that carry on during the launch check: other sends and queues go at once', async () => {
     const s = await midTurn()
     s.store.saveWorkspace({ ...s.store.workspace('ws')!, id: 'ws2', name: 'invoice-export', path: '/tmp/ws2' })
+    s.store.saveWorkspace({ ...s.store.workspace('ws')!, id: 'ws3', name: 'invoice-csv', path: '/tmp/ws3' })
     s.store.saveChat({ ...s.chat, id: 'other', workspaceId: 'ws2' })
-    s.store.saveChat({ ...s.chat, id: 'third', workspaceId: 'ws2' })
+    s.store.saveChat({ ...s.chat, id: 'third', workspaceId: 'ws3' })
     await s.sessions.shutdown(0)
     // A message that waited for a free slot in another chat before the quit.
     s.store.saveMeta('queues', { ...s.store.meta<Record<string, unknown>>('queues'), third: [{ id: 'q3', chatId: 'third', parts: [{ type: 'text', text: 'Export the CSV' }], ts: 1 }] })
@@ -2683,6 +2684,9 @@ describe('a chat whose Claude Code session is gone (KERNEL-286)', () => {
     const lead: AgentDef = { id: 'kernel', file: '.claude/agents/kernel.md', name: 'Kernel', role: 'Lead', description: 'Plans', lead: true, prompt: 'You are Kernel.' }
     const update: TeamUpdate = { rows: [{ workspaceId: 'w1', agentId: 'christian', name: 'Christian', task: 'Remove the Try section', prNumber: 108, events: [{ kind: 'pr.ready', text: 'Passed checks, no conflicts. Not reviewed yet', actionable: true }] }] }
     const s = await setup('acceptEdits', { agent: lead })
+    // The setup's turn is done, so the folder is free for the chat whose session is gone (one-writer-per-folder).
+    s.call.feed({ type: 'result', subtype: 'success', uuid: 'r0', duration_ms: 5 })
+    await flush()
     s.store.saveChat({ ...s.chat, id: 'old', sessionId: 'gone-1' })
     expect(s.sessions.post('old', [{ type: 'text', text: 'Team update from Kernel, not from the user.' }], { update })).toBe(true)
     gone(sdk.calls.at(-1)!, 'gone-1')
@@ -2776,6 +2780,9 @@ describe('images in a chat message (KERNEL-545)', () => {
   it('sends a fresh session the same files when the resumed one is gone, without saving them again', async () => {
     const repo = await tempRepo()
     const s = await setup('acceptEdits', { ws: { path: repo } })
+    // The setup's turn is done, so the folder is free for the chat whose session is gone (one-writer-per-folder).
+    s.call.feed({ type: 'result', subtype: 'success', uuid: 'r0', duration_ms: 5 })
+    await flush()
     s.store.saveChat({ ...s.chat, id: 'old', sessionId: 'gone-1' })
     await s.sessions.send('old', parts)
     const first = sdk.calls.at(-1)!

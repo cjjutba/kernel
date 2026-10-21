@@ -213,7 +213,8 @@ const WAITS: Partial<Record<QueueReason, { because: string; until: string }>> = 
   moving: { because: 'Other chats are moving to the new account, two at a time', until: 'when one of them is done' },
   paused: { because: 'The project is paused', until: 'when the user resumes it' },
   offline: { because: 'Kernel is offline or signed out', until: 'once it is back' },
-  limit: { because: 'Usage is close to the limit', until: 'when it resets or usage drops' }
+  limit: { because: 'Usage is close to the limit', until: 'when it resets or usage drops' },
+  folder: { because: 'Another chat is working in the same folder', until: 'when it finishes there' }
 }
 
 /**

@@ -339,7 +339,7 @@ describe('Queue and Steer while a turn runs', () => {
   const noop = () => undefined
   const send = { label: 'Queue message', ready: true, stop: true, onSend: noop, onSteer: noop }
   const row = { id: 'q1', chatId: 'c', parts: [{ type: 'text' as const, text: 'mind the null case' }], ts: 1 }
-  const tray = (o: { running?: boolean; why?: 'paused' } = {}) => renderToStaticMarkup(createElement(QueueList, { queue: [row], running: true, onEdit: noop, onNow: noop, onRemove: noop, ...o }))
+  const tray = (o: { running?: boolean; why?: 'paused' | 'folder'; folder?: { id: string; workspaceId: string; title: string }; onOpenChat?: () => void } = {}) => renderToStaticMarkup(createElement(QueueList, { queue: [row], running: true, onEdit: noop, onNow: noop, onRemove: noop, ...o }))
 
   it('draws two real buttons, each with its one-line tooltip and key', () => {
     const html = renderToStaticMarkup(createElement(QueueOrSteer, { send }))
@@ -357,5 +357,14 @@ describe('Queue and Steer while a turn runs', () => {
     expect(tray()).toMatch(/>Steer now<\/button>/)
     expect(tray()).toContain('data-tip="Add this to the running turn"')
     expect(tray({ why: 'paused' })).toMatch(/>Send now<\/button>/)
+  })
+
+  it('names the chat writing in the folder, opens it from its name, and offers no Send now', () => {
+    const holder = { id: 'other', workspaceId: 'w', title: 'Invoice migration' }
+    const html = tray({ why: 'folder', folder: holder, onOpenChat: noop })
+    expect(html).toMatch(/Waiting for <button[^>]*>Invoice migration<\/button> to finish in this folder\./)
+    expect(html).not.toContain('Send now')
+    expect(html).not.toContain('Steer now')
+    expect(tray({ why: 'folder' })).toContain('Waiting for another chat to finish in this folder.')
   })
 })

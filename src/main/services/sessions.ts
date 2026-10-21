@@ -1,6 +1,6 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ModelInfo, Options, SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
 import type { AccountAuth, Approval, UnlistedTools, AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, ChatRunMode, CodexPersonality, CompactWindow, Decision, LastTurn, Provider, MessageFrom, QueuedMessage, QueueReason, RateLimit, Role, TeamUpdate, Workspace } from '@shared/types'
@@ -313,7 +313,7 @@ export type TurnBy = MessageFrom | 'user'
  * choose how it moves to another account, it is held near a usage limit, over the agent limit or behind cold re-reads, or
  * Kernel is closing.
  */
-export type PostHold = 'busy' | 'queued' | 'crashed' | 'held' | 'launching' | 'paused' | 'offline' | 'move' | 'limit' | 'capacity' | 'moving' | 'closing'
+export type PostHold = 'busy' | 'queued' | 'crashed' | 'held' | 'launching' | 'paused' | 'offline' | 'move' | 'limit' | 'capacity' | 'moving' | 'folder' | 'closing'
 
 /** What stopped a chat mid-turn that carries on by itself: a usage limit, or Kernel quitting or closing (KERNEL-215). */
 export type CutOffReason = 'limit' | 'quit'
@@ -959,7 +959,12 @@ export class Sessions {
   turnRow(chatId: string): (ChatItem & { kind: 'user' }) | undefined { return this.live.get(chatId)?.sentItem }
 
   /** What a message sent now would wait for, or nothing when it can go at once. */
-  waitsFor(chatId: string, next: { from?: MessageFrom } | undefined = this.queued(chatId)[0]): QueueReason | undefined {
+  waitsFor(chatId: string, next: { from?: MessageFrom; ts?: number } | undefined = this.queued(chatId)[0]): QueueReason | undefined {
+    return this.waitsForNoFolder(chatId, next) ?? (this.folderBlocker(chatId, next) ? 'folder' : undefined)
+  }
+
+  /** `waitsFor` without the folder rule, which looks at the other chats' own holds and so can't ask the same of them. */
+  private waitsForNoFolder(chatId: string, next: { from?: MessageFrom } | undefined): QueueReason | undefined {
     const chat = this.d.store.chat(chatId)
     if (!chat) return undefined
     if (this.live.get(chat.id)?.running) return 'running'
@@ -971,6 +976,41 @@ export class Sessions {
     if (this.nearLimitHolds(chat.id) || this.accountLimitHolds(chat)) return 'limit'
     if (this.atCapacity(chat.id)) return 'capacity'
     if (this.coldHolds(chat.id, next)) return 'moving'
+    return undefined
+  }
+
+  /** Whether the chat's turns can change files. Plan mode and a review's lens can't, and a terminal is no agent turn, so none of them wait for a folder or hold one. */
+  private writes(chat: Chat) { return chat.kind !== 'terminal' && !chat.plan && !chat.lens }
+
+  /** A folder's real path, so two paths to the same folder (a symlink, a trailing slash) count as one. A folder that is gone keeps its own path. */
+  private realFolder(path: string): string {
+    try { return realpathSync(path) } catch { return path }
+  }
+
+  /**
+   * The chat that makes this one wait for its folder (one-writer-per-folder), or nothing. Turns that can write take turns in a
+   * folder: another chat there that is running a turn holds it, and so does one whose message has waited longer and is free to go,
+   * so the chat that waited first goes first. Chats that can't write (`writes`) neither wait nor hold anyone up. `next` is the message that would go, none for one sent now.
+   */
+  folderBlocker(chatId: string, next?: { ts?: number }): string | undefined {
+    const chat = this.d.store.chat(chatId)
+    const ws = chat && this.d.store.workspace(chat.workspaceId)
+    if (!chat || !ws || !this.writes(chat)) return undefined
+    const here = this.realFolder(ws.path)
+    const same = (id: string) => {
+      const other = id !== chatId ? this.d.store.chat(id) : undefined
+      const w = other && this.d.store.workspace(other.workspaceId)
+      return !!other && !!w && this.writes(other) && this.realFolder(w.path) === here ? other : undefined
+    }
+    for (const [id, l] of this.live) if (l.running && l.mode !== 'plan' && same(id)) return id
+    const mine = next?.ts ?? Infinity
+    for (const [id, queue] of this.queues) {
+      const other = queue.length && !this.live.get(id)?.running ? same(id) : undefined
+      // Only a chat that would go now holds a place: one that waits on a carry-on, a crash or another hold goes when that lifts.
+      if (!other || !this.open(id) || this.cutOff.has(id) || this.crashed.has(id)) continue
+      const ts = queue[0].ts
+      if ((ts < mine || (ts === mine && id < chatId)) && !this.waitsForNoFolder(id, queue[0])) return id
+    }
     return undefined
   }
 
@@ -1003,6 +1043,7 @@ export class Sessions {
     if (this.nearLimitHolds(chatId) || this.accountLimitHolds(chat)) return 'limit'
     if (this.atCapacity(chatId)) return 'capacity'
     if (this.coldHolds(chatId)) return 'moving'
+    if (this.folderBlocker(chatId)) return 'folder'
     return undefined
   }
 
@@ -1021,7 +1062,10 @@ export class Sessions {
   queueReason(chatId: string): QueueReason | undefined { return this.queued(chatId).length ? this.waitsFor(chatId) : undefined }
 
   unqueue(chatId: string, id: string): QueuedMessage[] {
-    return this.setQueue(chatId, this.queued(chatId).filter((q) => q.id !== id))
+    const rest = this.setQueue(chatId, this.queued(chatId).filter((q) => q.id !== id))
+    // A chat that waited first for its folder no longer does, so the ones behind it may go.
+    if (!rest.length) this.drainWaiting()
+    return rest
   }
 
   /**
@@ -1038,7 +1082,8 @@ export class Sessions {
     this.setQueue(chatId, [pick, ...rest])
     const live = this.live.get(chatId)
     const why = this.waitsFor(chatId)
-    if (this.closing) return this.queued(chatId)
+    // Send now can go past the agent limit and a usage hold, but never into a folder another chat is writing in.
+    if (this.closing || (!live?.running && this.folderBlocker(chatId, pick))) return this.queued(chatId)
     if (live?.running) { live.sendNext = true; await this.interrupt(chatId, true) }
     // Pressing Send now is the user choosing to go over the agent limit (KERNEL-271), or past the near-limit hold (KERNEL-220).
     else if (why === 'capacity' || why === 'moving' || why === 'limit' || (why === 'paused' && o.pastPause)) { this.setQueue(chatId, rest); this.dispatch(this.mustChat(chatId), pick.parts, pick) }
@@ -1431,7 +1476,7 @@ export class Sessions {
     const queue = this.queued(chatId)
     const [next] = queue
     const chat = this.d.store.chat(chatId)
-    if (this.closing || (this.launching && this.cutOff.has(chatId)) || !next || !chat || this.unmade(chat) || this.pausedChat(chat) || this.moveHolds.has(chatId) || this.nearLimitHolds(chatId) || this.accountLimitHolds(chat) || this.atCapacity(chatId) || this.coldHolds(chatId, next)) return
+    if (this.closing || (this.launching && this.cutOff.has(chatId)) || !next || !chat || this.unmade(chat) || this.pausedChat(chat) || this.moveHolds.has(chatId) || this.nearLimitHolds(chatId) || this.accountLimitHolds(chat) || this.atCapacity(chatId) || this.coldHolds(chatId, next) || this.folderBlocker(chatId, next)) return
     const batch = queue.length > 1 && !this.d.store.items(chatId).some((i) => i.kind === 'user') ? firstTurn(queue) : [next]
     this.setQueue(chatId, queue.slice(batch.length))
     this.dispatch(chat, next.parts, next, batch.slice(1))
@@ -1530,7 +1575,7 @@ export class Sessions {
       const chat = this.d.store.chat(id)
       if (!chat || !this.open(id)) { this.setCutOff(id, false); continue }
       if (reason === 'limit' && this.stuckHolds(chat)) continue
-      if (this.live.get(id)?.running || this.pausedChat(chat) || this.moveHolds.has(id) || this.atCapacity(id) || this.coldHolds(id) || this.limitHolds(chat) || this.nearLimitHolds(id)) continue
+      if (this.live.get(id)?.running || this.pausedChat(chat) || this.moveHolds.has(id) || this.atCapacity(id) || this.coldHolds(id) || this.limitHolds(chat) || this.nearLimitHolds(id) || this.folderBlocker(id, this.queued(id)[0])) continue
       // A lifted limit restarts the chats it cut off two at a time. The next starts when one ends its turn, where `drainWaiting` comes back here (KERNEL-220).
       if (reason === 'limit') {
         if (this.resuming.size >= RESUME_AT_ONCE) continue
@@ -1621,6 +1666,9 @@ export class Sessions {
     for (const [id, queue] of this.queues) if (!this.waiting.has(id)) queues[id] = queue
     this.d.store.saveMeta(QUEUES, queues)
   }
+
+  /** `stopWorkspace` is stopping chats, and starts the ones left once they all are. */
+  private stopping = 0
 
   private saveWorking() { this.d.store.saveMeta(WORKING, [...this.working]) }
 
@@ -1716,7 +1764,11 @@ export class Sessions {
   stop(chatId: string, o: { tree?: boolean } = {}) {
     const live = this.live.get(chatId)
     // A chat stopped while idle has no process but is stopped all the same.
-    if (!live && !this.turns.has(chatId)) return
+    if (!live && !this.turns.has(chatId)) {
+      // A held message of a chat that never ran goes with the chat, and the chats that waited behind it for the folder go on.
+      if (this.queued(chatId).length && !this.waiting.has(chatId)) { this.setQueue(chatId, []); this.freeFolder() }
+      return
+    }
     // Stopped by Kernel or the user: a hook's refusal no longer holds anyone up. A running turn's end says so on its own;
     // an idle chat that gave up blocked has no turn left to end, so Team and the sidebar hear it here (Archive, Close chat).
     const shown = this.turns.get(chatId)?.blocked && !live?.running
@@ -1725,11 +1777,14 @@ export class Sessions {
     this.turns.delete(chatId)
     if (live) this.end(chatId, live)
     if (live && o.tree) void endAll([...live.groups].map((pid) => -pid))
-    if (this.queued(chatId).length) this.setQueue(chatId, [])
+    const held = this.queued(chatId).length > 0
+    if (held) this.setQueue(chatId, [])
     this.compacted.delete(chatId)
     if (this.moveHolds.delete(chatId)) { const chat = this.d.store.chat(chatId); if (chat) this.d.onMoveHold?.(chat, false) }
     const ws = shown ? this.d.store.workspace(this.mustChat(chatId).workspaceId) : undefined
     if (ws) this.setStatus(ws, this.d.agentFor(ws), 'idle')
+    // A chat that was writing in its folder lets the next one in.
+    if (live?.running || held) this.freeFolder()
   }
 
   /** Close the process's input and abort it. `consume` sees the abort and reports nothing: no offline, no crash. */
@@ -1800,7 +1855,15 @@ export class Sessions {
     this.drain(chatId)
   }
 
-  stopWorkspace(workspaceId: string, o: { tree?: boolean } = {}) { for (const c of this.d.store.chats(workspaceId)) this.stop(c.id, o) }
+  stopWorkspace(workspaceId: string, o: { tree?: boolean } = {}) {
+    // Its chats stop together, so one's folder never goes to another of them that is about to stop as well.
+    this.stopping++
+    try { for (const c of this.d.store.chats(workspaceId)) this.stop(c.id, o) } finally { this.stopping-- }
+    this.freeFolder()
+  }
+
+  /** A chat that held a folder, or waited first for it, is gone, so the ones behind it start (one-writer-per-folder). */
+  private freeFolder() { if (!this.closing && !this.stopping) this.drainWaiting() }
 
   /**
    * The agent behind these workspaces changed: its file, its tools, or who leads (KERNEL-397). A process only reads its

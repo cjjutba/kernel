@@ -260,7 +260,7 @@ describe('plan cards outlive a restart', () => {
     store.saveChat(codex)
     store.saveApproval({ id: 'codex-plan', kind: 'plan', source: 'sdk', projectId: project.id, workspaceId: ws.id, chatId: codex.id, title: 'Plan for invoice-table', detail: PLAN, status: 'pending', createdAt: Date.now() })
     store.db.close()
-    const { k: k2 } = await relaunch(where)
+    const { k: k2, before } = await relaunch(where)
     expect(k2.store.approval('codex-plan')?.status).toBe('pending')
     // Paused, so the message waits instead of starting Codex.
     k2.sessions.pause(project.id)
@@ -269,6 +269,9 @@ describe('plan cards outlive a restart', () => {
     expect(k2.sessions.queued(codex.id)).toEqual([expect.objectContaining({ from: 'kernel', approvalId: 'codex-plan', parts: text(planApproval({ lead: false, plan: PLAN, restarted: true }).text) })])
     // The queued message keeps the approval when it goes out.
     k2.sessions.resume(project.id)
+    // The chat that was working carries on in the same folder, so the message goes when its turn ends (one-writer-per-folder).
+    const carried = await until(() => callIn(ws.path, before))
+    carried.feed({ type: 'result', subtype: 'success', uuid: 'r-carried', duration_ms: 5 })
     expect(answers(k2, codex.id).map((r) => r.item)).toEqual([expect.objectContaining({ id: 'answer-codex-plan', parts: text('Approved') })])
     await until(() => k2.store.items(codex.id).find((i) => i.kind === 'user' && i.from))
     expect(k2.store.items(codex.id).find((i) => i.kind === 'user' && i.from)).toMatchObject({ from: 'kernel', approvalId: 'codex-plan' })

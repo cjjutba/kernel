@@ -30,7 +30,7 @@ import { useModelKeys } from './useModelKeys'
 import { buttonName, cyclePatch, cycleRun, leadPlaceholder, modePatch, type CycleRun, nextMode, offLine, shownMode, type ComposerMode } from './modes'
 import { ComposerShell } from './ComposerShell'
 import type { PlusPanel } from './PlusMenu'
-import { canSendNow, QueueList } from './QueueList'
+import { canSendNow, QueueList, type FolderHolder } from './QueueList'
 import { sendMessage, sendQueuedNow, steerMessage, steerQueued } from './sendMessage'
 import { sendsOn, useSendWith } from './sendKey'
 import { NoteText } from '../NoteText'
@@ -76,6 +76,13 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
   const queue = useMemo(() => (taken.length ? waiting.filter((q) => !taken.includes(q.id)) : waiting), [waiting, taken])
   useEffect(() => { if (taken.length && !waiting.some((q) => taken.includes(q.id))) setTaken([]) }, [waiting, taken])
   const queueWhy = useStore((s) => s.queueWhy[chat.id])
+  // For a folder hold: the chat writing in this folder, or failing that the one that waited for it first. Found from the chats on screen, so it follows a title change.
+  const folder = useStore((s): FolderHolder | undefined => {
+    if (queueWhy !== 'folder' || !ws) return undefined
+    const here = s.workspaces.filter((w) => w.path === ws.path).flatMap((w) => s.chats[w.id] ?? []).filter((c) => c.id !== chat.id && c.kind !== 'terminal' && !c.closed && !c.plan)
+    const by = here.find((c) => s.running[c.id]) ?? here.find((c) => s.queue[c.id]?.length)
+    return by ? { id: by.id, workspaceId: by.workspaceId, title: by.title } : undefined
+  })
   // What this workspace waits for, and who waits for it, named live as PRs open and merge (KERNEL-259). Only those
   // workspaces are read, so a poll of the project's other PRs doesn't redraw the box.
   const related = useStore((s) => (ws ? s.workspaces.filter((w) => ws.waitsFor?.on.includes(w.id) || w.waitsFor?.on.includes(ws.id)) : EMPTY_WS))
@@ -382,6 +389,8 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
             queue={queue}
             why={queueWhy}
             held={held}
+            folder={folder}
+            onOpenChat={(c) => actions.ui.openTab(c.workspaceId, c.id)}
             running={running}
             sending={sendingNow}
             onEdit={editQueued}
