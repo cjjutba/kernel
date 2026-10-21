@@ -1,3 +1,4 @@
+import { isRemote } from '../../remote/isRemote'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { modelLabelOf, useCodexInUse, useProviderModels } from './composer/providerModels'
 import type { ChatPart, IssueTakenFinding, LeadWhere, NewChatPicks, WorkspaceMode, WorkspaceSource } from '@shared/types'
@@ -317,6 +318,7 @@ const GONE = { display: 'none' } as const
 
 /** With no project yet, the three ways to add one sit above the box (KERNEL-943). Each opens its own dialog. */
 function FirstProjectPills() {
+  if (isRemote()) return <p className="muted">Add a project in Kernel on your Mac to start here.</p>
   return (
     <nav className="lead-pills" aria-label="Add a project">
       <button type="button" className="lead-pill" onClick={() => actions.ui.openModal({ name: 'connectRepo' })}><Icon name="branch" size={14} />Connect a repo</button>

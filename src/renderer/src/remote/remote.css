@@ -1,0 +1,16 @@
+/* The browser client (remote-web-client): the pairing page and the notice over the app while the Mac is out of reach. */
+.remote-gate-body { display: flex; flex-direction: column; gap: 14px; padding: 16px 20px 20px; font-size: var(--fs-ui); line-height: 1.5; color: var(--ink-2); }
+.remote-gate-body p { margin: 0; }
+.remote-gate-field { display: flex; flex-direction: column; gap: 6px; }
+.remote-gate-error, .remote-gate-notice { color: var(--ink); }
+.remote-bar { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: var(--z-modal); max-width: calc(100vw - 32px); padding: 8px 14px; border: 1px solid var(--line-3); border-radius: var(--r-pill); background: var(--panel); color: var(--ink-2); font-size: var(--fs-meta); }
+
+/* Phone width (remote-web-client). The window's chrome made room for the Mac's traffic lights; a browser has none, so the toggle moves to the edge,
+   the sidebar opens over the page instead of beside it, and the header drops Back and Forward. start.tsx sets data-remote. */
+@media (max-width: 640px) {
+  [data-remote] .sidebar-toggle { left: 10px; z-index: var(--z-scrim); }
+  [data-remote] .app[data-sidebar='hidden'] .panel > .header { padding-left: 10px; }
+  [data-remote] .hist-in-header { display: none; }
+  [data-remote] .sidebar { position: fixed; top: 0; bottom: 0; left: 0; z-index: calc(var(--z-scrim) - 5); width: min(320px, 88vw); }
+  [data-remote] .modal { max-width: calc(100vw - 24px); }
+}

@@ -29,7 +29,7 @@ export class Remote extends Feature {
 
   /** This Mac's address on the network, for the URL of a server that listens on every interface. Tests swap it. */
   lanAddress: () => string | undefined = lanAddress
-  /** The web client's files. None until a later change adds the renderer build here. */
+  /** The web client's files: the renderer build, set by the app (`services/remoteAssets.ts`). None in tests and in a dev run. */
   assets?: (path: string) => Promise<Asset | undefined>
 
   private get auth(): RemoteAuth { return (this._auth ??= new RemoteAuth(this.store)) }

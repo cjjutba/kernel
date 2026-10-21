@@ -1,3 +1,4 @@
+import { isRemote } from '../../remote/isRemote'
 import { actions, useStore } from '../../store'
 import { IconButton } from '../../ui'
 import { HelpMenu } from './HelpMenu'
@@ -14,8 +15,8 @@ export function SidebarFooter() {
   return (
     <footer className="sbf">
       <div className="sbf-icons">
-        <IconButton className="sbf-btn" icon="settings" label="Settings" aria-pressed={inSettings || undefined} onClick={() => (inSettings ? actions.ui.leaveSettings() : actions.ui.openSettings())} />
-        <HelpMenu />
+        {!isRemote() && <IconButton className="sbf-btn" icon="settings" label="Settings" aria-pressed={inSettings || undefined} onClick={() => (inSettings ? actions.ui.leaveSettings() : actions.ui.openSettings())} />}
+        {!isRemote() && <HelpMenu />}
         <UsageButton />
       </div>
       <div className="sbf-slot"><UpdateSlot /></div>

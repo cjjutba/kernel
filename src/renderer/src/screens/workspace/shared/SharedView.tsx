@@ -1,3 +1,4 @@
+import { isRemote } from '../../../remote/isRemote'
 import { useMemo, useRef, useState } from 'react'
 import type { SharedFile, SharedVersion } from '@shared/types'
 import { call } from '../../../api'
@@ -91,11 +92,11 @@ function Loaded({ workspaceId, file, version }: { workspaceId: string; file: Sha
         </span>
         {page && <WidthPicker value={width} onChange={setWidth} />}
         {file.kind === 'image' && <ZoomControl zoom={zoom} />}
-        {!pdf && (
+        {!pdf && !isRemote() && (
           <span ref={toggle} style={{ display: 'contents' }}><Button size="sm" className="shared-comment" aria-pressed={commenting} disabled={!ready} icon="comment" onClick={() => setCommenting(!commenting)}>Comment</Button></span>
         )}
-        <IconButton icon="ext" size={14} box="sm" label={page ? 'Open in browser' : 'Open in Preview'} busy={busy === 'open'} busyLabel="Opening" onClick={() => void openInPreview()} />
-        <IconButton icon="folder" size={14} box="sm" label="Show in Finder" onClick={reveal} />
+        {!isRemote() && <IconButton icon="ext" size={14} box="sm" label={page ? 'Open in browser' : 'Open in Preview'} busy={busy === 'open'} busyLabel="Opening" onClick={() => void openInPreview()} />}
+        {!isRemote() && <IconButton icon="folder" size={14} box="sm" label="Show in Finder" onClick={reveal} />}
       </div>
       </div>
       <div className="shared-body">
