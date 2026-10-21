@@ -1,8 +1,8 @@
 **Settings pages share one head, one section label and one card.** Each page has a title, one muted line saying what it is for, then sections whose label is small and muted over a card with a `--line-2` outline and `--line-2` rows. A project page's title is the project's icon, its name, a slash and the page. Controls inside a card keep the `--line-3` outline. Rows are 48px with the label at regular weight, so a page reads as a list of settings and not as a stack of headings (Pen 15.1 to 15.30). KERNEL-1102.
 
-**Settings, Appearance maps Reduce motion to a select without a new value.** The setting is a boolean. Follow macOS is off, because the app already honors the system's reduced motion at all times, and Always reduce is on. The select says so, and the saved value did not change. KERNEL-1102.
+**Settings, Appearance maps Reduce motion to a select without a new value.** The setting is a boolean. Follow macOS is off, because the app's animations already follow the system's reduced motion setting, and Always reduce is on. The select says so, and the saved value did not change. KERNEL-1102.
 
-**Settings, Accounts is one card per provider.** A Providers control picks Claude Code or Codex, the card lists that provider's accounts with their meters and reset times, Switch or Use and a menu, and Add account sits inside it. Limits, Chats and accounts and a folded Advanced follow. Every account behavior the page had stays. Amends KERNEL-949 only in layout. KERNEL-1102.
+**Settings, Accounts is one card per provider.** A Providers control picks Claude Code or Codex, the card lists that provider's accounts with their meters and reset times, Switch or Use and a menu, and Add account sits inside it. Limits, Chats and accounts and a folded Advanced follow. Every account behavior the page had stays. KERNEL-1102.
 
 **Settings, Models and effort draws roles as a table.** Role, Model, Effort and Agents are columns, and the Model and Effort cells open the shared model and effort picker the composer uses. The other provider's model for each role, used when an account is at a limit, moved to an At a limit section so the setting stays. KERNEL-1102.
 
