@@ -15,7 +15,7 @@ const lanAddress = (): string | undefined =>
 /**
  * Remote access (remote-access-server): a server in this app's own process, so another device drives the one Kernel there is.
  * It is off until Settings, Remote access turns it on, and follows the setting from then on. The protocol and the checks are in
- * `services/remoteServer.ts`, the pairing and tokens in `services/remoteAuth.ts`, and what a device may not call in
+ * `services/remoteServer.ts`, the pairing and tokens in `services/remoteAuth.ts`, and what a device may call in
  * `services/remoteChannels.ts`. These channels are the window's: the server refuses every `remote.*` call from a device.
  */
 export class Remote extends Feature {

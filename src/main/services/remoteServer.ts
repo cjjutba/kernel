@@ -12,7 +12,11 @@ import { refusal } from './remoteChannels'
  *
  *   GET  /          a page for a browser. `assets` serves the web client when there is one, else a placeholder.
  *   POST /pair      { code, name? } -> 200 { token, deviceId, name, expiresAt } | 400 | 401 | 429. One request per code.
- *   GET  /ws        WebSocket upgrade. The token is `Authorization: Bearer <token>`, or `?token=<token>` for a browser.
+ *   GET  /ws        WebSocket upgrade. The token is, in the order the server looks, `Authorization: Bearer <token>`, the subprotocol
+ *                   `kernel.token.<token>` next to `kernel.v1` in `Sec-WebSocket-Protocol` (a browser sets it with
+ *                   `new WebSocket(url, ['kernel.v1', 'kernel.token.<token>'])`; the server answers `kernel.v1`), or `?token=<token>`.
+ *                   The query is the fallback for a client that can set neither. A URL can land in a proxy log, a history or
+ *                   a crash report, a header can't, so prefer the first two.
  *
  * On the socket the client sends { id, channel, req } and gets { id, ok: true, res } or { id, ok: false, error } back, in
  * any order. `channel` is one of the IPC channels the window calls, answered by the same handlers. The server pushes
@@ -30,6 +34,9 @@ const MAX_BUFFERED_BYTES = 8 * 1024 * 1024
 const PING_MS = 30_000
 const PORT_TRIES = 20
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]'])
+/** The subprotocol a client offers next to its `kernel.token.<token>` one. The server answers with this one, never the token. */
+const SUBPROTOCOL = 'kernel.v1'
+const TOKEN_PROTOCOL = 'kernel.token.'
 /** Close code for a token that was revoked or ended. */
 export const CLOSE_UNAUTHORIZED = 4401
 
@@ -53,7 +60,10 @@ export interface RemoteServerOptions {
   assets?: (path: string) => Promise<Asset | undefined>
 }
 
-interface Client { ws: WebSocket; device: RemoteDeviceRow; alive: boolean; inFlight: number }
+interface Client { ws: WebSocket; device: RemoteDeviceRow; alive: boolean; inFlight: number; dead: boolean }
+
+/** How long a dropped socket gets to flush its close frame before it is destroyed. */
+const DROP_GRACE_MS = 250
 
 const PLACEHOLDER = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kernel</title>
 <style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0b0c;color:#e8e8ea;font:15px/1.5 -apple-system,system-ui,sans-serif}main{max-width:26rem;padding:2rem}h1{font-size:1.1rem;margin:0 0 .5rem}p{margin:0;color:#9a9aa0}</style>
@@ -73,7 +83,7 @@ export class RemoteServer {
 
   /** Starts listening, on the first free port from the one asked for. Throws when none is free or the address can't be bound. */
   async start(): Promise<{ host: string; port: number }> {
-    this.wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES })
+    this.wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES, handleProtocols: (protocols) => (protocols.has(SUBPROTOCOL) ? SUBPROTOCOL : false) })
     let last: unknown
     for (let p = this.o.port; p < this.o.port + PORT_TRIES && p <= 65535; p++) {
       const server = this.build()
@@ -99,7 +109,7 @@ export class RemoteServer {
   /** Closes every socket and stops listening. */
   async stop(): Promise<void> {
     clearInterval(this.ping)
-    for (const c of this.clients.values()) c.ws.close(1001, 'Kernel is stopping')
+    for (const c of [...this.clients.values()]) this.drop(c, 1001, 'Kernel is stopping')
     this.clients.clear()
     this.wss?.close()
     const http = this.http
@@ -115,8 +125,8 @@ export class RemoteServer {
     const now = Date.now()
     for (const c of this.clients.values()) {
       // A session that ended while its socket sat idle gets no more events.
-      if (c.device.expiresAt <= now) { c.ws.close(CLOSE_UNAUTHORIZED, 'Session ended'); continue }
-      if (c.ws.bufferedAmount > MAX_BUFFERED_BYTES) { c.ws.close(1013, 'Too far behind'); continue }
+      if (c.device.expiresAt <= now) { this.drop(c, CLOSE_UNAUTHORIZED, 'Session ended'); continue }
+      if (c.ws.bufferedAmount > MAX_BUFFERED_BYTES) { this.drop(c, 1013, 'Too far behind'); continue }
       this.send(c, text)
     }
   }
@@ -126,7 +136,23 @@ export class RemoteServer {
 
   /** Closes the sockets of a device whose session ended. */
   closeDevice(id: string) {
-    for (const [ws, c] of this.clients) if (c.device.id === id) { ws.close(CLOSE_UNAUTHORIZED, 'Session ended'); this.clients.delete(ws) }
+    for (const c of [...this.clients.values()]) if (c.device.id === id) this.drop(c, CLOSE_UNAUTHORIZED, 'Session ended')
+  }
+
+  /**
+   * Ends a socket now. It is marked dead and forgotten before anything else, so no call that arrives or finishes after this is
+   * run or answered. The close frame goes out first and the socket is destroyed a moment later, so the client sees why.
+   */
+  private drop(c: Client, code: number, reason: string) {
+    c.dead = true
+    this.clients.delete(c.ws)
+    try { c.ws.close(code, reason) } catch { /* already closing */ }
+    setTimeout(() => c.ws.terminate(), DROP_GRACE_MS).unref()
+  }
+
+  /** Whether a socket may still run calls: open, not dropped, and its device still paired and unexpired. */
+  private live(c: Client): boolean {
+    return !c.dead && c.ws.readyState === c.ws.OPEN && c.device.expiresAt > Date.now() && this.o.auth.isPaired(c.device.id)
   }
 
   private build(): Server {
@@ -199,14 +225,15 @@ export class RemoteServer {
     if (url.pathname !== '/ws') return refuse(socket, 404, 'Not Found')
     if (!this.hostOk(req) || !this.originOk(req)) return refuse(socket, 403, 'Forbidden')
     const bearer = /^Bearer (\S+)$/.exec(req.headers.authorization ?? '')?.[1]
-    const device = this.o.auth.verify(bearer ?? url.searchParams.get('token'))
+    const offered = (req.headers['sec-websocket-protocol'] ?? '').split(',').map((p) => p.trim()).find((p) => p.startsWith(TOKEN_PROTOCOL))
+    const device = this.o.auth.verify(bearer ?? offered?.slice(TOKEN_PROTOCOL.length) ?? url.searchParams.get('token'))
     if (!device) return refuse(socket, 401, 'Unauthorized')
     if (this.clients.size >= MAX_SOCKETS || !this.wss) return refuse(socket, 503, 'Service Unavailable')
     this.wss.handleUpgrade(req, socket, head, (ws) => this.accept(ws, device))
   }
 
   private accept(ws: WebSocket, device: RemoteDeviceRow) {
-    const client: Client = { ws, device, alive: true, inFlight: 0 }
+    const client: Client = { ws, device, alive: true, inFlight: 0, dead: false }
     this.clients.set(ws, client)
     this.o.auth.seen(device.id)
     ws.on('pong', () => { client.alive = true })
@@ -217,14 +244,16 @@ export class RemoteServer {
 
   private heartbeat() {
     for (const [ws, c] of this.clients) {
-      if (!c.alive) { ws.terminate(); this.clients.delete(ws); continue }
+      if (!c.alive) { c.dead = true; ws.terminate(); this.clients.delete(ws); continue }
       c.alive = false
       ws.ping()
     }
   }
 
   private async onMessage(c: Client, data: RawData, binary: boolean) {
-    if (c.device.expiresAt <= Date.now()) { c.ws.close(CLOSE_UNAUTHORIZED, 'Session ended'); return }
+    // Checked on every message, so a revoked or expired device can't run a call in the moment before its socket is gone.
+    if (c.dead) return
+    if (!this.live(c)) return this.drop(c, CLOSE_UNAUTHORIZED, 'Session ended')
     this.o.auth.seen(c.device.id)
     const fail = (id: unknown, error: string) => this.send(c, JSON.stringify({ id, ok: false, error }))
     let msg: { id?: unknown; channel?: unknown; req?: unknown }
@@ -246,16 +275,18 @@ export class RemoteServer {
     if (c.inFlight >= MAX_IN_FLIGHT) return fail(id, 'Too many calls at once')
     c.inFlight++
     try {
-      this.send(c, JSON.stringify({ id, ok: true, res: await this.o.handlers[channel](req) }))
+      const res = await this.o.handlers[channel](req)
+      // A device revoked while its call ran gets no answer.
+      if (this.live(c)) this.send(c, JSON.stringify({ id, ok: true, res }))
     } catch (err) {
-      fail(id, err instanceof Error ? err.message : String(err))
+      if (this.live(c)) fail(id, err instanceof Error ? err.message : String(err))
     } finally {
       c.inFlight--
     }
   }
 
   private send(c: Client, payload: string) {
-    if (c.ws.readyState === c.ws.OPEN) c.ws.send(payload)
+    if (!c.dead && c.ws.readyState === c.ws.OPEN) c.ws.send(payload)
   }
 }
 

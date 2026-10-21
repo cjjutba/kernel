@@ -79,6 +79,12 @@ export class RemoteAuth {
     return found
   }
 
+  /** Whether a device is still paired: its row is there and its 30 days have not ended. */
+  isPaired(id: string): boolean {
+    const now = this.now()
+    return this.store.remoteDevices().some((d) => d.id === id && d.expiresAt > now)
+  }
+
   /** Records that a device was seen, at most once a minute. */
   seen(id: string) {
     const at = this.now()

@@ -10,7 +10,7 @@ import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Kernel } from '../src/main/kernel'
 import { PAIR_CODE_MS, RemoteAuth } from '../src/main/services/remoteAuth'
-import { REFUSED_CHANNELS } from '../src/main/services/remoteChannels'
+import { ALL_CHANNELS_CLASSIFIED, ALLOWED_CHANNELS, REFUSED_CHANNELS, refusal } from '../src/main/services/remoteChannels'
 import { MAX_MESSAGE_BYTES } from '../src/main/services/remoteServer'
 import { freePort, tempRepo } from './helpers'
 
@@ -49,8 +49,8 @@ async function pairDevice({ h, base }: Booted, name = 'Phone') {
 }
 
 /** A socket that is open, or an error naming the HTTP status the upgrade got. */
-const open = (url: string, opts: ConstructorParameters<typeof WebSocket>[2] = {}) => new Promise<WebSocket>((resolve, reject) => {
-  const ws = new WebSocket(url, opts)
+const open = (url: string, opts: ConstructorParameters<typeof WebSocket>[2] | string[] = {}) => new Promise<WebSocket>((resolve, reject) => {
+  const ws = Array.isArray(opts) ? new WebSocket(url, opts) : new WebSocket(url, opts)
   stops.push(() => ws.terminate())
   ws.once('open', () => resolve(ws))
   ws.once('unexpected-response', (_q, res) => reject(new Error(String(res.statusCode))))
@@ -213,7 +213,7 @@ describe('remote access server (remote-access-server)', () => {
       expect(viaSocket).toEqual({ id: 'list-1', ok: true, res: JSON.parse(JSON.stringify(await b.h['projects.list']())) })
       expect((viaSocket.res as { id: string }[]).map((p) => p.id)).toEqual([project.id])
       // A call with arguments, and a handler that throws: the error text comes back as the reason.
-      expect((await c.call('projects.inspectFolder', { path: project.path })).ok).toBe(true)
+      expect((await c.call('workspaces.list', { projectId: project.id })).ok).toBe(true)
       expect(await c.call('workspaces.gitStatus', { workspaceId: 'missing' })).toMatchObject({ ok: false, error: expect.any(String) })
     })
 
@@ -226,29 +226,54 @@ describe('remote access server (remote-access-server)', () => {
       await expect.poll(() => c.events).toEqual([{ type: 'toast', toast: { title: 'Hello from the Mac' } }])
     })
 
-    it('refuses system channels, channels that open things on the Mac, and its own', async () => {
+    it('refuses everything that is not on the allowlist, and answers what is', async () => {
       const b = await boot()
       const c = await connect(b, (await pairDevice(b)).token)
-      for (const channel of ['system.pickFolder', 'system.openExternal', 'app.openTerminal', 'app.openIn', 'shared.reveal', 'env.reveal', 'terminal.write', 'hooks.install', 'remote.pair', 'remote.devices', 'remote.revoke', 'remote.status']) {
-        expect(await c.call(channel, {}), channel).toMatchObject({ ok: false, error: expect.stringMatching(/not available from another device|belongs to the app/) })
-      }
+      const refused = ['system.pickFolder', 'system.openExternal', 'app.openTerminal', 'app.openIn', 'shared.reveal', 'env.reveal', 'env.set', 'terminal.write', 'hooks.install', 'remote.pair', 'remote.devices', 'remote.revoke', 'remote.status',
+        'settings.set', 'settings.setProject', 'scripts.run', 'providers.setPath', 'projects.update', 'projects.add', 'projects.setIcon', 'projects.remove', 'workspaces.discard', 'accounts.add', 'update.install', 'reviews.overrule']
+      for (const channel of refused) expect(await c.call(channel, {}), channel).toMatchObject({ ok: false, error: expect.stringContaining('not available from another device') })
       expect(await b.h['remote.devices']()).toHaveLength(1)
+      for (const channel of ['settings.get', 'projects.list', 'workspaces.list', 'notifications.list']) expect((await c.call(channel, {})).ok, channel).toBe(true)
     })
 
-    it('refuses a settings change that moves the server or the hook port', async () => {
+    it('leaves the settings alone, the remote ones included', async () => {
       const b = await boot()
       const c = await connect(b, (await pairDevice(b)).token)
-      expect(await c.call('settings.set', { patch: { remote: { host: 'network' } } })).toMatchObject({ ok: false, error: expect.stringContaining('only be changed in the app') })
-      expect(await c.call('settings.set', { patch: { hookPort: 9 } })).toMatchObject({ ok: false })
-      expect((await c.call('settings.set', { patch: { general: { sendWith: 'cmdEnter' } } })).ok).toBe(true)
+      expect((await c.call('settings.set', { patch: { remote: { host: 'network' } } })).ok).toBe(false)
+      expect((await c.call('settings.set', { patch: { general: { sendWith: 'cmdEnter' } } })).ok).toBe(false)
       expect(b.k.settings.remote.host).toBe('local')
-      expect(b.k.settings.general.sendWith).toBe('cmdEnter')
+      expect(b.k.settings.general.sendWith).not.toBe('cmdEnter')
     })
 
-    it('names only channels that exist in its refusal list', async () => {
+    it('classifies every channel exactly once, so a new one is refused until it is allowed on purpose', async () => {
       const b = await boot()
-      const known = new Set(Object.keys(b.h))
-      expect(REFUSED_CHANNELS.filter((c) => !known.has(c))).toEqual([])
+      const all = [...ALLOWED_CHANNELS, ...REFUSED_CHANNELS]
+      expect(new Set(all).size, 'a channel is in both lists or twice in one').toBe(all.length)
+      const known = new Set<string>([...Object.keys(b.h), ...REFUSED_CHANNELS.filter((c) => c.startsWith('system.'))])
+      expect(all.filter((c) => !known.has(c)), 'names that are not channels').toEqual([])
+      expect([...known].filter((c) => !all.includes(c as never)), 'channels in neither list').toEqual([])
+      expect(ALL_CHANNELS_CLASSIFIED).toBe(true)
+      // Not listed means refused, which is the default for any name.
+      expect(refusal('brand.newChannel', {})).toMatch(/not available/)
+      for (const c of REFUSED_CHANNELS) expect(refusal(c, {}), c).toMatch(/not available/)
+      for (const c of ALLOWED_CHANNELS) expect(refusal(c, undefined) ?? '', c).not.toMatch(/not available/)
+    })
+
+    it('refuses what an allowed call carries that would widen what a device can do', () => {
+      expect(refusal('chats.configure', { chatId: 'c', mode: 'bypassPermissions' })).toMatch(/permission mode/)
+      expect(refusal('chats.configure', { chatId: 'c', model: 'opus', plan: true })).toBeUndefined()
+      expect(refusal('lead.start', { projectId: 'p', prompt: 'x', mode: 'bypassPermissions' })).toMatch(/permission mode/)
+      expect(refusal('chats.create', { workspaceId: 'w', kind: 'terminal' })).toMatch(/terminal/)
+      expect(refusal('chats.create', { workspaceId: 'w', preset: 'dev' })).toMatch(/terminal/)
+      expect(refusal('chats.create', { workspaceId: 'w' })).toBeUndefined()
+      expect(refusal('approvals.decide', { id: 'a', decision: { behavior: 'allow', always: true } })).toMatch(/always allows/)
+      expect(refusal('approvals.decide', { id: 'a', decision: { behavior: 'allow' } })).toBeUndefined()
+      expect(refusal('pr.merge', { workspaceId: 'w', override: true })).toMatch(/failed review/)
+      expect(refusal('workspaces.create', { projectId: 'p', prompt: 'x', mode: 'current' })).toMatch(/project folder/)
+      for (const channel of ['chats.send', 'projects.brief', 'workspaces.create', 'lead.start']) {
+        expect(refusal(channel, { parts: [{ type: 'file', name: 'id_rsa', src: '/Users/me/.ssh/id_rsa' }] }), channel).toMatch(/attach a file/)
+        expect(refusal(channel, { parts: [{ type: 'text', text: 'hi' }] }), channel).toBeUndefined()
+      }
     })
 
     it('refuses an unknown channel, a missing id, a binary frame and text that is not JSON', async () => {
@@ -256,7 +281,7 @@ describe('remote access server (remote-access-server)', () => {
       const ws = await open(`${b.base().replace('http', 'ws')}/ws`, { headers: { authorization: `Bearer ${(await pairDevice(b)).token}` } })
       const c = client(ws)
       for (const name of ['constructor', '__proto__', 'toString', 'no.such']) {
-        expect(await c.call(name), name).toMatchObject({ ok: false, error: expect.stringContaining('Unknown channel') })
+        expect(await c.call(name), name).toMatchObject({ ok: false, error: expect.stringMatching(/Unknown channel|not available/) })
       }
       for (const name of [7, null]) expect(await c.call(name), String(name)).toMatchObject({ ok: false, error: expect.stringContaining('needs a channel') })
       const answers: Record<string, unknown>[] = []
@@ -299,6 +324,40 @@ describe('remote access server (remote-access-server)', () => {
       expect(await c.closed).toMatchObject({ code: 4401 })
       expect(await b.h['remote.devices']()).toEqual([])
       await expect(b.h['remote.revoke']({ id: deviceId })).rejects.toThrow('not paired')
+    })
+
+    it('refuses a call sent right after a revoke, and the socket is gone', async () => {
+      const b = await boot()
+      const { token, deviceId } = await pairDevice(b)
+      const c = await connect(b, token)
+      expect((await c.call('settings.get')).ok).toBe(true)
+      await b.h['remote.revoke']({ id: deviceId })
+      // Sent the moment the revoke returned: it gets no answer, and the socket ends.
+      const late = c.call('settings.get')
+      const first = await Promise.race([late.then(() => 'answered'), c.closed.then(() => 'closed')])
+      expect(first).toBe('closed')
+      expect(b.k.remote['server']?.connectedIds().size ?? 0).toBe(0)
+    })
+
+    it('does not run a call from a socket whose device is revoked behind the server\'s back', async () => {
+      const b = await boot()
+      const { token, deviceId } = await pairDevice(b)
+      const c = await connect(b, token)
+      // The row goes without closeDevice, as when another window revokes it: the message handler's own check has to catch it.
+      b.k.store.deleteRemoteDevice(deviceId)
+      expect(await Promise.race([c.call('settings.get').then(() => 'answered'), c.closed.then(() => 'closed')])).toBe('closed')
+    })
+
+    it('takes the token from the subprotocol, and from the query as the fallback', async () => {
+      const b = await boot()
+      const { token } = await pairDevice(b)
+      const url = `${b.base().replace('http', 'ws')}/ws`
+      const viaProtocol = await open(url, ['kernel.v1', `kernel.token.${token}`])
+      expect(viaProtocol.protocol).toBe('kernel.v1')
+      expect((await client(viaProtocol).call('settings.get')).ok).toBe(true)
+      const viaQuery = await open(`${url}?token=${token}`)
+      expect((await client(viaQuery).call('settings.get')).ok).toBe(true)
+      await expect(open(url, ['kernel.v1', 'kernel.token.wrong'])).rejects.toThrow('401')
     })
   })
 

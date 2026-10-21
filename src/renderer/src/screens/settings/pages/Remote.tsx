@@ -61,7 +61,7 @@ export function Remote({ s }: { s: AppSettings }) {
         <Row id="remote-enabled" label="Let other devices connect" desc="Kernel runs a small server on this Mac. Only a device you pair can use it.">
           <Toggle label="Let other devices connect" checked={r.enabled} onChange={(v) => void patchSettings({ remote: { enabled: v } })} />
         </Row>
-        <Row id="remote-host" label="Who can reach it" desc={r.host === 'network' ? 'Anyone on your network can open the page. Only a paired device gets in.' : 'Only this Mac can open it.'}>
+        <Row id="remote-host" label="Who can reach it" desc={r.host === 'network' ? 'Anyone on your network can open the page, and only a paired device gets in. Other devices connect over plain HTTP, so use it on networks you trust, or through Tailscale.' : 'Only this Mac can open it.'}>
           <SegmentedControl label="Who can reach it" value={r.host} onChange={(v) => void patchSettings({ remote: { host: v as AppSettings['remote']['host'] } })} options={[{ value: 'local', label: 'This Mac only' }, { value: 'network', label: 'Other devices on my network' }]} />
         </Row>
         <Row id="remote-url" label="Address" desc={movedTo ? `Port ${r.port} is in use, so Kernel uses ${movedTo}.` : status?.error ? 'Kernel could not start the server.' : undefined}>
