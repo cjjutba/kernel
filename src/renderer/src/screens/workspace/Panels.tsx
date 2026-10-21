@@ -13,9 +13,8 @@ import { PullRequestTab } from './panel/PullRequestTab'
 import { ReviewTab } from './panel/ReviewTab'
 import { TabStrip } from './panel/TabStrip'
 
-// The right panel's tabs and its bottom pane live in panel/. What other files and tests import from here stays importable from here.
+// The right panel's tabs live in panel/. What other files and tests import from here stays importable from here.
 export { SHARED_NOTHING, sharedWhy } from './panel/ChangesTab'
-export { BottomPanel } from './panel/BottomPane'
 export { checkGroups, checkRow, checksUrl } from './panel/PullRequestTab'
 
 /** The Team PRs tab's count: the PRs the Lead's list shows, plain and faint as on the Lead's own tabs. */

@@ -51,7 +51,6 @@ export function useWorkspaceShortcuts(o: { workspaceId: string; chatId?: string;
       if (!ws || s.ui.modal) return
       const listed = (s.projectSettings[ws.projectId]?.runScripts ?? []).map((r) => r.name)
       const t = runTarget(runningRuns(s, workspaceId), listed)
-      actions.ui.setRightPanel(true)
       actions.ui.setWorkspaceView({ bottom: 'run' })
       actions.ui.setBottomCollapsed(bottomKindOf(s, ws), false)
       if (t.stop) void attempt(`Could not stop ${t.name}`, () => call('scripts.stop', { workspaceId, kind: 'run', name: t.name }))
