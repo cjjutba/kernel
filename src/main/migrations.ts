@@ -153,6 +153,13 @@ export const migrations: Migration[] = [
       `)
       if (db.name && db.name !== ':memory:') rmSync(join(dirname(db.name), 'seats'), { recursive: true, force: true })
     }
+  },
+  {
+    // Devices paired with Remote access (remote-access-server). A session token is never stored, only its SHA-256 `token_hash`.
+    version: 10,
+    up: (db) => db.exec(`
+      create table if not exists remote_devices (id text primary key, token_hash text not null unique, name text not null, created_at integer not null, last_seen_at integer not null, expires_at integer not null);
+    `)
   }
 ]
 

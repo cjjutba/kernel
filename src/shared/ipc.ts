@@ -3,7 +3,7 @@ import type {
   ChatPart, Checkpoint, CheckpointPreview, ClaudeAccount, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubAuth, GitHubStatus, HookStatus, Hunk,
   GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewProjectRequest, Notification, OpenApp, OpenItem, Overlap, PreflightCheck, PushCheck, PrBlocked, PrInfo, PrPending, PrState,
   PermissionMode, PlanAttention, PrEvidence, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, GitHubOwner, RepoSummary, ResolvedPath, ReviewPatch, Project, ProjectSettings, ProjectSettingsPatch, ProjectSetupStep, ProjectTracker, ScriptKind, ScriptLine, ScriptSuggestion, ChatArchivePreview, MoveChoice, MoveNotice, SharedAnchor, SwitchMove, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
-  TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
+  RemoteDevice, RemotePairing, RemoteStatus, TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 import type { TelemetryEvent, TelemetryRecord } from './telemetry'
 
@@ -597,6 +597,16 @@ export interface KernelApi {
   'telemetry.recent': { req: void; res: TelemetryRecord[] }
   /** The renderer's own events: the answer in Project setup's team review. Main checks each before keeping it. */
   'telemetry.track': { req: { event: TelemetryEvent }; res: Ok }
+
+  // remote access (remote-access-server). The window only: a paired device is refused every `remote.*` channel.
+  /** Whether the server listens, where, and why not when it can't. */
+  'remote.status': { req: void; res: RemoteStatus }
+  /** Makes a one-time pairing code, good for 5 minutes. The URL carries it in the hash, so it never reaches a server log. */
+  'remote.pair': { req: void; res: RemotePairing }
+  /** The paired devices, newest first. */
+  'remote.devices': { req: void; res: RemoteDevice[] }
+  /** Ends a device's session. Its open connection closes. */
+  'remote.revoke': { req: { id: string }; res: Ok }
 
   // shared files (KERNEL-302)
   /** Files agents shared, newest first: a project's (the Lead's panel) or one workspace's. */
