@@ -514,6 +514,26 @@ const scriptsPage = projectPage('setup', clientA({
     sources: { ...kernelFiles.sources, 'scripts.setup': 'override', 'runScripts.run': 'override', 'runScripts.frontend': 'local', 'runScripts.backend': 'local', 'preview.urls': 'shared' }
   }))
 
+/** Client A's Pull requests page: three reviews with their own agents and models, rules from both files, and a custom Create PR instruction. */
+const projectPrs = scene((f) => ({
+  ...clientA({
+    review: {
+      rounds: 2,
+      kinds: {
+        code: { enabled: true, paths: [], required: true, model: 'claude-opus-5-5', provider: 'claude' },
+        security: { enabled: true, paths: ['src/api/**', 'src/auth/**', 'db/migrations/**'], required: true, agent: 'artkin', model: 'claude-opus-5-5', provider: 'claude' },
+        ux: { enabled: true, paths: ['src/renderer/**/*.tsx', '**/*.css'], required: false, agent: 'wren', model: 'claude-sonnet-5-5', provider: 'claude' }
+      }
+    },
+    // KERNEL-594: the shared `[merge] always_review`, as the canvas's box lists it.
+    merge: { alwaysReview: ['src/billing/**', 'db/migrations/**'] },
+    pr: { ...kernelFiles.pr, mergeMethod: 'rebase', optionalChecks: ['Vercel*', 'codecov/patch'] },
+    sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local', 'pr.optionalChecks': 'shared' }
+  }),
+  agents: { ...f.agents, [ids.projectA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
+  ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'prs' } }
+}))
+
 export const platformFixtures: Record<string, Fixture> = {
   WhatsNew: whatsNew,
   // Restart to update stays busy as Restarting while the install call is out, with Later off beside it.
@@ -809,25 +829,10 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsAgentEditPicker: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'ops' } } })),
   SettingsAgentPlugin: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.projectA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'vercel:deployment-expert' } } })),
   // KERNEL-557: Client A's `[review]` as the canvas draws it (KERNEL-594: and its always-review paths). The code review runs as Kernel, so the project has no agent that reviews. Security runs as Artkin, and the UX review as Wren, which is optional.
-  SettingsProjectPrs: scene((f) => ({
-    ...clientA({
-      review: {
-        rounds: 2,
-        kinds: {
-          code: { enabled: true, paths: [], required: true, model: 'claude-opus-5-5', provider: 'claude' },
-          security: { enabled: true, paths: ['src/api/**', 'src/auth/**', 'db/migrations/**'], required: true, agent: 'artkin', model: 'claude-opus-5-5', provider: 'claude' },
-          ux: { enabled: true, paths: ['src/renderer/**/*.tsx', '**/*.css'], required: false, agent: 'wren', model: 'claude-sonnet-5-5', provider: 'claude' }
-        }
-      },
-      // KERNEL-594: the shared `[merge] always_review`, as the canvas's box lists it.
-      merge: { alwaysReview: ['src/billing/**', 'db/migrations/**'] },
-      pr: { ...kernelFiles.pr, mergeMethod: 'rebase' },
-      sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local' }
-    }),
-    agents: { ...f.agents, [ids.projectA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
-    ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'prs' } }
-  })),
-  // KERNEL-1064: no model or provider set on any review, so each reads Other provider from the builder (KERNEL-1059).
+  SettingsProjectPrs: projectPrs,
+  // Redesign 15: the code review's details open, where it runs, who runs it, its model and whether it is required.
+  SettingsProjectPrsDetails: projectPrs,
+  // KERNEL-1064: no model or provider set on any review, so each reads Other provider from the builder (KERNEL-1059). Redesign 15: the merge method is the app's, so its row says so.
   SettingsProjectPrsDefault: scene((f) => ({
     ...clientA({
       review: {
@@ -839,8 +844,8 @@ export const platformFixtures: Record<string, Fixture> = {
         }
       },
       merge: { alwaysReview: ['src/billing/**', 'db/migrations/**'] },
-      pr: { ...kernelFiles.pr, mergeMethod: 'rebase' },
-      sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local' }
+      pr: { ...kernelFiles.pr },
+      sources: { ...kernelFiles.sources }
     }),
     agents: { ...f.agents, [ids.projectA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
     ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'prs' } }

@@ -4,12 +4,13 @@ import { useEffect, useRef, useState } from 'react'
 import { REVIEW_KINDS, type AgentDef, type AppSettings, type MergeMethod, type PrInstructions, type ReviewKind, type ReviewKindConfig } from '@shared/types'
 import { providerOf } from '@shared/providers'
 import { loadProject, useStore } from '../../../store'
-import { Button, IconButton, SegmentedControl, Select, Toggle } from '../../../ui'
+import { Button, IconButton, Select, Toggle } from '../../../ui'
 import { modelLabelOf, useProviderModels } from '../../workspace/composer/providerModels'
-import { isOverride, NoProject, Row, ProjectPage, projectValue, Section, TagList, useProjectPage, useSaveNote, SaveNote } from '../kit'
+import { NoProject, Row, ProjectPage, Section, TagList, useProjectPage, useSaveNote, SaveNote } from '../kit'
 import { patchProjectSettings } from '../useSettings'
 import { INSTRUCTIONS, InstructionSheet } from './InstructionSheet'
 import { NO_REVIEW, patchAlwaysReview, patchReview } from './reviewSettings'
+import { FollowsApp, SourcePill, SourcedRow, whereOf } from './projectSource'
 
 const NO_AGENTS: AgentDef[] = []
 const NO_PATHS: string[] = []
@@ -17,13 +18,8 @@ const KERNEL = ''
 const DEFAULT_MODEL = ''
 const USE_DEFAULT = ''
 const ROUNDS = [1, 2, 3, 5]
-const METHOD: Record<MergeMethod, string> = { squash: 'Squash and merge', merge: 'Create a merge commit', rebase: 'Rebase and merge' }
-
-const DESC: Record<ReviewKind, string> = {
-  code: 'Bugs, missing tests and unclear code.',
-  security: 'Leaked secrets, access checks and unsafe input.',
-  ux: 'Changed screens: layout, copy and missing states.'
-}
+const METHODS: { value: MergeMethod; label: string }[] = [{ value: 'squash', label: 'Squash' }, { value: 'merge', label: 'Merge' }, { value: 'rebase', label: 'Rebase' }]
+const PATHS = new Intl.ListFormat('en', { style: 'long', type: 'conjunction' })
 
 /** The files that trigger a review, comma separated. Empty is every pull request, and the field says "All files". Saved when the field loses focus. */
 function PathsField({ label, value, disabled, onSave }: { label: string; value: string[]; disabled: boolean; onSave: (paths: string[]) => void }) {
@@ -63,12 +59,13 @@ export function ProjectPrs({ projectId, s }: { projectId?: string; s: AppSetting
   // An empty list is saved as one when settings.toml has a list, so the field can be cleared; else the key goes (KERNEL-401).
   const saveOptional = (lines: string[]) => patchProjectSettings(projectId, { pr: { optionalChecks: lines.length || rs?.sources['pr.optionalChecks'] === 'shared' || rs?.sources['pr.optionalChecks'] === 'override' ? lines : null } })
   const rounds = [...new Set([...ROUNDS, review.rounds])].sort((a, b) => a - b)
-  const method = rs?.pr?.mergeMethod
+  const method = rs?.pr?.mergeMethod ?? s.pr.mergeMethod
   const shared = useSaveNote()
   const sheet = INSTRUCTIONS.find((i) => i.key === editing)
+  const paths = (list: string[]) => (list.length > 3 ? `${list.slice(0, 2).join(', ')} and ${list.length - 2} more` : PATHS.format(list))
   return (
-    <ProjectPage project={project} rs={rs} shared title="Pull requests" desc="Which reviews run on this repo's pull requests, and the rules for merging them." note={<SaveNote state={shared.state} shared />}>
-      <Section title="Reviews">
+    <ProjectPage project={project} rs={rs} shared title="Pull requests" desc="Which reviews run on this repo's pull requests, and the rules for merging them.">
+      <Section title="Reviews" note={<SourcePill>settings.toml</SourcePill>} action={<SaveNote state={shared.state} shared />}>
         {REVIEW_KINDS.map(({ id, label }) => {
           const c = review.kinds[id]
           const runBy = c.agent ?? (id === 'code' ? reviewer?.id : undefined) ?? KERNEL
@@ -82,9 +79,13 @@ export function ProjectPrs({ projectId, s }: { projectId?: string; s: AppSetting
             ...models.map((m) => ({ value: m.id, label: m.label })),
             ...(c.model && !models.some((m) => m.id === c.model) ? [{ value: c.model, label: modelLabelOf(c.model, models) }] : [])
           ]
-          const by = id === 'code' && reviewer ? ` Run by ${reviewer.name}.` : ''
+          // "Runs as Theo on Opus 5.5, when src/main changes." The agent, the model and where it looks, as the details line sets them.
+          const who = byOptions.find((o) => o.value === runBy)?.label ?? 'Kernel'
+          const on = c.model ? modelLabelOf(c.model, models) : 'the other provider from the builder'
+          const when = c.paths.length ? `when ${paths(c.paths)} ${c.paths.length === 1 ? 'changes' : 'change'}` : 'on every pull request'
           return (
-            <Row key={id} id={`review-${id}`} className={c.enabled ? undefined : 'rv-off'} label={`${label} review`} labelId={`rp-${id}`} desc={`${DESC[id]}${by}`}
+            <Row key={id} id={`review-${id}`} className={c.enabled ? undefined : 'rv-off'} label={`${label} review`} labelId={`rp-${id}`} desc={`Runs as ${who} on ${on}, ${when}.`}
+              hover={<IconButton icon="more" label={`${details === id ? 'Hide' : 'Show'} details of the ${label.toLowerCase()} review`} aria-expanded={details === id} onClick={() => setDetails(details === id ? null : id)} />}
               full={details === id && (
                 <div className="rv-line">
                   <span className="rv-line-label" aria-hidden="true">Runs on</span>
@@ -92,32 +93,31 @@ export function ProjectPrs({ projectId, s }: { projectId?: string; s: AppSetting
                   {!(id === 'code' && reviewer) && <Select label={`${label} review run by`} prefix="Run by" className="rv-by" value={runBy} disabled={!c.enabled} options={byOptions} onChange={(v) => save(id, { agent: v || null })} />}
                   <Select label={`${label} review model`} prefix="Model" className="rv-model" value={c.model ?? DEFAULT_MODEL} disabled={!c.enabled} options={modelOptions}
                     onChange={(v) => save(id, v ? { model: v, provider: providerOf(v) } : { model: null, provider: null })} />
+                  <Select label={`${label} review is`} className="rv-req" value={c.required ? 'required' : 'optional'} disabled={!c.enabled} onChange={(v) => save(id, { required: v === 'required' })} options={[{ value: 'required', label: 'Required' }, { value: 'optional', label: 'Optional' }]} />
                 </div>
               )}>
-              <IconButton icon="more" label={`${details === id ? 'Hide' : 'Show'} details of the ${label.toLowerCase()} review`} aria-expanded={details === id} onClick={() => setDetails(details === id ? null : id)} />
               <Toggle label={`${label} review`} checked={c.enabled} onChange={(on) => save(id, { enabled: on })} />
-              <Select label={`${label} review is`} align="right" className="rv-req" value={c.required ? 'required' : 'optional'} disabled={!c.enabled} onChange={(v) => save(id, { required: v === 'required' })} options={[{ value: 'required', label: 'Required' }, { value: 'optional', label: 'Optional' }]} />
             </Row>
           )
         })}
       </Section>
       <Section title="Rules">
         <Row id="stop-after" label="Stop after" desc="Then the pull request comes to you.">
-          <Select label="Stop after" align="right" value={String(review.rounds)} onChange={(v) => void shared.track(patchReview(projectId, { rounds: Number(v) }))} options={rounds.map((n) => ({ value: String(n), label: `${n} ${n === 1 ? 'round' : 'rounds'}` }))} />
+          <Select label="Stop after" align="right" value={String(review.rounds)} onChange={(v) => void shared.track(patchReview(projectId, { rounds: Number(v) }))} options={rounds.map((n) => ({ value: String(n), label: `${n} review ${n === 1 ? 'round' : 'rounds'}` }))} />
         </Row>
-        <Row id="always-review" shared label="Paths you always review" desc="Never merge automatically, on anyone’s Mac. Built-in paths apply too." full={<TagList label="Paths you always review" value={always} addLabel="Add path" onChange={(paths) => patchAlwaysReview(projectId, paths)} />} />
-        <Row id="optional-checks" label="Optional checks" desc="A failing one doesn’t block, unless GitHub requires it." {...projectValue(rs, 'pr.optionalChecks', () => void patchProjectSettings(projectId, { pr: { optionalChecks: null } }))} full={<TagList label="Optional checks" value={optional} addLabel="Add check" mono={false} onChange={saveOptional} />} />
-        <Row id="merge-method" label="Merge method" {...projectValue(rs, 'pr.mergeMethod', () => void patchProjectSettings(projectId, { pr: { mergeMethod: null } }), { to: { page: 'prs' }, label: 'Settings, Pull requests' })}>
-          <SegmentedControl label="Merge method" value={method ?? s.pr.mergeMethod} onChange={(v) => void patchProjectSettings(projectId, { pr: { mergeMethod: v as MergeMethod } })} options={[{ value: 'squash', label: 'Squash' }, { value: 'merge', label: 'Merge' }, { value: 'rebase', label: 'Rebase' }]} />
-        </Row>
+        <Row id="always-review" shared label={<>Paths you always review<SourcePill>Shared</SourcePill></>} desc="Never merge automatically, on anyone’s Mac. Built-in paths apply too." full={<TagList label="Paths you always review" value={always} addLabel="Add path" onChange={(paths) => patchAlwaysReview(projectId, paths)} />} />
+        <SourcedRow id="optional-checks" rs={rs} path="pr.optionalChecks" label="Optional checks" desc="A failing one doesn’t block, unless GitHub requires it." onReset={() => void patchProjectSettings(projectId, { pr: { optionalChecks: null } })} full={<TagList label="Optional checks" value={optional} addLabel="Add check" mono={false} onChange={saveOptional} />} />
+        <SourcedRow id="merge-method" rs={rs} path="pr.mergeMethod" label="Merge method" value={METHODS.find((m) => m.value === method)?.label} app={<FollowsApp lead="Same as" name="Settings, Pull requests" to={{ page: 'prs' }} />} onReset={() => void patchProjectSettings(projectId, { pr: { mergeMethod: null } })}>
+          <Select label="Merge method" align="right" value={method} onChange={(v) => void patchProjectSettings(projectId, { pr: { mergeMethod: v as MergeMethod } })} options={METHODS} />
+        </SourcedRow>
       </Section>
-      <Section title="Instructions" scope="mac">
+      <Section title="Instructions" action={<span className="rm-scope">This Mac</span>}>
         {INSTRUCTIONS.map(({ key, label }) => {
-          const custom = isOverride(rs, `pr.${key}`)
+          const custom = whereOf(rs, `pr.${key}`) !== 'app'
           return (
             <Row key={key} id={`instructions-${key.replace(/Instructions$/, '')}`} label={label}>
-              {custom ? <span className="rm-custom">Custom for this project</span> : <span className="set-desc">App default</span>}
-              <Button aria-label={`${custom ? 'Edit' : 'Customize'} the ${label} instructions`} onClick={() => setEditing(key)}>{custom ? 'Edit' : 'Customize'}</Button>
+              <span className="rm-state" data-custom={custom || undefined}>{custom ? 'Custom' : 'Default'}</span>
+              <Button aria-label={`Edit the ${label} instructions`} onClick={() => setEditing(key)}>Edit</Button>
             </Row>
           )
         })}
