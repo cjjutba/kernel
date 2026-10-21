@@ -11,9 +11,9 @@ export function changedLines(agent: AgentDef, form: AgentForm): { old?: string; 
   const was = formOf(agent)
   const text = (v: string | string[] | undefined) => (Array.isArray(v) ? v.join(', ') : v ?? '')
   const lines: { old?: string; now?: string }[] = []
-  for (const key of ['description', 'model', 'effort', 'tools', 'skills'] as const) {
+  for (const key of ['role', 'description', 'model', 'effort', 'tools', 'skills'] as const) {
     const a = key === 'skills' ? was.skills.map(slash) : was[key]
-    const b = key === 'skills' ? form.skills.map(slash) : key === 'description' ? form.description.trim() : form[key]
+    const b = key === 'skills' ? form.skills.map(slash) : key === 'description' || key === 'role' ? form[key].trim() : form[key]
     if (JSON.stringify(a) === JSON.stringify(b)) continue
     lines.push({ ...(text(a) ? { old: `${key}: ${text(a)}` } : {}), ...(text(b) ? { now: `${key}: ${text(b)}` } : {}) })
   }
