@@ -1,16 +1,14 @@
 import { useState } from 'react'
 import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
-import { Checkbox, ConfirmDialog, useBusy } from '../../ui'
+import { Checkbox, ConfirmDialog, Icon, useBusy } from '../../ui'
 import { afterProjectLeaves } from './afterProjectLeaves'
 import { tilde } from './draft'
-import { teamOf } from './projectInfo'
 import './projects.css'
 
-/** ConfirmRemoveProject.png. Archives the project's workspaces, then removes Kernel's record of the project. The folder on disk and .claude/agents stay. */
+/** ConfirmRemoveProject.png. Archives the project's workspaces, then removes Kernel's record of the project. The repo, its folder and .claude/agents stay. */
 export function ConfirmRemoveProject({ projectId }: { projectId: string }) {
   const project = useStore((s) => s.projects.find((r) => r.id === projectId))
-  const agents = useStore((s) => teamOf(s.agents[projectId]).length)
   const workspaces = useStore((s) => s.workspaces.filter((w) => w.projectId === projectId && w.status !== 'archived' && !w.lead).length)
   const root = useStore((s) => s.settings?.worktreeRoot)
   const [worktrees, setWorktrees] = useState(false)
@@ -31,15 +29,17 @@ export function ConfirmRemoveProject({ projectId }: { projectId: string }) {
       actions.ui.closeModal()
     } catch (e) { setError(cleanError(e)) }
   })
-  const n = (count: number, one: string) => `${count} ${one}${count === 1 ? '' : 's'}`
+  // Where its worktrees live: the project's own folder under the worktree root, as the engine names it.
+  const dir = project.worktreeDir ?? (project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'workspace')
+  const where = `${tilde(root ?? '~/kernel/worktrees')}/${dir}`
 
   return (
     <ConfirmDialog
-      title={`Remove ${project.name}?`} danger busy={!!busy} busyPattern="ripple" busyLabel="Removing" confirmLabel="Remove project" onConfirm={() => void remove()} onCancel={cancel}
-      body={`Kernel stops ${n(agents, 'agent')} and archives ${n(workspaces, 'workspace')}. Your repo on disk and .claude/agents are not touched.`}
+      title={`Remove ${project.name} from Kernel?`} danger busy={!!busy} busyPattern="ripple" busyLabel="Removing" confirmLabel="Remove project" onConfirm={() => void remove()} onCancel={cancel}
+      body="Kernel forgets the project, its chats and its settings. The repository and its folder on your Mac stay as they are."
     >
-      <div className="rm-box mono"><span>{tilde(project.path)}</span><span className="muted">{n(workspaces, 'workspace')} · {n(agents, 'agent')}</span></div>
-      <Checkbox checked={worktrees} onChange={setWorktrees}>Also delete the worktrees in {root ? tilde(root) : '~/kernel/worktrees'}</Checkbox>
+      {workspaces > 0 && <div className="rm-box"><Icon name="branch" size={14} /><span>{workspaces} {workspaces === 1 ? 'workspace is' : 'workspaces are'} open. Kernel archives {workspaces === 1 ? 'it' : 'them'} first.</span></div>}
+      <Checkbox checked={worktrees} onChange={setWorktrees}>Also delete its worktrees in {where}</Checkbox>
       {error && <p role="alert" className="del">{error}</p>}
     </ConfirmDialog>
   )

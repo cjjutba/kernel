@@ -800,6 +800,10 @@ export const teamFixtures: Record<string, Fixture> = {
   }),
   Projects: scene((f) => ({ ...projectsScene(f), ui: { route: { name: 'projects' } } })),
   ProjectsRowFocused: scene((f) => ({ ...projectsScene(f), ui: { route: { name: 'projects' } } })),
+  // KERNEL-1100: the In sidebar switch is off for a project the sidebar doesn't list, and the Filter projects field sits in the tab row.
+  ProjectsShowInSidebar: scene((f) => { const p = projectsScene(f); return { ...p, projects: p.projects!.map((r) => (r.id === ids.projectPortfolio ? { ...r, hidden: true } : r)), ui: { route: { name: 'projects' } } } }),
+  // The Archived tab: a project that was archived comes back with Restore.
+  ProjectsArchivedRestore: { ...scene((f) => ({ ...projectsScene(f), ui: { route: { name: 'projects' } } })), saved: { 'kernel.roomsTab': 'archived' } },
   // Audit: no project added yet, and the Projects page on its own.
   ProjectsEmpty: scene((f) => ({ ...f, ...empty, ui: { route: { name: 'projects' } } })),
   // KERNEL-947: New project is from scratch only: a name, where it goes, and its private GitHub repo. NewProjectTaken picks a name that exists.
@@ -985,8 +989,9 @@ export const teamFixtures: Record<string, Fixture> = {
   SidebarLeadChats: scene(sidebarLeadChats),
   SidebarChatFolded: scene(sidebarChatFolded),
   SidebarChatGroups: scene(sidebarChatGroups),
-  SidebarProjectMenu: withMenu(`project:${ids.projectA}`, { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' }),
+  SidebarProjectMenu: withMenu(`project:${ids.projectA}`, { name: 'workspace', workspaceId: ids.table }),
   // The project's menu now ends its first group with Archived, which opens History for that project.
   SidebarProjectMenuArchived: withMenu(`project:${ids.projectA}`, { name: 'inbox' }),
-  ConfirmRemoveProject: scene((f) => ({ ...projectsScene(f), ui: { route: { name: 'settings', page: 'project', projectId: ids.projectA, section: 'agents' }, modal: { name: 'confirm', kind: 'removeProject', projectId: ids.projectA } } }))
+  // KERNEL-1100: Own app has two open workspaces, so the dialog says Kernel archives them first.
+  ConfirmRemoveProject: scene((f) => { const p = projectsScene(f); return { ...p, workspaces: [...p.workspaces!, ...[ids.table, ids.schema].map((id, i) => ({ ...p.workspaces!.find((w) => w.id === id)!, id: `ws-own-${i}`, name: `own-app-${i + 1}`, projectId: ids.projectOwn, agentId: 'christian', threadId: undefined, prNumber: undefined }))], ui: { route: { name: 'projects' }, modal: { name: 'confirm', kind: 'removeProject', projectId: ids.projectOwn } } } })
 }

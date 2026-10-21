@@ -21,6 +21,7 @@ import { chatWaits } from './chatWaits'
 import { ChatCard, LeadCard, WorkspaceCard, useHoverCard } from './HoverCard'
 import { ProjectMenu } from './ProjectMenu'
 import { ProjectsMenu } from './ProjectsMenu'
+import { useSidebarProjects } from './projectOrder'
 import { liveWorkspaces, mergeChatList, openRow, rowHolder, sidebarRows, slotKey, slotsFor, workspaceSlotsFor, type Slot } from './slots'
 import { useLocalMerge } from '../../screens/workspace/pr/useLocalMerge'
 import { useShown, type Fate, type Shown } from './leaving'
@@ -394,7 +395,7 @@ function inboxCount(s: State): number {
  * The frame (Sidebar.tsx) owns the `<nav>`, the width and the resize edge, so these are its direct flex children.
  */
 export function AppSidebar() {
-  const projects = useStore((s) => s.projects.filter((r) => !r.hidden && !r.archived))
+  const projects = useSidebarProjects()
   const inbox = useStore(inboxCount)
   const [workTab] = useWorkTab()
   const route = useStore((s) => s.ui.route)
@@ -468,7 +469,7 @@ export function AppSidebar() {
       <div className="sb-rule" role="separator" />
       <div ref={projectsAnchor} className="section-label hv sb-projects-label">
         <span>My projects</span>
-        <button className="icon-btn more" style={{ width: 24, height: 24, opacity: projectsMenu ? 1 : undefined }} aria-label="Projects menu" aria-haspopup="menu" aria-expanded={projectsMenu} onClick={() => actions.ui.toggleMenu('projects')}><Icon name="more" size={14} /></button>
+        <button className="icon-btn" style={{ width: 24, height: 24 }} aria-label="Add or sort projects" aria-haspopup="menu" aria-expanded={projectsMenu} onClick={() => actions.ui.toggleMenu('projects')}><Icon name="plus" size={14} /></button>
         {projectsMenu && <ProjectsMenu anchorRef={projectsAnchor} />}
       </div>
       {/* A project's menu is placed once, so scrolling the list closes it rather than leave it behind. */}
