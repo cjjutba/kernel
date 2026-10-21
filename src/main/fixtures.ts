@@ -99,6 +99,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
       for (const step of f.afterRetry ?? []) setTimeout(() => step.events.forEach((e) => bus.push(e)), step.afterMs)
       return ok
     },
+    'projects.setupLog': async ({ projectId }) => f.setupLogs?.[projectId] ?? '',
     'projects.update': async ({ projectId, patch }) => ({ ...project(projectId), ...patch }),
     'projects.setIcon': async ({ projectId, icon }) => {
       const { icon: _old, ...r } = project(projectId)

@@ -21,6 +21,31 @@ import { Feature } from './feature'
 /** Where Project setup says a project's agents came from, when it asks for a roster (ProjectSetupRoster.png). */
 const AGENT_PLACES: Record<AgentOrigin, string> = { project: '.claude/agents', personal: '~/.claude/agents', plugin: 'Claude Code plugins' }
 
+/** The most characters of a project's setup log Kernel keeps. The oldest lines go first, a whole line at a time (KERNEL-1117). */
+export const SETUP_LOG_KEEP = 100_000
+/** The most of one tool's output a log entry keeps, the end of it, since that is where a failure is (KERNEL-1117). */
+const SETUP_NOTE_KEEP = 4_000
+const setupLogKey = (projectId: string) => `setupLog:${projectId}`
+const pad2 = (n: number) => String(n).padStart(2, '0')
+/** Local time as `2026-10-21 14:03:12`, the stamp each setup log entry starts with. */
+const stamp = (t: Date) => `${t.getFullYear()}-${pad2(t.getMonth() + 1)}-${pad2(t.getDate())} ${pad2(t.getHours())}:${pad2(t.getMinutes())}:${pad2(t.getSeconds())}`
+/** One setup log entry: the line after its stamp, and what a tool printed, lined up under it and cut to its end when long. */
+export function setupLogEntry(at: Date, line: string, ...under: (string | undefined)[]): string {
+  const text = under.filter(Boolean).join('\n').trimEnd()
+  const shown = text.length > SETUP_NOTE_KEEP ? `...${text.slice(-SETUP_NOTE_KEEP)}` : text
+  const when = stamp(at)
+  const indent = ' '.repeat(when.length + 2)
+  return [`${when}  ${line}`, ...(shown ? shown.split('\n').map((l) => `${indent}${l}`) : [])].join('\n') + '\n'
+}
+/** `log` with `entry` added, trimmed to its last SETUP_LOG_KEEP characters from the start of a line. */
+export function keepSetupLog(log: string | undefined, entry: string): string {
+  const all = (log ?? '') + entry
+  if (all.length <= SETUP_LOG_KEEP) return all
+  const cut = all.slice(-SETUP_LOG_KEEP)
+  const nl = cut.indexOf('\n')
+  return nl === -1 ? cut : cut.slice(nl + 1)
+}
+
 /** The order setup runs its steps in, so a retry knows which come after the failed one (KERNEL-876). */
 const STEP_ORDER: ProjectSetupStep['id'][] = ['clone', 'github', 'host', 'worktrees', 'copy', 'hooks', 'push', 'agents']
 
@@ -130,6 +155,12 @@ export class Projects extends Feature {
     this.run(project.id, setup, 'clone')
   }
 
+  /** Adds an entry to the project's setup log, which lives in the database under the project's id until the project is removed (KERNEL-1117). */
+  private logSetup(projectId: string, line: string, ...under: (string | undefined)[]) {
+    if (!this.store.project(projectId)) return
+    this.store.saveMeta(setupLogKey(projectId), keepSetupLog(this.store.meta<string>(setupLogKey(projectId)), setupLogEntry(new Date(), line, ...under)))
+  }
+
   /** Keeps a setup by project id. Each publish pushes its steps and saves the setups that haven't finished cleanly (KERNEL-883). */
   private track(projectId: string, saved: SavedSetup): Setup {
     const setup: Setup = { ...saved, publish: () => { bus.push({ type: 'project.setup', projectId, steps: setup.steps.map((s) => ({ ...s })) }); this.saveSetups() } }
@@ -154,7 +185,10 @@ export class Projects extends Feature {
     for (const [id, s] of Object.entries(saved)) {
       if (!this.store.project(id) || this.setups.has(id)) continue
       const stopped = s.steps.find((x) => x.state === 'run') ?? (s.steps.some((x) => x.state === 'fail') ? undefined : s.steps.find((x) => x.state === 'wait'))
-      if (stopped) Object.assign(stopped, { state: 'fail', meta: undefined, error: 'Setup stopped when Kernel quit.' })
+      if (stopped) {
+        Object.assign(stopped, { state: 'fail', meta: undefined, error: 'Setup stopped when Kernel quit.' })
+        this.logSetup(id, `Failed: ${stopped.title}`, stopped.error)
+      }
       // Setups saved by a build that still had the Install step drop it, since nothing runs it now (KERNEL-948).
       s.steps = s.steps.filter((x) => x.id !== 'install')
       this.track(id, s)
@@ -180,6 +214,7 @@ export class Projects extends Feature {
     if (setup.running) throw new Error(`${project.name} is still being set up.`)
     const failed = setup.steps.find((s) => s.state === 'fail' || s.state === 'skip')
     if (!failed) throw new Error(`${project.name} is already set up.`)
+    this.logSetup(projectId, `Trying again from: ${failed.title}`)
     for (const s of setup.steps.slice(setup.steps.indexOf(failed))) Object.assign(s, { state: 'wait', meta: undefined, error: undefined, output: undefined, fix: undefined, production: undefined })
     setup.publish()
     this.run(projectId, setup, failed.id)
@@ -203,33 +238,40 @@ export class Projects extends Feature {
     const worktrees = projectWorktreeRoot(this.settings.worktreeRoot, project)
     const due = (id: ProjectSetupStep['id']) => STEP_ORDER.indexOf(id) >= STEP_ORDER.indexOf(from)
     const update = (id: ProjectSetupStep['id'], patch: Partial<ProjectSetupStep>) => { Object.assign(steps.find((s) => s.id === id)!, patch); publish() }
-    const step = async (id: ProjectSetupStep['id'], fn: () => Promise<Partial<ProjectSetupStep> | void>, o: { needed?: boolean } = {}) => {
+    const step = async (id: ProjectSetupStep['id'], fn: (note: (text: string) => void) => Promise<Partial<ProjectSetupStep> | void>, o: { needed?: boolean } = {}) => {
       if (!due(id)) return true
       const started = Date.now()
+      const shown = () => steps.find((s) => s.id === id)!
       update(id, { state: 'run', meta: 'running', error: undefined })
+      this.logSetup(project.id, shown().title)
+      // What a tool the step ran printed, kept in the setup log under the step.
+      const note = (text: string) => { if (text.trim()) this.logSetup(project.id, `Output: ${shown().title}`, text) }
       // Setup stops running as its last result is published, so Try again on that result is never refused. The last is the
       // agents step, or a needed step that failed.
       const end = (ok: boolean) => { if (id === 'agents' || (o.needed && !ok)) setup.running = undefined }
       try {
-        const done = (await fn()) ?? {}
+        const done = (await fn(note)) ?? {}
         end(true)
         update(id, { state: 'ok', meta: Date.now() - started >= 1500 ? `${Math.round((Date.now() - started) / 1000)}s` : undefined, ...done })
+        const r = shown()
+        this.logSetup(project.id, `${r.state === 'warn' ? 'Done with a warning' : 'Done'}${r.meta ? ` in ${r.meta}` : ''}${r.detail ? `: ${r.detail}` : ''}`, r.production?.length ? `Left out of the worktrees: ${r.production.join(', ')}` : undefined, r.output)
         return true
       } catch (e) {
         end(false)
         const error = (e as Error).message
         update(id, { state: o.needed ? 'fail' : 'skip', meta: undefined, error })
+        this.logSetup(project.id, o.needed ? 'Failed, setup stopped here' : 'Skipped, setup went on', error)
         bus.push({ type: 'project.setupFailed', projectId: project.id, step: id, title: steps.find((s) => s.id === id)!.title, error, skipped: !o.needed })
         return false
       }
     }
 
-    const checkedOut = await step('clone', async () => {
+    const checkedOut = await step('clone', async (note) => {
       let inited = false
       if (req.source !== 'folder') await this.clearFailedClone(project, setup)
-      if (req.source === 'repo') await cloneRepo(req.from, project.path)
+      if (req.source === 'repo') note(await cloneRepo(req.from, project.path))
       else if (req.source === 'scratch' && req.github) await makeEmptyRepo(project.path, project.name)
-      else if (req.source === 'scratch') await copyTemplate(req.from, project.path)
+      else if (req.source === 'scratch') note(await copyTemplate(req.from, project.path))
       else if ((req.initGit || req.github) && !(await inspectFolder(project.path, this.home)).git) { await initGit(project.path, this.home); inited = true }
       const remote = await this.k.config.remoteFor(project.path)
       const next: Project = { ...project, repo: project.repo ?? (await remoteRepo(project.path, remote)), defaultBranch: req.baseBranch || (await defaultBranch(project.path, remote).catch(() => 'main')) }
@@ -241,10 +283,10 @@ export class Projects extends Feature {
     if (!checkedOut) return
     // The repo goes up before Code host reads the remote, so the project is a GitHub one from here on (KERNEL-944). A folder with no
     // commit yet gets the remote and nothing pushed: Kernel commits nothing in the user's folder (KERNEL-231).
-    const hosted = !req.github || await step('github', async () => {
+    const hosted = !req.github || await step('github', async (note) => {
       const { owner, name } = req.github!
       const committed = await hasCommit(project.path)
-      await createGitHubRepo(project.path, owner, name, committed)
+      note(await createGitHubRepo(project.path, owner, name, committed))
       const next = this.store.saveProject({ ...this.mustProject(project.id), repo: `${owner}/${name}` })
       bus.push({ type: 'project', project: next })
       return { detail: committed ? 'Private repo, pushed' : 'Private repo. Make the first commit and push it so new workspaces have something to branch from.' }
@@ -401,12 +443,15 @@ export class Projects extends Feature {
     if (!setup || !shown) return this.runPushCheck(projectId)
     Object.assign(shown, { state: 'run', meta: 'running' })
     setup.publish()
+    this.logSetup(projectId, 'Check push access again')
     try {
       const c = await this.runPushCheck(projectId)
       Object.assign(shown, { meta: undefined }, c ? pushStepOf(c) : { state: 'ok', detail: 'No remote to push to' })
+      this.logSetup(projectId, `${shown.state === 'warn' ? 'Done with a warning' : 'Done'}: ${shown.title}`, shown.detail, shown.output)
       return c
     } catch (e) {
       Object.assign(shown, { state: 'warn', meta: undefined, detail: (e as Error).message, fix: { action: 'recheck' } })
+      this.logSetup(projectId, 'Could not check push access', shown.detail)
       throw e
     } finally { setup.publish() }
   }
@@ -523,6 +568,7 @@ export class Projects extends Feature {
     await this.k.mainFolder.remove(projectId)
     const shared = this.store.sharedFiles({ projectId }).map((f) => f.id)
     this.store.deleteProject(projectId)
+    this.store.deleteMeta(setupLogKey(projectId))
     this.k.envStore.dropProject(projectId)
     await this.k.projectIcons.remove(project.icon)
     await this.k.shared.remove(shared)
@@ -544,6 +590,7 @@ export class Projects extends Feature {
       'projects.add': async ({ path, name }) => this.addProject(path, name),
       'projects.create': async (req) => this.createProject(req),
       'projects.retrySetup': async ({ projectId }) => { this.retrySetup(projectId); return { ok: true } },
+      'projects.setupLog': async ({ projectId }) => { this.mustProject(projectId); return this.store.meta<string>(setupLogKey(projectId)) ?? '' },
       'projects.update': async ({ projectId, patch }) => this.updateProject(projectId, patch),
       'projects.setIcon': async ({ projectId, icon }) => this.setProjectIcon(projectId, icon),
       'projects.icon': async ({ projectId }) => this.k.projectIcons.dataUrl(this.mustProject(projectId).icon),

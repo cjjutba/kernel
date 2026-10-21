@@ -43,6 +43,8 @@ export interface KernelApi {
    * Progress arrives as `project.setup` push events, as for `projects.create`. Refused while setup runs and once nothing failed.
    */
   'projects.retrySetup': { req: { projectId: string }; res: Ok }
+  /** The output of each step of a project's setup, as plain text, oldest first and bounded in size. Empty when setup never ran in this install (KERNEL-1117). */
+  'projects.setupLog': { req: { projectId: string }; res: string }
   'projects.update': { req: { projectId: string; patch: Partial<Pick<Project, 'name' | 'desc' | 'hidden' | 'archived' | 'desks' | 'allow' | 'allowTools' | 'permissionMode' | 'host'>> }; res: Project }
   /** Sets the project icon. The letter clears it. When the GitHub avatar can't be fetched it throws a plain error and the project keeps its letter. */
   'projects.setIcon': { req: { projectId: string; icon: { kind: 'letter' } | { kind: 'github' } | { kind: 'image'; path: string } }; res: Project }

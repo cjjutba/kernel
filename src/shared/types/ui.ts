@@ -71,6 +71,8 @@ export type Modal =
   | { name: 'search' }
   | { name: 'newProject'; prefill?: NewProjectPrefill }
   | { name: 'connectRepo' } | { name: 'openFolder' } | { name: 'checkHooks' }
+  /** A project's setup log, opened from Details on New chat (KERNEL-1117). */
+  | { name: 'setupLog'; projectId: string }
   | { name: 'newAgent'; projectId?: string; step: 'describe' | 'draft' | 'done'; prefill?: NewAgentPrefill }
   /** `update` is the install What's new opened with, which later update pushes must not replace (KERNEL-30). */
   | { name: 'whatsNew'; update?: AppUpdate }
