@@ -171,6 +171,8 @@ export interface Fixture {
    * the message (`clientId`, or `id` for Send now), `$parts` its parts and `$now` the time, so main's row replaces the window's by id as it does for real (KERNEL-895).
    */
   after?: Partial<Record<Channel, { afterMs: number; events: PushEvent[] }[]>>
+  /** The text `projects.setupLog` answers with, by project (KERNEL-1117). */
+  setupLogs?: Record<string, string>
   /** Events `projects.retrySetup` pushes after the given delays, so a `motion` that clicks Try again can step a setup through its steps. */
   afterRetry?: { afterMs: number; events: PushEvent[] }[]
   /**

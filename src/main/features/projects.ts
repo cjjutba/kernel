@@ -544,6 +544,7 @@ export class Projects extends Feature {
       'projects.add': async ({ path, name }) => this.addProject(path, name),
       'projects.create': async (req) => this.createProject(req),
       'projects.retrySetup': async ({ projectId }) => { this.retrySetup(projectId); return { ok: true } },
+      'projects.setupLog': async () => '',
       'projects.update': async ({ projectId, patch }) => this.updateProject(projectId, patch),
       'projects.setIcon': async ({ projectId, icon }) => this.setProjectIcon(projectId, icon),
       'projects.icon': async ({ projectId }) => this.k.projectIcons.dataUrl(this.mustProject(projectId).icon),
