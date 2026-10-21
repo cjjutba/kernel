@@ -28,6 +28,7 @@ import { Integrations } from './pages/Integrations'
 import { PRs } from './pages/PRs'
 import { Privacy } from './pages/Privacy'
 import { Project } from './pages/Project'
+import { Remote } from './pages/Remote'
 import { ProjectGit } from './pages/ProjectGit'
 import { ProjectPrs } from './pages/ProjectPrs'
 import { ProjectSetup } from './pages/ProjectSetup'
@@ -63,6 +64,7 @@ export function Settings({ page, projectId, section, agentId }: { page: Settings
   else if (page === 'permissions') body = <Permissions s={settings} />
   else if (page === 'env') body = <Environment />
   else if (page === 'privacy') body = <Privacy s={settings} />
+  else if (page === 'remote') body = <Remote s={settings} />
   else if (page === 'bigterm') body = <BigTerminal s={settings} />
   else if (page === 'git') body = <Git s={settings} />
   else if (page === 'prs') body = <PRs s={settings} />

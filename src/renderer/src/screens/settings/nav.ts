@@ -32,6 +32,7 @@ export const NAV: NavGroup[] = [
   { title: 'System', items: [
     { page: 'integrations', label: 'Integrations', icon: 'link', keywords: [{ label: 'GitHub', rowId: 'github' }, { label: 'Linear', rowId: 'linear' }], terms: ['github', 'linear', 'connect'] },
     { page: 'hooks', label: 'Hooks', icon: 'plug', keywords: [{ label: 'Kernel’s hooks', rowId: 'kernel-hooks' }, { label: 'Settings file', rowId: 'settings-file' }, { label: 'Hook server port', rowId: 'hook-port' }], terms: ['hook server', 'port', 'test event', 'settings.json'] },
+    { page: 'remote', label: 'Remote access', icon: 'link', keywords: [{ label: 'Let other devices connect', rowId: 'remote-enabled' }, { label: 'Who can reach Kernel remotely', rowId: 'remote-host' }, { label: 'Remote address', rowId: 'remote-url' }], terms: ['remote', 'phone', 'browser', 'pair', 'pairing', 'qr code', 'devices', 'network'] },
     { page: 'privacy', label: 'Privacy', icon: 'lock', keywords: [{ label: 'Share diagnostics', rowId: 'diagnostics' }], terms: ['diagnostics', 'telemetry', 'events'] },
     { page: 'about', label: 'About', icon: 'info', keywords: [{ label: 'Data folder', rowId: 'data-folder' }, { label: 'Logs', rowId: 'logs' }, { label: 'Onboarding', rowId: 'onboarding' }], terms: ['version', 'updates', 'data folder', 'logs', 'onboarding'] }
   ] }

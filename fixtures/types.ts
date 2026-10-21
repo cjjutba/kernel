@@ -1,7 +1,7 @@
 import type { PrEvidence, PlanAttention, AccountProfile, MoveNotice, Provider, ProviderModel, ProviderStatus,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, ClaudeAccount, DeletePreview,
   FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, GithubIssueDetail, HookStatus, Hunk, IssueSummary, IssueTaken, PrSummary, Notification, OpenItem, Overlap, PreflightCheck, PrInfo, ProductionHint, PushCheck, QueuedMessage, RateLimit, GitHubOwner, RepoSummary, Project, ProjectSettings, ProjectTracker, SharedAnchor, SharedComment, SharedFile,
-  Integration, LinearIssueDetail, ResolvedPath, LinearScope, McpAccount, McpServer, ScriptSuggestion, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
+  Integration, LinearIssueDetail, RemoteDevice, RemoteStatus, ResolvedPath, LinearScope, McpAccount, McpServer, ScriptSuggestion, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { Channel, PushEvent } from '@shared/ipc'
 import type { TelemetryRecord } from '@shared/telemetry'
@@ -155,6 +155,8 @@ export interface Fixture {
   sharedHits?: SharedAnchor[]
   /** Usage data (KERNEL-397): whether this build could send, and what Settings, Privacy lists. Left out, it can't and lists nothing. */
   telemetry?: { canSend?: boolean; recent?: TelemetryRecord[] }
+  /** Settings, Remote access (remote-access-server): what the server reports and the devices paired. `remote.pair` answers with a fixed code. Left out, it is off with no devices. */
+  remote?: { status?: RemoteStatus; devices?: RemoteDevice[] }
   ui: ForcedUi
   /** Remembered choices to start with, by storage key (remember.ts), so a screen can open on a choice a person made (KERNEL-1003). */
   saved?: Record<string, string>
