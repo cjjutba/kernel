@@ -12,7 +12,7 @@ import { call, cleanError, onPush } from './api'
 import { writeSaved } from './remember'
 import { startupTheme } from './ui/theme'
 import { setupToasts } from './screens/onboarding/setupToasts'
-import { setupFailedToast, worktreeFailedToast } from './screens/workspace/setupFailed'
+import { raiseSetupFailed, raiseWorktreeFailed } from './screens/workspace/setupFailed'
 import { closeAllLayers } from './ui/hooks'
 import { installFailedToast } from './components/footer/updateModel'
 import { hasTab, isChatTab, landing, nearest, placeToSave, restorePlace, projectHome, samePlace, stillThere, tabOf, type Place } from './nav'
@@ -910,8 +910,8 @@ export function apply(e: PushEvent) {
     case 'script.output': return actions.workspaces.appendScript(e.workspaceId, e.kind, e.name, e.lines)
     case 'script.data': return actions.workspaces.appendScriptData(e.workspaceId, e.kind, e.name, e.data)
     case 'script.exit': return actions.workspaces.scriptExited(e.workspaceId, e.kind, e.name, e.code)
-    case 'setup.failed': { const t = setupFailedToast(e); return void (t && actions.ui.toast(t)) }
-    case 'worktree.failed': return void actions.ui.toast(worktreeFailedToast(e))
+    case 'setup.failed': return void raiseSetupFailed(e)
+    case 'worktree.failed': return raiseWorktreeFailed(e)
     case 'script.url': return actions.workspaces.setScriptUrl(e.workspaceId, e.name, e.url)
     case 'script.state': return actions.workspaces.setScripts(e.workspaceId, e.lines, e.exit, e.url, e.data)
     case 'checkpoint': return actions.workspaces.upsertCheckpoint(e.checkpoint)

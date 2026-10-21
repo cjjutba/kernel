@@ -1,6 +1,6 @@
 import type { PushEvent } from '@shared/ipc'
 import type { Toast, Workspace } from '@shared/types'
-import { actions, getState, go } from '../../store'
+import { actions, getState, go, loadProject } from '../../store'
 import { bottomKindOf } from './bottomSplit'
 import { clock } from './setupClock'
 
@@ -60,4 +60,22 @@ export function worktreeFailedToast(e: WorktreeFailed): Omit<Toast, 'id'> {
   // A Lead chat that started on the shared folder can send its message from there instead (Build here's working copy).
   const handoff = ws?.worktreePending?.fromShared ? { label: 'Send as Hand off', sendAsHandoff: e.workspaceId } : undefined
   return { title: "Couldn't create the worktree", sub: e.error, glyph: 'error', ...(detail ? { detail } : {}), ...(handoff ? { other: handoff } : {}), action: { label: 'Try again', retryWorktree: e.workspaceId, primary: true } }
+}
+
+/** The agent's name comes from the project's team, which a window that just opened may not have yet. */
+async function teamLoaded(workspaceId: string) {
+  const ws = getState().workspaces.find((w) => w.id === workspaceId)
+  if (ws && !getState().agents[ws.projectId]) await loadProject(ws.projectId).catch(() => undefined)
+}
+
+/** `setup.failed` as the store hears it: one toast. */
+export async function raiseSetupFailed(e: SetupFailed) {
+  await teamLoaded(e.workspaceId)
+  const toast = setupFailedToast(e)
+  if (toast) actions.ui.toast(toast)
+}
+
+/** `worktree.failed` as the store hears it: one toast. */
+export function raiseWorktreeFailed(e: WorktreeFailed) {
+  actions.ui.toast(worktreeFailedToast(e))
 }

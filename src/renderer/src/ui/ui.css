@@ -112,7 +112,7 @@
 .toast-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-row); line-height: var(--lh-snug); }
 .toast-title { font-weight: var(--fw-semibold); color: var(--ink); }
 .toast-sub { color: var(--muted); font-size: var(--fs-code); line-height: var(--lh-ui); }
-.toast-detail { color: var(--faint); font-size: var(--fs-meta); line-height: var(--lh-ui); }
+.toast-detail { color: var(--muted); font-size: var(--fs-meta); line-height: var(--lh-ui); }
 .toast-action { height: 28px; padding: 0 11px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: var(--fs-code); font-weight: var(--fw-medium); cursor: pointer; transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
 .toast-action:hover { background: var(--surface-3); color: var(--ink); }
 .toast-action[data-primary] { border-color: var(--ink); background: var(--ink); color: var(--on-ink); }

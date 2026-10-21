@@ -152,7 +152,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const heldForSetup = useStore((s) => (chat ? !!s.queue[chat.id]?.length && s.queueWhy[chat.id] === 'worktree' : false))
   const skips = !!ws && skipsSetup(heldForSetup)
   const empty = useStore((s) => (chat ? !s.items[chat.id]?.length : true))
-  const found = useBanner(ws, chat, agent?.name ?? 'The agent', running, skips, !empty, heldForSetup)
+  const found = useBanner(ws, chat, agent?.name ?? 'The agent', running)
   useProblemToast(found)
   const moveNotice = useMoveNotice(chat)
 
@@ -200,12 +200,12 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   // the Lead's shared worktree and a current-branch workspace say what they follow instead of a branch. That label carries meaning, so it
   // stays, and it has no copy: the title is plain text there.
   const label = ws.mode === 'current' ? `current branch · ${ws.branch}` : ws.lead && ws.branch === 'HEAD' ? `latest ${leadBase(ws, project)}` : undefined
-  // A chat waiting for its worktree shows what waits and where setup stands (KERNEL-430). It draws a failure as its own card, so the
-  // banner doesn't say it a second time. A teammate's brief still on its way keeps the box shut, so nothing goes out before it. A chat
-  // that isn't held shows its transcript and stays open while setup runs (KERNEL-490, KERNEL-1086).
+  // A chat waiting for its worktree shows its message and what is under way (KERNEL-430). A teammate's brief still on its way keeps the
+  // box shut, so nothing goes out before it. A chat that isn't held shows its transcript and stays open while setup runs, and a run or
+  // a worktree that fails is a toast (KERNEL-490, KERNEL-1086, KERNEL-1093).
   const gate = setupGate({ status: ws.status, skips, held: heldForSetup, empty })
   const setupWait = gate.wait && chat?.kind !== 'terminal'
-  const problem = setupWait && found?.id === 'setup' ? undefined : found
+  const problem = found
   // Only a limit that needs a choice is a banner. Provider, network and Mac errors are a toast, and the box says why it can't send (Pen 14.7).
   const banner = problem && !problem.as ? problem : undefined
   const blocked = gate.shut || !!problem?.blocks

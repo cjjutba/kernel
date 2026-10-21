@@ -625,9 +625,11 @@ const stepCardWriteItems: ChatItem[] = [
   ...tableItems.slice(-2)
 ]
 
-/** The messages in the setup wait shots (KERNEL-430): a pasted screenshot with a question, then a follow-up with a pasted log. */
-const setupAsk: QueuedMessage = { id: 'q-setup', chatId: ids.tableChat, ts: at(10, 0), parts: [{ type: 'image' as const, name: 'image.png' }, { type: 'text' as const, text: 'In a setup script tab in the right sidebar panel, there is a redundancy in terms of Run. Can you fix that?' }] }
-const setupFollow: QueuedMessage = { id: 'q-follow', chatId: ids.tableChat, ts: at(10, 0, 40), parts: [{ type: 'text' as const, text: 'Check the Terminal tab for the same problem. The console output is in' }, { type: 'file' as const, name: 'pasted_text_1.txt', text: 'Terminal\n  Run\n  Run', lines: 14 }] }
+/** The brief and the follow-up in the setup shots (KERNEL-430, KERNEL-1093): a teammate's task from the Lead's plan. */
+const JOURNEY = 'Run every step of KERNEL-31 on a fresh Mac account. File each failure as its own issue, then post one comment on KERNEL-232 with the results and shots.'
+const JOURNEY_TITLE = 'Clean-account journey on a fresh Mac user'
+const setupAsk: QueuedMessage = { id: 'q-setup', chatId: ids.tableChat, ts: at(10, 0), parts: [{ type: 'text' as const, text: JOURNEY }] }
+const setupFollow: QueuedMessage = { id: 'q-follow', chatId: ids.tableChat, ts: at(10, 0, 40), parts: [{ type: 'text' as const, text: 'Also attach the screenshots to the issue.' }] }
 
 const E = '\x1b['
 const dim = (t: string) => `${E}2m${t}${E}22m`
@@ -657,12 +659,13 @@ const scriptData = (workspaceId: string, kind: 'setup' | 'run', data: string, na
 export const setupData = (workspaceId: string, data: string) => scriptData(workspaceId, 'setup', data)
 
 /** Setup's log as main sends it: still running, failed with code 1, or stopped. */
-function setupLog(end: 'running' | 'failed' | 'stopped'): PushEvent[] {
+function setupLog(end: 'running' | 'done' | 'failed' | 'stopped'): PushEvent[] {
   const out = (line: string, stream: 'stdout' | 'stderr' = 'stdout'): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line, stream }] })
   const lines = [out('$ pnpm install'), out('Lockfile is up to date, resolution step is skipped'), out('Packages: +1204'), out('Progress: resolved 1204, reused 1198, downloaded 6, added 940')]
   const raw = [setupData(ids.table, SETUP_RAW.head + SETUP_RAW.install)]
   if (end === 'failed') return [...lines, ...raw, setupData(ids.table, SETUP_RAW.failed), out('gyp ERR! build error', 'stderr'), out('ERR_PNPM_LIFECYCLE  better-sqlite3@11.8.1 install: exit status 1', 'stderr'), { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: 1 }]
   if (end === 'stopped') return [...lines, ...raw, { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: null }]
+  if (end === 'done') return [...lines, ...raw, setupData(ids.table, SETUP_RAW.done), { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: 0 }]
   return [...lines, ...raw, setupData(ids.table, SETUP_RAW.notice)]
 }
 
@@ -676,7 +679,8 @@ function setupWait(f: Fixture, status: 'setup' | 'failed', queue: QueuedMessage[
   // A worktree still being made was asked for a moment ago, and the Working line counts from then.
   if (o.pending && !o.pending.error) queue = queue.map((q) => ({ ...q, ts: Date.now() - 2_000 }))
   return {
-    workspaces: withWorkspace(f, ids.table, { status, setupRun, copied: 2, ...(o.later ? { firstInProject: false } : {}), ...(o.pending ? { baseRef: 'origin/main', worktreePending: o.pending } : {}) }),
+    workspaces: withWorkspace(f, ids.table, { status, title: JOURNEY_TITLE, setupRun, copied: 2, ...(o.later ? { firstInProject: false } : {}), ...(o.pending ? { baseRef: 'origin/main', worktreePending: o.pending } : {}) }),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: JOURNEY_TITLE } : c)),
     items: { [ids.tableChat]: [] },
     queue: { [ids.tableChat]: queue },
     push: [...f.push, ...(o.pending ? [] : setupLog(status === 'setup' ? 'running' : o.end === null ? 'stopped' : 'failed')), ...(queue.length ? [{ type: 'chat.queue' as const, chatId: ids.tableChat, queue, why: 'worktree' as const }] : [])],
@@ -685,20 +689,77 @@ function setupWait(f: Fixture, status: 'setup' | 'failed', queue: QueuedMessage[
 }
 
 /**
+ * KERNEL-1086, KERNEL-1093: a teammate's brief went out at once and setup runs, passed or didn't alongside it. `setup` is where the run stands, and a run that
+ * didn't pass pushes the `setup.failed` main does, so the toast comes through the app's own handler. `steps` is how far the turn has got, `later` marks a chat
+ * that isn't the project's first, and `pane` opens the right panel on its Setup tab.
+ */
+export function along(f: Fixture, o: { quiet?: boolean; setup?: 'running' | 'done' | 'failed' | 'stopped' | 'timeout'; steps?: 0 | 1 | 3; later?: boolean; pane?: boolean; right?: 'files'; collapsed?: boolean; followUp?: boolean; secs?: number } = {}): Partial<Fixture> {
+  const now = Date.now()
+  const t = (secs: number) => now - secs * 1000
+  const secs = o.secs ?? 14
+  const run = { running: { startedAt: t(42) }, done: { startedAt: t(100), endedAt: t(28), end: 0 }, failed: { startedAt: t(68), endedAt: t(26), end: 1 }, stopped: { startedAt: t(70), endedAt: t(39), end: null }, timeout: { startedAt: t(330), endedAt: t(30), end: 'timeout' as const } }
+  const setupRun = o.setup ? run[o.setup] : undefined
+  const steps = [
+    tool('al-1', 'Read', 'docs/qa/kernel-31.md', { name: 'Read', ts: t(secs - 4), input: { file_path: 'docs/qa/kernel-31.md' } }),
+    tool('al-2', 'Read issue', 'KERNEL-232', { name: 'Read', ts: t(secs - 8), input: { file_path: 'KERNEL-232' } }),
+    tool('al-3', 'Run steps 1 to 5', 'pnpm test:journey --steps 1-5', { ts: t(6), status: 'running', durationMs: undefined, input: { command: 'pnpm test:journey --steps 1-5' } })
+  ]
+  const end = !o.quiet && (o.setup === 'failed' || o.setup === 'timeout' || o.setup === 'stopped')
+  return {
+    workspaces: withWorkspace(f, ids.table, { status: 'ready', title: JOURNEY_TITLE, copied: 2, ...(o.later ? { firstInProject: false } : {}), setupRun }),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: JOURNEY_TITLE } : c)),
+    items: { [ids.tableChat]: [
+      { kind: 'user', id: 'al-u', ts: t(secs), parts: [{ type: 'text', text: JOURNEY }] },
+      ...(o.followUp ? [{ kind: 'user' as const, id: 'al-u2', ts: t(secs - 2), parts: setupFollow.parts }] : []),
+      ...(o.steps === 0 ? [] : steps.slice(0, o.steps === 1 ? 1 : 3))
+    ] },
+    push: [
+      ...f.push,
+      ...(o.setup ? setupLog(o.setup === 'timeout' ? 'failed' : o.setup) : []),
+      { type: 'chat.running', chatId: ids.tableChat, running: true },
+      ...(end ? [{ type: 'setup.failed' as const, workspaceId: ids.table, chatId: ids.tableChat, kind: o.setup === 'stopped' ? 'stopped' as const : o.setup === 'timeout' ? 'timeout' as const : 'failed' as const, ...(o.setup === 'failed' ? { code: 1 } : {}) }] : [])
+    ],
+    ui: { ...open, rightPanel: o.pane ?? false, ...(o.collapsed ? { bottomCollapsed: { lead: true, teammate: true } } : {}), workspace: { right: o.right ?? 'changes', bottom: 'setup' } }
+  }
+}
+
+/** The Lead's chat sets up the same way, silently (Pen 6.11): its message goes out at once and Kernel works while the script runs, or after it failed. */
+export function leadAlong(f: Fixture, failed: boolean): Partial<Fixture> {
+  const now = Date.now()
+  const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead', status: 'ready', copied: 2, setupRun: failed ? { startedAt: now - 68_000, endedAt: now - 26_000, end: 1 } : { startedAt: now - 12_000 } }, 'Refund rounding', [
+    { kind: 'user', id: 'la-u', ts: now - (failed ? 40_000 : 12_000), parts: [{ type: 'text', text: 'The invoice total is off by a cent on refunds. Can you fix it?' }] },
+    tool('la-1', 'Read', 'src/lib/money.ts', { name: 'Read', ts: now - 5_000, status: 'running', durationMs: undefined, input: { file_path: 'src/lib/money.ts' } })
+  ], {}, { model: 'claude-opus-5-5' })
+  const { approvals: _none, ...rest } = s
+  return { ...rest, push: [...f.push, { type: 'chat.running', chatId: ids.leadChat, running: true }, ...(failed ? [{ type: 'setup.failed' as const, workspaceId: ids.lead, chatId: ids.leadChat, kind: 'failed' as const, code: 1 }] : [])] }
+}
+
+/**
  * A project's first chat, made when the project was added, before anything is sent: one setup block at the top, the box below. `script` is the project's
  * setup script, which runs (`running`) or has finished; without one the block offers to add it.
  */
-function firstChat(f: Fixture, o: { script?: boolean; running?: boolean; sent?: boolean } = {}): Partial<Fixture> {
+/** The first message, as it reads once sent: the block of setup rows is gone and the agent's turn follows (Pen 6.3). */
+const sentFirst = (): ChatItem[] => {
+  const now = Date.now()
+  return [
+    { kind: 'user', id: 'fc-u', ts: now - 14_000, parts: [{ type: 'text', text: 'Add a dark mode toggle to Settings, Appearance. Keep the current theme as the default.' }] },
+    tool('fc-1', 'Read', 'src/renderer/src/tokens.css', { name: 'Read', ts: now - 10_000, input: { file_path: 'src/renderer/src/tokens.css' } }),
+    tool('fc-2', 'Searched', 'theme in src/renderer', { name: 'Grep', ts: now - 6_000, input: { pattern: 'theme', path: 'src/renderer' } }),
+    tool('fc-3', 'Checking the team', 'Which teammate owns Settings', { ts: now - 2_000, status: 'running', durationMs: undefined })
+  ]
+}
+
+function firstChat(f: Fixture, o: { script?: boolean; running?: boolean; sent?: boolean; pane?: boolean } = {}): Partial<Fixture> {
   const started = Date.now() - 18_000
   const setupRun = !o.script ? undefined : o.running ? { startedAt: started } : { startedAt: started - 40_000, endedAt: started - 28_000, end: 0 }
   return {
     projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'aurahire', firstChatId: ids.tableChat } : r)),
     workspaces: withWorkspace(f, ids.table, { status: o.running ? 'setup' : 'ready', firstInProject: true, branch: 'cjjutba/yx6r7', baseRef: 'origin/main', copied: 1028, setupRun }),
-    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'New tab', autoTitle: { turns: 0 } } : c)),
-    items: { [ids.tableChat]: o.sent ? [{ kind: 'user', id: 'fc-u', ts: at(10, 0), parts: [{ type: 'text', text: 'hi' }] }, { kind: 'text', id: 'fc-t', ts: at(10, 0, 11), text: "Hi. I'm in the tbilisi workspace on branch cjjutba/yx6r7. The tree is clean.\n\nWhat do you want to work on?" }] : [] },
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: o.sent ? 'Dark mode toggle' : 'New tab', autoTitle: { turns: 0 } } : c)),
+    items: { [ids.tableChat]: o.sent ? sentFirst() : [] },
     projectSettings: { [ids.projectA]: { scripts: o.script ? { setup: 'pnpm install' } : {}, runScripts: [], files: { copy: [] }, workspace: {} } },
-    push: [...f.push, ...(o.script ? setupLog('running') : [])],
-    ui: { ...open, rightPanel: true, workspace: { right: 'files', bottom: 'setup' } }
+    push: [...f.push, ...(o.script ? setupLog(o.running ? 'running' : 'done') : []), ...(o.sent ? [{ type: 'chat.running' as const, chatId: ids.tableChat, running: true }] : [])],
+    ui: { ...open, rightPanel: o.pane ?? false, workspace: { right: 'files', bottom: 'setup' } }
   }
 }
 
@@ -2181,77 +2242,56 @@ export const workspaceFixtures: Record<string, Fixture> = {
     workspaces: withWorkspace(f, ids.table, { branch: 'feat/kernel-24-invoice-table', source: { kind: 'issue', id: 'KERNEL-24', title: 'Invoice table', url: 'https://linear.app/cj-jutba/issue/KERNEL-24' } }),
     ui: open
   })),
-  WorkspaceLoading: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { status: 'setup' }),
-    items: { [ids.tableChat]: [] },
-    ui: open
-  })),
-  // KERNEL-430: a new chat waiting for its workspace. KERNEL-951: rows say what Kernel did, the setup script's row counts with its last output line, and the message waits dimmed.
-  SetupRunning: scene((f) => setupWait(f, 'setup', [setupAsk])),
-  SetupFollowUp: scene((f) => setupWait(f, 'setup', [setupAsk, setupFollow])),
-  // KERNEL-1018: a restored chat with history, held while its worktree is made. The transcript stays, the box is open, and the message waits in the queue above it.
-  SetupRestoredChat: scene((f) => {
-    const w = setupWait(f, 'setup', [setupAsk])
-    return { ...w, items: { [ids.tableChat]: f.items[ids.tableChat] ?? [] } }
-  }),
-  // KERNEL-1012, KERNEL-1086: the brief went out at once, so the chat shows its transcript and the agent works while setup runs. No card, no queue row, the box is open.
-  SetupWorkingAlongside: scene((f) => {
-    const w = setupWait(f, 'setup', [])
-    return { ...w, items: { [ids.tableChat]: [userMsg('sa-u', 'In a setup script tab in the right sidebar panel, there is a redundancy in terms of Run. Can you fix that?'), ...midTurn] }, push: [...(w.push ?? []), { type: 'chat.running', chatId: ids.tableChat, running: true }] }
-  }),
-  // KERNEL-1012: setup failed and nothing waited for it. The workspace is ready, the agent keeps working, and the banner doesn't block the box.
-  SetupFailedKeepsWorking: scene((f) => {
-    const w = setupWait(f, 'failed', [], { end: 1 })
-    return {
-      ...w,
-      workspaces: withWorkspace(f, ids.table, { status: 'ready', setupRun: { startedAt: Date.now() - 68_000, endedAt: Date.now() - 26_000, end: 1 }, copied: 2 }),
-      items: { [ids.tableChat]: [userMsg('sf-u', 'In a setup script tab in the right sidebar panel, there is a redundancy in terms of Run. Can you fix that?'), ...midTurn] },
-      push: [...(w.push ?? []), { type: 'chat.running', chatId: ids.tableChat, running: true }]
-    }
-  }),
-  // Edit pulled the only queued message back into the box.
-  SetupEditQueued: scene((f) => setupWait(f, 'setup', [], { composer: { parts: [...setupAsk.parts, ...setupFollow.parts], draft: '' } })),
-  SetupPanelHidden: scene((f) => setupWait(f, 'setup', [setupAsk], { panel: false })),
-  SetupFailed: scene((f) => setupWait(f, 'failed', [setupAsk], { end: 1 })),
-  SetupStopped: scene((f) => setupWait(f, 'failed', [setupAsk], { end: null })),
-  // KERNEL-543: the worktree isn't made yet. The message reads as sent, and one line says which base it is made from.
-  SetupCreatingWorktree: scene((f) => setupWait(f, 'setup', [setupAsk], { pending: {} })),
-  /**
-   * The first message sent from New chat while its worktree is made, one step per frame as main sends it: the worktree finishes and nothing else has
-   * happened yet, the setup script starts before the row is posted, then the row, the running state and the empty tray arrive together. The bubble and the working line stay in one place
-   * in every frame, with no setup text and no queue strip, though a setup script runs.
-   */
-  NewChatSendWorktreeMotion: { ...scene((f) => ({ ...setupWait(f, 'setup', [{ ...setupAsk, clientId: setupAsk.id }], { pending: {} }), projectSettings: handoverSettings })), motion: { action: { steps: handoverSteps() }, ms: 0, area: '.ws-main' } },
-  // Git wouldn't make it: the card says so with git's reason and Try again, and the message is Not sent.
-  SetupWorktreeFailed: scene((f) => setupWait(f, 'failed', [setupAsk], { pending: { error: "fatal: '/Users/cj/Kernel/worktrees/kernel/in-setup-script-tab-in' already exists" } })),
-  SetupSentAnyway: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { status: 'ready', title: 'Fix duplicate Run in the script panel', setupRun: { startedAt: at(10, 0), endedAt: at(10, 1, 8), end: 1 } }),
-    items: { [ids.tableChat]: [{ kind: 'note', id: 'sw-note', ts: at(10, 2), text: 'Setup failed, sent anyway' }, { kind: 'user', id: 'sw-u', ts: Date.now() - 20_000, parts: [...setupAsk.parts, ...setupFollow.parts] }] },
-    push: [...f.push, ...setupLog('failed'), { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: { ...open, workspace: { right: 'changes', bottom: 'setup' } }
-  })),
-  // A later worktree chat in the project: no banner and no rows, the chat starts with the message.
-  SetupLaterChat: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { status: 'ready', title: 'Fix duplicate Run in the script panel', copied: 2, firstInProject: false, setupRun: { startedAt: at(10, 0), endedAt: at(10, 1, 12), end: 0 } }),
-    items: { [ids.tableChat]: [{ kind: 'user', id: 'sl-u', ts: Date.now() - 20_000, parts: [...setupAsk.parts, ...setupFollow.parts] }] },
-    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
-  })),
-  // A later worktree chat whose worktree isn't made yet: no rows, so the Working line under the message is what says it is under way.
-  SetupLaterChatCreatingWorktree: scene((f) => setupWait(f, 'setup', [setupAsk], { pending: {}, later: true })),
-  // A later worktree chat whose setup failed: only the failed row, with Run again and Send anyway.
-  SetupLaterChatFailed: scene((f) => setupWait(f, 'failed', [setupAsk], { end: 1, later: true })),
-  // A project's first chat, made when the project was added: one block at the top, the same before and after the first message. No setup script offers to add one, and is never a warning.
+  // 6.12: the chat's messages are still on their way, so the skeleton stands in and no spinner shows.
+  WorkspaceLoading: { ...scene(() => ({ ui: open })), lag: { 'chats.items': 600_000 } },
+  // Redesign 06, An agent's workspace starts (KERNEL-1093). Setup is optional and never holds a message: a brief goes out at once, the agent works while the script runs,
+  // and a run that doesn't pass is a toast. Frames 6.1 to 6.3: a project's first chat, its block of plain rows, and the block gone once the first message is sent.
   FirstChatNoScript: scene((f) => firstChat(f)),
+  WorkspaceSetupAdd: scene((f) => firstChat(f, { pane: true })),
+  FirstChatAfterSend: scene((f) => firstChat(f, { sent: true })),
+  // 6.4 to 6.7: setup runs beside the working agent, a run that fails or stops is a toast and the agent goes on, and git can't make the worktree: the message stays as Not sent.
+  SetupRunning: scene((f) => along(f, { setup: 'running', pane: true })),
+  SetupFailed: scene((f) => along(f, { setup: 'failed' })),
+  SetupWorktreeFailed: scene((f) => {
+    const error = "fatal: '/Users/cj/Kernel/worktrees/kernel/in-setup-script-tab-in' already exists"
+    const w = setupWait(f, 'failed', [setupAsk], { pending: { error }, panel: false })
+    return { ...w, push: [...(w.push ?? []), { type: 'worktree.failed', workspaceId: ids.table, chatId: ids.tableChat, error }] }
+  }),
+  // 6.10: setup never holds a message. The first chat's block while the script runs and once it finished, a worktree still being made, the brief going out at once, a follow-up, and a restored chat.
   FirstChatSetupRunning: scene((f) => firstChat(f, { script: true, running: true })),
   FirstChatSetupDone: scene((f) => firstChat(f, { script: true })),
-  FirstChatAfterSend: scene((f) => firstChat(f, { sent: true })),
-  SetupDone: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { status: 'ready', title: 'Fix duplicate Run in the script panel', copied: 2, setupRun: { startedAt: at(10, 0), endedAt: at(10, 1, 12), end: 0 } }),
-    items: { [ids.tableChat]: [{ kind: 'user', id: 'sd-u', ts: Date.now() - 20_000, parts: [...setupAsk.parts, ...setupFollow.parts] }] },
-    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
-  })),
+  SetupCreatingWorktree: scene((f) => setupWait(f, 'setup', [{ ...setupAsk, clientId: setupAsk.id }], { pending: {}, panel: false })),
+  SetupWorkingAlongside: scene((f) => along(f, { setup: 'running', steps: 3, secs: 18 })),
+  // Wait for setup is gone, so a chat that used to hold its message now just works. Kept as its own state: the brief, one step and the clock.
+  SetupHeldWaitOn: scene((f) => along(f, { setup: 'running', steps: 1, secs: 4 })),
+  SetupSentHeldWaitOn: scene((f) => along(f, { setup: 'running', steps: 0, secs: 2 })),
+  SetupFollowUp: scene((f) => along(f, { setup: 'running', steps: 3, followUp: true, secs: 31 })),
+  // KERNEL-1018: a restored chat with history. It keeps its transcript, and what you send goes out at once.
+  SetupRestoredChat: scene((f) => {
+    const now = Date.now()
+    const w = along(f, { setup: 'running', steps: 0, secs: 3 })
+    return { ...w, items: { [ids.tableChat]: [
+      { kind: 'user', id: 'rc-u1', ts: now - 600_000, parts: [{ type: 'text', text: 'Where did we leave off with the soak harness?' }] },
+      { kind: 'text', id: 'rc-t1', ts: now - 590_000, text: 'The harness runs for 24 hours. Memory stayed flat in the last run.' },
+      { kind: 'result', id: 'rc-r1', ts: now - 589_000, durationMs: 11_000, ok: true },
+      { kind: 'user', id: 'rc-u2', ts: now - 3_000, parts: [{ type: 'text', text: 'Run it again on the fresh account.' }] }
+    ] } }
+  }),
+  // 6.11: setup ends and the chat carries on. A pass says so in the Setup tab and nothing in the chat, a stop or a failure is a toast with its action, and a later chat or the Lead's does the same.
+  SetupDone: scene((f) => along(f, { setup: 'done', steps: 3, pane: true, secs: 120 })),
+  SetupStopped: scene((f) => along(f, { setup: 'stopped', steps: 1, secs: 40 })),
+  SetupSentAnyway: scene((f) => along(f, { setup: 'running', steps: 1, secs: 9 })),
+  SetupFailedKeepsWorking: scene((f) => along(f, { setup: 'failed', steps: 3, secs: 130 })),
+  SetupLaterChatCreatingWorktree: scene((f) => setupWait(f, 'setup', [{ ...setupAsk, clientId: setupAsk.id }], { pending: {}, later: true, panel: false })),
+  SetupLaterChatFailed: scene((f) => along(f, { setup: 'failed', steps: 1, later: true, secs: 51 })),
+  // The first chat after its message went out: the block is gone and the agent's turn follows.
+  SetupLaterChat: scene((f) => along(f, { setup: 'done', steps: 3, later: true })),
+  // A setup run that ran past its limit is a toast too.
+  SetupTimedOut: scene((f) => along(f, { setup: 'timeout', steps: 3, secs: 330 })),
+  // 6.12: the chat loading, one started from an issue, an edit pulled back into the box, and the Setup tab offering a script it found.
+  SetupEditQueued: scene((f) => setupWait(f, 'setup', [], { pending: {}, panel: false, composer: { parts: [...setupAsk.parts], draft: '' } })),
+  // The worktree is made while the first message goes out: one step per frame as main sends it. The bubble and the Working line stay in one place, and no setup text or queue strip shows.
+  NewChatSendWorktreeMotion: { ...scene((f) => ({ ...setupWait(f, 'setup', [{ ...setupAsk, clientId: setupAsk.id }], { pending: {} }), projectSettings: handoverSettings })), motion: { action: { steps: handoverSteps() }, ms: 0, area: '.ws-main' } },
   /** Every row of a Lead turn reads as a sentence with its service's mark (KERNEL-782). The turn has no result, so nothing folds and every step shows. */
   WorkspaceLeadSteps: scene((f) => {
     // scene2 sets approvals only when it is given some; an undefined one would hide the seed's.
@@ -3186,7 +3226,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     const s = leadPrsScene(f, [MERGE_A, MERGE_B], 'What can I merge?', LEAD_PRS_REPLY, LEAD_RUN)
     return { ...s, ui: { ...s.ui, bottomCollapsed: { lead: false, teammate: false } } }
   }),
-  PanelSetup: scene((f) => setupWait(f, 'setup', [setupAsk], { right: 'files', collapsed: true })),
+  PanelSetup: scene((f) => along(f, { setup: 'running', steps: 3, pane: true, right: 'files', collapsed: true })),
   // The right panel's strip carries the tab on show's own actions (KERNEL-515): PRs has refresh, All files a filter and collapse, Changes Review all, a filter and the tree toggle, Checks refresh and
   // open on GitHub. The filter's field opens under the strip from the search button, the way PanelFilter draws it with "inbox" typed.
   PanelToolbarPrs: scene((f) => {
@@ -3516,11 +3556,6 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceSetupAddDetected: scene((f) => ({
     projectSettings: { [ids.projectA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
     scriptSuggestions: { [ids.projectA]: [{ source: 'detected', file: 'pnpm-lock.yaml', patch: { scripts: { setup: 'pnpm install' } }, notes: [] }] },
-    push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'setup'),
-    ui: { ...open, workspace: { right: 'changes', bottom: 'setup' } }
-  })),
-  WorkspaceSetupAdd: scene((f) => ({
-    projectSettings: { [ids.projectA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
     push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'setup'),
     ui: { ...open, workspace: { right: 'changes', bottom: 'setup' } }
   })),

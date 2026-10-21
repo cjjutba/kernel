@@ -1,4 +1,4 @@
-import type { AccountProfile, BannerKind, Chat, ClaudeAccount, HookStatus, ModelId, Provider, RateLimit, ScriptLine, ToastAction, Workspace } from '@shared/types'
+import type { AccountProfile, BannerKind, Chat, ClaudeAccount, HookStatus, ModelId, Provider, RateLimit, ToastAction, Workspace } from '@shared/types'
 import { MODELS, PROVIDERS } from '@shared/types'
 import { chatProvider, limitProvider } from '@shared/providers'
 import { clock, nearLimit, pctLabel, resetPhrase, switchChoices, WEEKLY_WARN } from '@shared/usage'
@@ -11,10 +11,10 @@ export { clock, resetPhrase }
 export type BannerAction =
   | 'queue' | 'notify' | 'usage' | 'wait' | 'switch'
   | 'newChat' | 'compact' | 'switchModel' | 'retryNow' | 'tryAgain'
-  | 'terminal' | 'signIn' | 'editScript' | 'runAgain' | 'checkHooks' | 'reconnect' | 'archive' | 'switchAccount' | 'providers'
+  | 'terminal' | 'signIn' | 'checkHooks' | 'reconnect' | 'archive' | 'switchAccount' | 'providers'
   | 'switchBack' | 'models' | 'signInAccount' | 'dismiss'
 
-export type BannerId = 'folder' | 'signedOut' | 'offline' | 'setup' | 'weekly' | 'session' | 'model' | 'accountNearLimit' | 'nearLimit' | 'weeklyWarn' | 'switchWarning' | 'overloaded' | 'context' | 'hooks'
+export type BannerId = 'folder' | 'signedOut' | 'offline' | 'weekly' | 'session' | 'model' | 'accountNearLimit' | 'nearLimit' | 'weeklyWarn' | 'switchWarning' | 'overloaded' | 'context' | 'hooks'
 
 export interface BannerView {
   id: BannerId
@@ -64,19 +64,10 @@ export interface BannerInput {
   online: boolean
   hooks: HookStatus | null
   retry?: { attempt: number; of: number; nextAt: number }
-  /** The workspace's script output, for the setup command that failed. */
-  scripts?: ScriptLine[]
-  setupCode?: number | null
   /** The workspace is the Lead's. The near-limit hold doesn't apply to it, so it has no banner for it (KERNEL-224). */
   isLead?: boolean
   /** The Lead's name, for "Kernel can still answer you". */
   leadName?: string
-  /** Nothing in the chat is held for setup, so setup running or failing doesn't hold it and the composer stays open (KERNEL-490, KERNEL-1012). */
-  skipsSetup?: boolean
-  /** The chat has history, so setup doesn't lock its box (KERNEL-1018). */
-  hasHistory?: boolean
-  /** Messages in the chat wait in main until its workspace is made. Only then does the banner say messages queue (KERNEL-1018). */
-  heldForSetup?: boolean
   /** The limit banners the user closed, by `limitBannerKey`. Only the near-limit, 80% and switch-account banners look here (KERNEL-595). */
   dismissed?: ReadonlySet<string>
   /** Settings, Providers: Kernel switches this chat's provider on its own at a limit, so the near-limit offer would only nag (KERNEL-569). */
@@ -109,13 +100,6 @@ const untilPhrase = (resetsAt: number, now: number) => resetPhrase(resetsAt, now
 export function fallbackModel(current: string, usage: RateLimit[], now: number): ModelId | undefined {
   const limited = new Set(usage.filter((l) => rejected(l, now) && l.model).map((l) => l.model))
   return MODELS.filter((m) => !m.legacy).map((m) => m.id).find((m) => m !== current && !limited.has(m))
-}
-
-/** "pnpm install" from the script's "$ pnpm install --frozen-lockfile && cp …" line. */
-export function setupCommand(lines: ScriptLine[] = []): string | undefined {
-  const cmd = [...lines].reverse().find((l) => l.kind === 'setup' && l.line.startsWith('$ '))?.line.slice(2).split(' && ')[0]
-  const words = cmd?.split(/\s+/).filter((w) => w && !w.startsWith('-')).slice(0, 2)
-  return words?.length ? words.join(' ') : undefined
 }
 
 /** The one banner this workspace shows, most pressing first, or null. */
@@ -189,25 +173,7 @@ export function bannerFor(i: BannerInput): BannerView | null {
     toast: { key: 'offline', title: "You're offline", sub: 'Messages you send wait in the queue.', actions: [] }
   }
 
-  // Setup failed and nothing waits for it: the chat keeps working, so the banner says so and never blocks (KERNEL-1012). That is a
-  // failed setup in a chat that isn't held, whether main marked the workspace failed (no worktree, nothing sent) or let it run on.
-  const run = ws.setupRun
-  const ranOn = ws.status === 'ready' && !!run?.endedAt && run.end !== 0 && run.end !== null && run.end !== undefined
-  if ((ws.status === 'failed' && i.skipsSetup) || ranOn) return {
-    id: 'setup', kind: 'setup', title: 'Setup failed', sub: `${name} keeps working without it.`,
-    actions: [{ id: 'editScript', label: 'Edit script' }, { id: 'runAgain', label: 'Rerun setup', primary: true }], blocks: false
-  }
-
-  if (ws.status === 'failed') {
-    const cmd = setupCommand(i.scripts)
-    const what = cmd ? `${cmd} exited` : 'The setup script exited'
-    const code = i.setupCode
-    return {
-      id: 'setup', kind: 'setup', title: 'Setup script failed',
-      sub: `${code === null || code === undefined ? `${cmd ?? 'The setup script'} did not finish` : `${what} with code ${code}`}.${i.hasHistory ? (i.heldForSetup ? ' Messages you send go out when you run it again.' : '') : ` ${name} starts when you run it again.`}`,
-      actions: [{ id: 'editScript', label: 'Edit script' }, { id: 'runAgain', label: 'Run again', primary: true }], blocks: !i.hasHistory
-    }
-  }
+  // A setup run that didn't pass is a toast, and so is a worktree git couldn't make: the chat keeps working, and the message stays as Not sent (KERNEL-1093).
 
   // Fable's own weekly limit (`seven_day_overage_included`) is a model limit, shown below.
   // "Notify me" knows the Claude login's windows, so a Codex window or an added account's offers its other actions.
