@@ -3,7 +3,7 @@ import { Icon, type IconName, type IconSize } from '../icons'
 import { Spinner } from './display'
 import type { SpinnerPattern } from './dotPatterns'
 
-type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'merged'
+type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'merged' | 'merge'
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
@@ -18,7 +18,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   busyPattern?: SpinnerPattern
 }
 
-/** Primary is ink on canvas. Danger is red and belongs on the final confirm button only. Merged is purple, for merged PRs only. */
+/** Primary is ink on canvas. Danger is red and belongs on the final confirm button only. Merged is purple, for merged PRs only. Merge is the green of every Merge button, with white text. */
 export function Button({ variant = 'secondary', size = 'md', icon, busy, busyLabel, busyPattern = 'ripple', disabled, className, children, type = 'button', ...rest }: ButtonProps) {
   const cls = ['btn', variant !== 'secondary' && variant, size !== 'md' && size, className].filter(Boolean).join(' ')
   return (

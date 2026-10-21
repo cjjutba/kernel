@@ -78,6 +78,8 @@ export type Modal =
   | { name: 'envVar'; projectId?: string; editName?: string }
   | { name: 'confirm'; kind: 'archive'; workspaceId: string }
   | { name: 'confirm'; kind: 'discard'; workspaceId: string }
+  /** Merge a pull request past the blockers its review found on the latest commit (Pen 10.2, KERNEL-1097). */
+  | { name: 'confirm'; kind: 'mergeAnyway'; workspaceId: string }
   /** Revert files to a checkpoint from the transcript. `start` says it is the chat's first (KERNEL-766). */
   | { name: 'confirm'; kind: 'revert'; workspaceId: string; checkpointId: string; start?: boolean }
   | { name: 'confirm'; kind: 'removeProject'; projectId: string }

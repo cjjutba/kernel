@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { PanelTab, WorkspaceView, CriterionEvidence, EvidenceLink, PrEvidence, ChatPart, Notification, AccountProfile, MoveNotice, AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, SharedAnchor, SharedComment, SharedFile, SharedVersion, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { PanelTab, WorkspaceView, CriterionEvidence, EvidenceLink, PrEvidence, ChatPart, Notification, AccountProfile, MoveNotice, AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, PrPending, ReviewKind, ReviewVerdict, SharedAnchor, SharedComment, SharedFile, SharedVersion, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { describeTool } from '../src/main/services/approvals'
@@ -23,39 +23,6 @@ const prTurn = (id: string, lines: string[], tools: number, reply: string): Chat
   { kind: 'result', id: `${id}-res`, ts: at(10, 34), durationMs: 65_000, ok: true }
 ]
 const prNote = (id: string, text: string, pr: 'merged' | 'closed' | 'cifail'): ChatItem => ({ kind: 'note', id, ts: at(10, 40), text, pr })
-
-/**
- * KERNEL-1066: the Checks tab's acceptance criteria for PR #42. Each state has a fixture; WorkspaceCriteria shows all five with the
- * reviewer's judgment labeled and "Reviewed by Codex". Links that came from a check carry its URL, a judgment has none.
- */
-const link = (id: string, o: Partial<EvidenceLink> & Pick<EvidenceLink, 'source' | 'label' | 'effect'>): EvidenceLink => ({ id, stale: false, commit: 'h42', ts: at(10, 41), ...o })
-const crit = (index: number, text: string, status: CriterionEvidence['status'], links: EvidenceLink[], stale = links.some((l) => l.stale)): CriterionEvidence => ({ index, text, status, stale, links })
-const vitestPass = link('check:vitest', { source: 'check', label: 'CI check vitest: passed', effect: 'supports', url: 'https://github.com/cjjutba/client-a/actions/runs/42' })
-const judged = (met: boolean, note: string) => link(`review:${met}`, { source: 'review', judgedBy: 'reviewer', label: `Reviewer’s judgment (code): ${met ? 'met' : 'not met'}, ${note}`, effect: met ? 'supports' : 'contradicts' })
-const CRITERIA = {
-  passed: crit(0, 'Each invoice row has a Download PDF action', 'passed', [vitestPass, judged(true, 'the action is in the row menu')]),
-  failed: crit(1, 'The action is disabled while the PDF is rendering', 'failed', [link('check:playwright', { source: 'check', label: 'CI check playwright: failed', effect: 'contradicts', url: 'https://github.com/cjjutba/client-a/actions/runs/43' }), judged(false, 'the button stays enabled')]),
-  unverified: crit(2, 'A 200 line invoice fits on three pages or fewer', 'unverified', [link('files:pdf.ts', { source: 'files', label: 'Touched src/pdf/render.ts', effect: 'context' })]),
-  reviewerMet: crit(4, 'The Download PDF action is easy to find', 'reviewer-met', [judged(true, 'the action sits first in the row menu')]),
-  stale: crit(3, 'The PDF embeds the invoice font', 'unverified', [link('review:old', { source: 'review', judgedBy: 'reviewer', label: 'Reviewer’s judgment (code): met, the font is embedded', effect: 'supports', commit: 'h41', stale: true })])
-}
-const criteriaScene = (kinds: (keyof typeof CRITERIA)[], o: { provider?: 'claude' | 'codex' } = {}) =>
-  scene((f) => {
-    const evidence: PrEvidence = {
-      workspaceId: ids.table, prNumber: 42, head: 'h42', stepTitle: 'Download PDF from the invoice table',
-      criteria: kinds.map((k, i) => ({ ...CRITERIA[k], index: i })), run: { approvals: [], files: ['src/pdf/render.ts'], images: [] },
-      commentUrl: 'https://github.com/cjjutba/client-a/pull/42#issuecomment-1'
-    }
-    return {
-      workspaces: withWorkspace(f, ids.table, {
-        ...pr, prTitle, prState: 'open', prHead: 'h42',
-        reviews: [{ workspaceId: 'ws-review-42', agentId: 'artkin', verdict: 'approved' as const, summary: 'Looks right.', sha: 'h42', prNumber: 42, ts: at(10, 41), ...(o.provider ? { provider: o.provider } : {}) }]
-      }),
-      prs: prInfo('open', { head: 'h42', checks: [{ name: 'vitest', state: 'pass', meta: '48s' }, { name: 'playwright', state: 'fail' }] }),
-      evidence: { [ids.table]: evidence },
-      ui: { ...open, workspace: { right: 'pr', bottom: 'run' } }
-    }
-  })
 
 /** PR #42 on the invoice table in one state, with the transcript, checks and comments the canvas shows for it. */
 const prScene = (prState: Workspace['prState'], items: ChatItem[], extra: Partial<Fixture> = {}, right: 'changes' | 'pr' = 'changes') =>
@@ -86,58 +53,6 @@ const headerScene = (prState: Workspace['prState'], note: ChatItem[], opts: { pa
     ui: { ...open, rightPanel: !!opts.panel, workspace: { right: 'changes', bottom: 'run' } }
   }))
 
-/**
- * KERNEL-478: a branch that merges on the Mac, as the PrLocal fixtures show it. Sean's discount code branch in the Shop project, a local
- * folder with no GitHub remote, 3 commits ahead of main. `behind`, `conflicts` and `dirty` are what git said about it. The project's merge
- * method is a squash, and `merged` is the commit it left on main.
- */
-type LocalState = 'ready' | 'behind' | 'conflict' | 'merging' | 'merged' | 'dirty'
-const SHOP = '/Users/you/Projects/shop'
-const localFiles: ChangedFile[] = [
-  { path: 'src/checkout/DiscountField.tsx', status: 'A', added: 58, removed: 0 },
-  { path: 'src/checkout/CheckoutForm.tsx', status: 'M', added: 21, removed: 4 },
-  { path: 'src/checkout/cart.ts', status: 'M', added: 34, removed: 6 },
-  { path: 'src/db/discounts.ts', status: 'A', added: 41, removed: 0 },
-  { path: 'src/db/schema.ts', status: 'M', added: 12, removed: 0 },
-  { path: 'src/api/checkout.ts', status: 'M', added: 18, removed: 2 },
-  { path: 'test/discounts.test.ts', status: 'A', added: 76, removed: 0 },
-  { path: 'test/cart.test.ts', status: 'M', added: 44, removed: 3 }
-]
-const localScene = (state: LocalState) => scene((f) => {
-  const behind = { ready: 0, merging: 0, merged: 0, dirty: 0, behind: 4, conflict: 2 }[state]
-  const conflicts = state === 'conflict' ? ['src/checkout/cart.ts', 'src/db/schema.ts'] : []
-  const dirty = state === 'dirty' ? [{ status: 'M', path: 'package.json' }, { status: 'M', path: 'src/app/layout.tsx' }, { status: '??', path: 'notes.md' }] : []
-  const prState: Workspace['prState'] = state === 'behind' || state === 'dirty' ? 'ready' : state
-  const merged = state === 'merged'
-  return {
-    projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'Shop', path: SHOP, repo: undefined, host: 'local' as const } : r)),
-    workspaces: withWorkspace(f, ids.table, {
-      name: 'add-discount-code-checkout', branch: 'feat/add-discount-code-to-checkout', baseRef: 'main', agentId: 'sean', title: 'Add a discount code to checkout', prState,
-      stat: { files: 8, added: 304, removed: 15 }, ...(merged ? { mergedAt: at(10, 44), mergeCommit: '4e1b9c2f0a7d3b5c8e1a9d6f2b4c7e0a3d5f8b1c' } : {})
-    }),
-    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Discount code field' } : c)),
-    items: { [ids.tableChat]: [
-      userMsg('lm-u', 'Add a discount code field to checkout. It takes a code, checks it against a discounts table and shows the new total under the subtotal. Keep the cart tests passing, and add tests for a percent code, a fixed code and an unknown code.'),
-      ...folded('lm', 14, 3),
-      { kind: 'text', id: 'lm-x', ts: at(10, 42), text: 'Checkout has a discount code field now. A valid code shows the new total under the subtotal, and an unknown code says "Code not found".\n\nThe branch has 3 commits. This repo has no GitHub remote, so there is no pull request. Kernel merges the branch into `main` on this Mac.' },
-      { kind: 'result', id: 'lm-r', ts: at(10, 43), durationMs: 72_000, ok: true },
-      ...(merged ? [{ kind: 'note' as const, id: 'lm-note', ts: at(10, 44), text: 'Squashed into main as 4e1b9c2.', pr: 'merged' as const }] : [])
-    ] },
-    changes: { [ids.table]: localFiles },
-    // The Run tab before the script has run, as the PNGs draw it (WorkspaceRunEmpty).
-    projectSettings: { [ids.projectA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
-    push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
-    prs: { [ids.table]: {
-      workspaceId: ids.table, number: 0, url: '', title: '', state: state === 'conflict' ? 'conflict' : 'ready', baseRef: 'main', checks: [], comments: [], conflicts, head: 'a'.repeat(40),
-      local: { ahead: 3, behind, stat: { files: 8, added: 304, removed: 15 }, method: 'squash', checkout: { path: SHOP, dirty } }
-    } },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
-  }
-})
-
-/** The invoice table's PR as one GitHub won't merge until someone approves it (KERNEL-388). */
-const blocked = (f: Fixture): Fixture => ({ ...f, workspaces: f.workspaces.map((w) => (w.id === ids.table ? { ...w, prBlocked: 'review' as const } : w)) })
-
 /** A workspace whose project has a run script that hasn't run, so the Run tab shows its empty state with the Run button under the icon, and a collapsed bar keeps its Run (KERNEL-512). */
 const idleRun = (f: Fixture): Fixture => ({
   ...f,
@@ -149,31 +64,6 @@ const withSetup = { [ids.projectA]: { scripts: { setup: 'pnpm install', run: 'pn
 
 /** The same fixture with the bottom pane folded to its tab bar, in Kernel's chats and in teammates' workspaces (KERNEL-513). */
 const bottomFolded = (f: Fixture): Fixture => ({ ...f, ui: { ...f.ui, bottomCollapsed: { lead: true, teammate: true } } })
-
-/** The invoice table's PR with two blockers from Artkin on its latest commit, the only thing that holds the merge (KERNEL-501). */
-const withBlockers = (f: Fixture): Fixture => ({
-  ...f,
-  workspaces: f.workspaces.map((w) => (w.id === ids.table ? {
-    ...w, prHead: 'h147',
-    reviews: [{ workspaceId: 'ws-review-147', agentId: 'artkin', verdict: 'blockers' as const, summary: 'Two blockers.', blockers: [{ text: 'The download never retries.' }, { text: 'No test covers the failure toast.' }], sha: 'h147', prNumber: 147, ts: at(10, 38) }]
-  } : w)),
-  prs: Object.fromEntries(Object.entries(f.prs ?? {}).map(([id, info]) => [id, id === ids.table ? { ...info, head: 'h147' } : info]))
-})
-
-/** The invoice table's PR after a push: Artkin approved the first commit, GitHub reads the PR as ready, and the review of the new head is running (KERNEL-1071). */
-const withReviewRunning = (f: Fixture): Fixture => ({
-  ...f,
-  workspaces: f.workspaces.map((w) => (w.id === ids.table ? {
-    ...w, prHead: 'h2', reviewRound: { n: 2, rounds: 3, head: 'h2', prNumber: 147, kinds: ['code' as const] },
-    reviews: [{ workspaceId: 'ws-review-147', agentId: 'artkin', verdict: 'approved' as const, summary: 'Looks good.', sha: 'h1', prNumber: 147, lens: 'code' as const, ts: at(10, 38) }]
-  } : w)),
-  prs: Object.fromEntries(Object.entries(f.prs ?? {}).map(([id, info]) => [id, id === ids.table ? { ...info, head: 'h2' } : info]))
-})
-
-const withOverruled = (f: Fixture, o: Partial<Overrule> = {}): Fixture => ({
-  ...f,
-  workspaces: f.workspaces.map((w) => (w.id === ids.table ? { ...w, overruled: { head: 'h147', kinds: ['code' as const], by: 'user' as const, ts: at(10, 52), note: 'Retry is tracked in KERNEL-190', ...o } } : w))
-})
 
 const prInfo = (prState: Workspace['prState'], o: Partial<PrInfo> = {}): Record<string, PrInfo> => ({
   [ids.table]: { workspaceId: ids.table, number: 42, url: pr.prUrl, title: prTitle, state: prState, baseRef: 'main', checks: [], comments: [], conflicts: [], ...o }
@@ -820,36 +710,53 @@ const withDraft = (p: Partial<Fixture>, draft: string): Partial<Fixture> =>
 /** Two team updates in Kernel's chat after a hand-off: Christian's PR passed checks, then Artkin approved it (KERNEL-127). */
 const leadUpdate = (f: Fixture): Partial<Fixture> => {
   const header = 'Team update from Kernel, not from the user.'
-  const christian: TeamUpdateRow = {
-    workspaceId: ids.table, agentId: 'christian', name: 'Christian', task: 'Remove the Try section from the sidebar', prNumber: 108,
-    events: [{ kind: 'pr.opened', text: 'Opened PR #108', actionable: false }, { kind: 'pr.ready', text: 'Ready to merge', actionable: true }, { kind: 'pr.review', text: 'Not reviewed', actionable: false }],
-    reply: 'Removed the Try section from the sidebar. Connect a repo and Open a folder stay in the projects plus menu and on Home\'s empty state, and Check hooks stays in the footer.\n\nOpened https://github.com/cjjutba/client-a/pull/108'
+  const teng: TeamUpdateRow = {
+    workspaceId: ids.table, agentId: 'teng', name: 'Teng', task: 'KERNEL-232 Clean-account journey on a fresh Mac user', prNumber: 1153,
+    events: [{ kind: 'pr.opened', text: 'Opened PR #1153', actionable: false }, { kind: 'pr.ready', text: 'Checks passed', actionable: true }, { kind: 'pr.review', text: 'Not reviewed', actionable: false }],
+    reply: 'All six steps pass on a clean account. I opened PR #1153 with the journey test and its fixture, and posted the results on KERNEL-232.'
   }
   const artkin: TeamUpdateRow = {
-    workspaceId: 'ws-review-108', agentId: 'artkin', name: 'Artkin', task: 'Review PR #108',
-    events: [{ kind: 'review', text: 'Approved PR #108', actionable: true }],
-    reply: 'The Try rows are gone and nothing else in the sidebar moved. Connect a repo and Open a folder are still reachable from the projects plus menu. No blockers.'
+    workspaceId: 'ws-review-1153', agentId: 'artkin', name: 'Artkin', task: 'KERNEL-232 Review PR #1153',
+    events: [{ kind: 'review', text: 'Approved PR #1153', actionable: true }, { kind: 'pr.review', text: 'No blockers', actionable: false }],
+    reply: "Every step passes on a fresh account, and the one failure has its own issue, KERNEL-1084. The fixture covers the release candidate's review screen."
   }
   const update = (id: string, m: number, row: TeamUpdateRow, todo: string): ChatItem => ({
-    kind: 'user', id, ts: at(10, m), from: 'kernel', update: { rows: [row] },
+    kind: 'user', id, ts: J(m), from: 'kernel', update: { rows: [row] },
     parts: [{ type: 'text', text: [header, '', `${row.name} (${row.agentId}) · ${row.task} · workspace ${row.workspaceId}`, ...row.events.map((e) => `- ${e.text}.`), '', 'To do:', `- ${todo}`].join('\n') }]
   })
-  const done = (id: string, m: number): ChatItem => ({ kind: 'result', id, ts: at(10, m), durationMs: 9_000, ok: true })
-  const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Remove the Try section', [
-    userMsg('lu1', 'Remove the Try section from the sidebar, and have Artkin review it before I merge.'),
-    { kind: 'text', id: 'lu1-r', ts: at(10, 28), text: 'Christian has it. Once its checks pass, Artkin reviews the PR.' },
-    done('lu1-res', 28),
-    update('lu2', 41, christian, 'PR #108 needs a review. Artkin (artkin) reviews on this team: call create_workspace with agent "artkin" and review_of "ws-invoice-table".'),
-    { kind: 'text', id: 'lu2-r', ts: at(10, 41), text: "Christian's PR #108 passed checks. Artkin is reviewing it." },
-    done('lu2-res', 41),
-    update('lu3', 49, artkin, 'PR #108 passed checks, has no conflicts and Artkin approved it. Tell the user it is ready to merge.'),
-    { kind: 'text', id: 'lu3-r', ts: at(10, 49), text: 'Artkin approved PR #108. It is ready for you to merge.' },
-    done('lu3-res', 49)
+  const done = (id: string, m: number): ChatItem => ({ kind: 'result', id, ts: J(m), durationMs: 9_000, ok: true })
+  const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Clean-account journey and soak', [
+    userMsg('lu1', 'Run the clean-account journey, then have Artkin review the PR before I merge.'),
+    { kind: 'text', id: 'lu1-r', ts: J(58), text: 'Teng has it. Once its checks pass, Artkin reviews the PR.' },
+    done('lu1-res', 58),
+    update('lu2', 59, teng, 'PR #1153 needs a review. Artkin (artkin) reviews on this team: call create_workspace with agent "artkin" and review_of "ws-invoice-table".'),
+    { kind: 'text', id: 'lu2-r', ts: J(59, 9), text: "Teng's PR #1153 passed its checks. Artkin is reviewing it now." },
+    done('lu2-res', 59),
+    update('lu3', 62, artkin, 'PR #1153 passed checks, has no conflicts and Artkin approved it. Tell the user it is ready to merge.'),
+    { kind: 'text', id: 'lu3-r', ts: J(62, 7), text: "Artkin approved #1153. It's ready for you to merge." },
+    done('lu3-res', 62)
   ], {}, { model: 'claude-opus-5-5' })
-  const review: Workspace = { id: 'ws-review-108', projectId: ids.projectA, name: 'review-pr-108', title: 'Review PR #108', branch: 'feat/t-14-invoice-table-review', baseRef: 'feat/t-14-invoice-table', path: '/Users/you/kernel/worktrees/client-a/review-pr-108', mode: 'worktree', agentId: 'artkin', port: 4316, status: 'ready', prState: 'none', reviewOf: ids.table, createdAt: at(10, 42) }
+  const review: Workspace = { id: 'ws-review-1153', projectId: ids.projectA, name: 'review-pr-1153', title: 'Review PR #1153', branch: 'test/kernel-232a-clean-account-review', baseRef: 'test/kernel-232a-clean-account', path: '/Users/you/kernel/worktrees/client-a/review-pr-1153', mode: 'worktree', agentId: 'artkin', port: 4316, status: 'ready', prState: 'none', reviewOf: ids.table, createdAt: J(60) }
   // scene2 sets approvals only when it is given some; an undefined one would hide the seed's.
   const { approvals: _none, ...rest } = s
-  return { ...rest, workspaces: [...(s.workspaces ?? f.workspaces), review] }
+  const table = withWorkspace({ ...f, workspaces: s.workspaces ?? f.workspaces }, ids.table, { name: 'kernel-232a', title: JOURNEY_TITLE, agentId: 'teng', prState: 'ready', prNumber: 1153, prUrl: P10_URL, prTitle: P10_TITLE, prHead: 'h1153', stat: { files: 2, added: 67, removed: 1 }, reviews: [p10Review()] })
+  return { ...rest, workspaces: [...table, review], prs: p10Pr({ state: 'ready' }), ui: { ...(rest.ui ?? {}), rightPanel: false } }
+}
+
+/** A pull request merged with nobody having reviewed it (Pen 10.10, TeamUpdateNotReviewedTip): the line says so, and the pointer on "Not reviewed" says why. */
+const teamUpdateMergedUnreviewed = (f: Fixture): Partial<Fixture> => {
+  const row: TeamUpdateRow = {
+    workspaceId: ids.table, agentId: 'teng', name: 'Teng', task: 'KERNEL-232 Clean-account journey', prNumber: 1153,
+    events: [{ kind: 'pr.merged', text: 'Merged #1153', actionable: false }, { kind: 'pr.review', text: 'Not reviewed', actionable: false }]
+  }
+  const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Clean-account journey and soak', [
+    userMsg('tn-u', 'Merge #1153.'),
+    { kind: 'user', id: 'tn-up', ts: J(62), from: 'kernel', update: { rows: [row] }, parts: [{ type: 'text', text: ['Team update from Kernel, not from the user.', '', `Teng (teng) · ${row.task} · workspace ${row.workspaceId}`, '- Merged #1153.', '- Not reviewed.', '', 'To do:', '- Tell the user it merged.'].join('\n') }] },
+    { kind: 'result', id: 'tn-res', ts: J(62, 8), durationMs: 8_000, ok: true }
+  ], {}, { model: 'claude-opus-5-5' })
+  const { approvals: _none, ...rest } = s
+  const table = withWorkspace({ ...f, workspaces: s.workspaces ?? f.workspaces }, ids.table, { name: 'kernel-232a', title: JOURNEY_TITLE, agentId: 'teng', prState: 'merged', status: 'archived', mergedAt: J(61), prNumber: 1153, prUrl: P10_URL, prTitle: P10_TITLE })
+  return { ...rest, workspaces: table, ui: { ...(rest.ui ?? {}), rightPanel: false } }
 }
 
 /** The pieces a Team update fixture builds from (TeamUpdateMerge, TeamUpdateReview): a row, an event, the card with its text for the Lead, and the workspace, verdict and PR a row is about. */
@@ -2123,6 +2030,101 @@ const r9Link = (f: Fixture, text: string, mentions: Record<string, unknown>): Pa
   items: { [ids.tableChat]: [jBrief(J(43)), { kind: 'text', id: 'fl-r', ts: J(49), text }, jResult(J(49, 12), 372_000)] },
   mentions: { [ids.table]: mentions as NonNullable<Fixture['mentions']>[string] }
 })
+
+// ---- KERNEL-1097, Redesign 10, Pull request and merge (Pen Part 10): Teng's journey from no pull request to merged, in the Session rail, the title bar and the panel. ----
+
+const SHOP = '/Users/you/Projects/shop'
+const P10_URL = 'https://github.com/cjjutba/kernel/pull/1153'
+const P10_TITLE = 'Clean-account journey test'
+const crit = (index: number, text: string, status: CriterionEvidence['status'], links: EvidenceLink[], stale = links.some((l) => l.stale)): CriterionEvidence => ({ index, text, status, stale, links })
+const P10_CHECKS: PrCheck[] = [{ name: 'Test', state: 'pass' }, { name: 'Build', state: 'pass' }, { name: 'Release note', state: 'pass' }, { name: 'Other apps', state: 'pass' }]
+const p10Review = (o: Partial<ReviewVerdict> = {}): ReviewVerdict => ({ workspaceId: 'ws-review-1153', agentId: 'artkin', verdict: 'approved', summary: 'Every step passes on a fresh account, and the one failure has its own issue.', sha: 'h1153', prNumber: 1153, ts: J(55), ...o })
+const P10_BLOCKERS = [{ text: "Step 6's threshold is a bare number", file: 'test/journey.test.ts', line: 14 }, { text: 'The fixture hard-codes the build it compares against', file: 'fixtures/journey.ts', line: 3 }]
+const p10Blockers = (): ReviewVerdict => p10Review({ verdict: 'blockers', summary: 'Two blockers.', blockers: P10_BLOCKERS })
+const p10Pr = (o: Partial<PrInfo> = {}): Record<string, PrInfo> => ({ [ids.table]: { workspaceId: ids.table, number: 1153, url: P10_URL, title: P10_TITLE, state: 'open', baseRef: 'main', head: 'h1153', checks: P10_CHECKS, conflicts: [], comments: [], ...o } })
+
+/** The pull requests of the Lead's PRs tab as Pen 10.6 draws them: the journey test ready with Artkin's approval, the banner margin failing its checks and the soak harness still running them. */
+const P10_LEAD: Record<'journey' | 'banner' | 'soak', OpenPr> = {
+  journey: { id: 'ws-1153', agentId: 'teng', key: 'KERNEL-232', n: 1153, title: 'Clean-account journey test', state: 'ready', stat: [67, 1], review: 'approved' },
+  banner: { id: 'ws-1155', agentId: 'christian', key: 'KERNEL-234', n: 1155, title: 'Banner margin at 1280 wide', state: 'cifail', stat: [4, 2] },
+  soak: { id: 'ws-1154', agentId: 'sean', key: 'KERNEL-233', n: 1154, title: 'Soak harness that runs agents for 24 hours', state: 'checks', stat: [318, 12] }
+}
+const P10_LEAD_REPLY = "One PR is ready. Teng's #1153 has Artkin's approval and its checks passed. Sean's #1154 is still running checks, and #1155 failed its Test check, so Christian is fixing it. Merge #1153 from the PRs tab, or tell me to and I will."
+
+interface P10 {
+  state: Workspace['prState']
+  pr?: Partial<PrInfo>
+  ws?: Partial<Workspace>
+  /** The workspace has no changes at all. */
+  noChanges?: boolean
+  /** An action main runs on the pull request now. */
+  pending?: PrPending
+  /** The right panel is open on its Pull request tab, so the Session rail is hidden. */
+  panel?: boolean
+  right?: PanelTab
+  /** Neither the rail nor the panel shows, so the title bar carries the state. */
+  hidden?: boolean
+  ui?: Partial<Fixture['ui']>
+  title?: string
+}
+
+/** The Pull request tab of the journey with the criteria at `at` (and the model that reviewed it), the panel open so the rail is hidden. */
+function p10Criteria(f: Fixture, at: number[], provider?: 'claude' | 'codex'): Partial<Fixture> {
+  const w = pr10(f, { state: 'open', panel: true, right: 'pr', ws: { reviews: [p10Review({ ...(provider ? { provider } : {}) })] } })
+  return { ...w, evidence: { [ids.table]: { ...P10_EVIDENCE, criteria: at.map((i, n) => ({ ...P10_EVIDENCE.criteria[i], index: n })) } } }
+}
+
+/** The journey workspace with its pull request #1153 in one state, the Session rail beside the chat (or the panel, or neither). */
+function pr10(f: Fixture, o: P10): Partial<Fixture> {
+  const none = (o.state === 'none' || o.state === 'creating') && !o.ws?.prNumber
+  const w = works(f, jRest(), {
+    panel: !!o.panel,
+    ws: { baseRef: 'main', prState: o.state, ...(none ? {} : { prNumber: 1153, prUrl: P10_URL, prTitle: P10_TITLE, prHead: 'h1153' }), ...(o.noChanges ? { stat: { files: 0, added: 0, removed: 0 } } : {}), ...o.ws },
+    view: { right: o.right ?? 'pr', bottom: 'run' }
+  })
+  return {
+    ...w,
+    changes: { [ids.table]: o.noChanges ? [] : jFiles },
+    ...(none ? { prs: {} } : { prs: p10Pr({ state: o.state, ...o.pr }) }),
+    push: [...(w.push ?? f.push), ...(o.pending ? [{ type: 'pr.pending' as const, workspaceId: ids.table, action: o.pending }] : [])],
+    ui: { ...w.ui!, ...(o.hidden ? { rail: false, rightPanel: false } : {}), bottomCollapsed: { lead: true, teammate: true }, ...o.ui }
+  }
+}
+
+/** A project that merges on this Mac, with Kai's branch for the offline visit list (Pen 10.4): a local folder with no GitHub, 2 files changed and a review that approved. */
+type P10Stand = 'ready' | 'behind' | 'dirty' | 'conflict' | 'resolving' | 'merging' | 'merged'
+function p10Local(f: Fixture, stand: P10Stand): Partial<Fixture> {
+  const behind = stand === 'behind' ? 3 : 0
+  const conflicts = stand === 'conflict' || stand === 'resolving' ? ['src/visits/cache.ts'] : []
+  const dirty = stand === 'dirty' ? [{ status: 'M', path: 'package.json' }, { status: '??', path: 'notes.md' }] : []
+  const prState: Workspace['prState'] = stand === 'behind' || stand === 'dirty' ? 'ready' : stand
+  const w = works(f, jRest(), {
+    ws: { name: 'EVF-12', branch: 'feat/visit-cache', baseRef: 'main', prState, stat: { files: 2, added: 67, removed: 1 }, agentId: 'sean', ...(stand === 'merged' ? { mergedAt: J(59), mergeCommit: '4e1b9c2f0a7d3b5c8e1a9d6f2b4c7e0a3d5f8b1c' } : {}), reviews: [p10Review({ summary: 'The cache keeps the last 50 visits.', sha: 'a'.repeat(40), prNumber: undefined, ts: J(55) })] },
+    view: { right: 'pr', bottom: 'run' }
+  })
+  return {
+    ...w,
+    projects: f.projects.map((r) => (r.id === ids.projectA ? { ...r, name: 'evenfar', path: SHOP, repo: undefined, host: 'local' as const } : r)),
+    changes: { [ids.table]: jFiles },
+    prs: { [ids.table]: { workspaceId: ids.table, number: 0, url: '', title: '', state: stand === 'conflict' ? 'conflict' : 'ready', baseRef: 'main', checks: [], comments: [], conflicts, head: 'a'.repeat(40), local: { ahead: 3, behind, stat: { files: 2, added: 67, removed: 1 }, method: 'squash', checkout: { path: SHOP, dirty } } } },
+    ...(stand === 'resolving' ? { push: [...(w.push ?? f.push), { type: 'pr.pending' as const, workspaceId: ids.table, action: 'resolve' as const }] } : {})
+  }
+}
+
+/** The acceptance criteria of the journey step, as Pen 10.5 words them: one in each state, the reviewer's judgment labeled, and "Reviewed by Codex" over them. */
+const p10Link = (id: string, o: Partial<EvidenceLink> & Pick<EvidenceLink, 'source' | 'label' | 'effect'>): EvidenceLink => ({ id, stale: false, commit: 'h1153', ts: J(56), ...o })
+const P10_EVIDENCE: PrEvidence = {
+  workspaceId: ids.table, prNumber: 1153, head: 'h1153', stepTitle: P10_TITLE,
+  criteria: [
+    crit(0, 'Every step of KERNEL-31 passes on a new account', 'passed', [p10Link('c-test', { source: 'check', label: 'Test check passed on 4f2a1c0', effect: 'supports', url: `${P10_URL}/checks` }), p10Link('c-run', { source: 'check', label: 'Journey run, 6 of 6 steps', effect: 'supports', url: `${P10_URL}/checks` })]),
+    crit(1, 'Each failure is filed as its own issue', 'reviewer-met', [p10Link('c-rev', { source: 'review', judgedBy: 'reviewer', label: "Theo's review of #1153", effect: 'supports', url: P10_URL })]),
+    crit(2, 'The review screen matches the release candidate', 'failed', [p10Link('c-fail', { source: 'check', label: 'KERNEL-1084, banner margin 2px off at 1280 wide', effect: 'contradicts', url: 'https://linear.app/kernel/issue/KERNEL-1084' })]),
+    crit(3, 'One comment on KERNEL-232 has the results and shots', 'unverified', []),
+    crit(4, 'Shots cover every step of the journey', 'unverified', [p10Link('c-shots', { source: 'files', label: 'Shots from 3a9e2b1', effect: 'context', stale: true, commit: 'h1152', url: P10_URL })], true)
+  ],
+  run: { approvals: [], files: ['test/journey.test.ts'], images: [] }, commentUrl: `${P10_URL}#issuecomment-1`
+}
+
 export const workspaceFixtures: Record<string, Fixture> = {
   /** 7.1: the workspace at rest. Teng finished a turn and its fold is closed, with the Session rail beside the chat while the panel is shut (KERNEL-1094). */
   Workspace: scene((f) => works(f, jRest())),
@@ -2995,7 +2997,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   LeadOpenItems: scene((f) => leadOpenItems(f)),
   LeadOpenItemsOpen: scene((f) => leadOpenItems(f)),
   // The Lead's PRs tab: two ready PRs with Merge, six that wait, and the same panel with nothing open (KERNEL-354).
-  LeadPrs: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', LEAD_PRS_REPLY)),
+  LeadPrs: scene((f) => leadPrsScene(f, [P10_LEAD.journey, P10_LEAD.banner, P10_LEAD.soak], 'What can I merge?', P10_LEAD_REPLY)),
   PanelResize: idleRun(headerScene('ready', [], { panel: true })),
   // The panel at its narrowest, 320px, where the strips scroll sideways (KERNEL-514). The top strip sits beside the PRs toolbar's refresh.
   // The bottom's two terminals past Run are stand-ins the shot adds.
@@ -3006,32 +3008,36 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // The right panel's strip carries the tab on show's own actions (KERNEL-515): PRs has refresh, All files a filter and collapse, Changes Review all, a filter and the tree toggle, Checks refresh and
   // open on GitHub. The filter's field opens under the strip from the search button, the way PanelFilter draws it with "inbox" typed.
   PanelToolbarPrs: scene((f) => {
-    const s = leadPrsScene(f, [MERGE_A, MERGE_B, MERGE_C], 'What can I merge?', LEAD_PRS_REPLY)
+    const s = leadPrsScene(f, [P10_LEAD.journey, P10_LEAD.banner, P10_LEAD.soak], 'What can I merge?', P10_LEAD_REPLY)
     return { ...s, workspaces: s.workspaces!.map((w) => (w.id === ids.lead ? { ...w, port: 4303 } : w)), ui: { ...s.ui, bottomCollapsed: { lead: false, teammate: false } } }
   }),
   LeadPrsEmpty: scene((f) => leadPrsScene(f, [], 'What can I merge?', 'Nothing is open right now. Every PR your agents opened has merged.')),
-  LeadPrsReviewPlanned: scene((f) => leadPrsScene(f, [LEAD_PRS[0], { id: 'ws-705', agentId: 'christian', key: 'KERNEL-705', n: 170, title: 'Toasts rise from the bottom', state: 'ready', stat: [63, 42], review: 'planned' }, LEAD_PRS[3]], 'What can I merge?', "#162 from Christian is ready. #170 passed its checks and its code review is running, so it waits for that approval. #166 is still running checks.")),
+  LeadPrsReviewPlanned: scene((f) => leadPrsScene(f, [{ ...P10_LEAD.journey, state: 'checks', review: 'planned' }], 'What can I merge?', "Teng's #1153 is running its checks. Artkin reviews it once they pass.")),
   // A PR with blockers on its latest commit isn't ready: it sits under Needs attention, says Blockers found and offers Merge anyway (KERNEL-501, KERNEL-757).
-  LeadPrsBlockers: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], BLOCKERS_PR, LEAD_PRS[2], LEAD_PRS[3]], 'What can I merge?', "Two PRs are ready. #162 from Christian and #161 from Sean both have Artkin's approval. Artkin found 2 blockers on #167, so it isn't ready. #158 is waiting for his approval, and #166 is still running checks.")),
+  LeadPrsBlockers: scene((f) => leadPrsScene(f, [{ ...P10_LEAD.soak, state: 'ready', review: 'blockers' }], 'What can I merge?', "Artkin found 2 blockers on #1154, so it isn't ready. Sean can fix them, or you can merge past them.")),
   // One row per state word (KERNEL-897): both approvals and code alone in green, a failure in red, a spinner, a clock, and two plain muted rows.
   LeadPrsStateWords: scene((f) => leadPrsScene(f, [
-    { ...LEAD_PRS[0], review: 'secure' }, LEAD_PRS[1], { ...LEAD_PRS[0], id: 'ws-190', n: 190, key: 'KERNEL-190', title: 'Plain ready PR, not reviewed', review: undefined },
-    LEAD_PRS[2], LEAD_PRS[3], LEAD_PRS[4], LEAD_PRS[5], LEAD_PRS[7]
-  ], 'What can I merge?', LEAD_PRS_REPLY)),
-  LeadPrsOverruled: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], OVERRULED_PR, LEAD_PRS[2], LEAD_PRS[3]], 'What can I merge?', "Three PRs are ready. #162 from Christian and #161 from Sean have Artkin's approval. You overruled Artkin's 2 blockers on #167, so it can merge. #158 is waiting for his approval, and #166 is still running checks.")),
+    { ...P10_LEAD.journey, id: 'ws-1150', n: 1150, title: 'Draft fixture', state: 'draft', review: undefined, stat: [8, 0] },
+    { ...P10_LEAD.soak, id: 'ws-1151', n: 1151, title: 'Soak harness', stat: [318, 12] },
+    { ...P10_LEAD.banner, id: 'ws-1152', n: 1152, title: 'Banner copy', state: 'changes', stat: [6, 6] },
+    { ...P10_LEAD.banner, id: 'ws-1153b', n: 1153, title: 'Lockfile bump', state: 'conflict', stat: [210, 190] },
+    { ...P10_LEAD.journey, id: 'ws-1154b', n: 1154, title: 'Review screen', review: 'stale', stat: [32, 4] },
+    { ...P10_LEAD.journey, id: 'ws-1155b', n: 1155, title: 'Journey test', stat: [67, 1] }
+  ], 'What can I merge?', P10_LEAD_REPLY)),
+  LeadPrsOverruled: scene((f) => leadPrsScene(f, [{ ...P10_LEAD.soak, state: 'ready', review: 'blockers', overruled: true }], 'What can I merge?', "You overruled Artkin's 2 blockers on #1154, so it can merge.")),
   // A PR merging keeps its row in Ready to merge and spins there, though this tab didn't start it (KERNEL-411, KERNEL-417).
-  LeadPrsMerging: scene((f) => leadPrsScene(f, [{ ...MERGE_A, state: 'merging' }, MERGE_B, MERGE_C], 'Merge #331.', 'Merging #331 now. #330 is ready too, and #333 is still running checks.')),
+  LeadPrsMerging: scene((f) => leadPrsScene(f, [{ ...P10_LEAD.journey, state: 'merging' }, { ...P10_LEAD.soak, state: 'ready', review: 'approved' }], 'Merge #1153.', 'Merging #1153 now. #1154 is ready too.')),
   // Every open PR ready: one Merge per row and nothing to merge them all at once (KERNEL-757).
-  LeadPrsAllReady: scene((f) => leadPrsScene(f, ALL_READY, 'What can I merge?', "All five are ready. Artkin approved #162, #161 and #331. #330 and #333 haven't been reviewed. Tell me which ones to merge, or merge them from the PRs tab.")),
+  LeadPrsAllReady: scene((f) => leadPrsScene(f, [P10_LEAD.journey, { ...P10_LEAD.soak, state: 'ready', review: 'approved' }, { ...P10_LEAD.banner, state: 'ready', review: 'approved' }], 'What can I merge?', "All three are ready. Artkin approved each one. Tell me which to merge, or merge them from the PRs tab.")),
   // The PRs tab at the panel's narrowest, 320px, with every list and a blocked PR's Merge anyway: titles end in an ellipsis and nothing overlaps (KERNEL-757).
   LeadPrsNarrow: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], BLOCKERS_PR, LEAD_PRS[3], LEAD_PRS[4], LEAD_PRS[6], LEAD_PRS[7]], 'What can I merge?', LEAD_PRS_REPLY)),
   // Open PRs, none of them ready: the band counts them instead of saying there are none (KERNEL-411).
-  LeadPrsNoneReady: scene((f) => leadPrsScene(f, [{ ...MERGE_B, state: 'cifail' }, MERGE_C], 'What can I merge?', 'Nothing yet. #330 failed its checks and #333 is still running them.')),
+  LeadPrsNoneReady: scene((f) => leadPrsScene(f, [P10_LEAD.banner, P10_LEAD.soak], 'What can I merge?', "Nothing yet. #1155 failed its Test check, and #1154 is still running its checks.")),
   // Kernel's team updates in Kernel's chat (KERNEL-127). No PNG: the card follows the canvas card and note values.
   WorkspaceLeadUpdate: scene((f) => leadUpdate(f)),
   // KERNEL-1000: Not reviewed with automatic review off. The card reads as it always did; the pointer on those words says why (TeamUpdateNotReviewedTip).
   TeamUpdateNotReviewed: scene((f) => leadUpdate(f)),
-  TeamUpdateNotReviewedTip: scene((f) => leadUpdate(f)),
+  TeamUpdateNotReviewedTip: scene((f) => teamUpdateMergedUnreviewed(f)),
   TeamUpdateMerge: scene((f) => teamUpdateMerge(f)),
   // A merged PR whose workspace isn't archived yet: the row reads the merged icon and Merged beside Open.
   TeamUpdateMerged: scene((f) => { const m = teamUpdateMerge(f); return { ...m, workspaces: (m.workspaces ?? []).map((w) => (w.id === 'ws-163' ? { ...w, status: 'ready' as const, archivedAt: undefined } : w)) } }),
@@ -3235,54 +3241,67 @@ export const workspaceFixtures: Record<string, Fixture> = {
     reach: ['figma', 'github', 'notion', 'sentry', 'claude_ai_Slack'],
     blocked: [{ name: 'claude_ai_Linear', why: 'needs-auth' }, { name: 'neon', why: 'failed' }, { name: 'playwright', why: 'off' }]
   }),
-  WorkspacePRMenu: scene(() => ({ ui: { ...open, menu: 'pr' } })),
-  WorkspaceDraftPR: prScene('draft', prTurn('d', ['# Create a pull request', 'Open as draft'], 5, 'Opened draft PR #42. Mark it ready when you want Artkin to review.'), { prs: prInfo('draft') }),
-  WorkspaceCIFailed: prScene('cifail', [
-    ...prTurn('c', ['# Create a pull request', '1. Rebase on origin/main and run pnpm test'], 6, 'Opened PR #42.'),
-    prNote('c-note', 'playwright failed on the PR: the download test timed out in CI.', 'cifail')
-  ], {
-    prs: prInfo('cifail', {
-      checks: [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'typecheck', state: 'pass', meta: '31s' }, { name: 'vitest', state: 'pass', meta: '48s' }, { name: 'playwright', state: 'fail' }],
-      comments: [
-        { id: 'rc1', author: 'Artkin', body: 'Empty state copy', resolved: true },
-        { id: 'rc2', author: 'Artkin', body: 'Shorten empty state copy', resolved: false }
-      ]
-    })
-  }, 'pr'),
-  WorkspaceCriteria: criteriaScene(['passed', 'reviewerMet', 'failed', 'unverified', 'stale'], { provider: 'codex' }),
-  WorkspaceCriteriaPassed: criteriaScene(['passed'], { provider: 'codex' }),
-  WorkspaceCriteriaFailed: criteriaScene(['failed'], { provider: 'codex' }),
-  WorkspaceCriteriaUnverified: criteriaScene(['unverified']),
-  WorkspaceCriteriaReviewerMet: criteriaScene(['reviewerMet'], { provider: 'codex' }),
-  WorkspaceCriteriaStale: criteriaScene(['stale'], { provider: 'claude' }),
-  // KERNEL-1077: a reviewed PR whose step had no criteria still names the model that reviewed it.
-  WorkspaceReviewedByCodex: criteriaScene([], { provider: 'codex' }),
-  WorkspaceReviewedByClaude: criteriaScene([], { provider: 'claude' }),
-  WorkspaceChangesRequested: prScene('changes', [
-    ...prTurn('r', ['# Create a pull request', '1. Rebase on origin/main and run pnpm test'], 6, 'Opened PR #42 and asked Artkin for review.')
-  ], {
-    prs: prInfo('changes', {
-      reviewDecision: 'changes',
-      comments: [
-        { id: 'rv1', author: 'Artkin', path: 'src/app/invoices/table.tsx', line: 42, body: 'Use the shared EmptyState from components/ui.', resolved: false },
-        { id: 'rv2', author: 'Artkin', path: 'src/app/invoices/page.tsx', line: 18, body: 'Keep the skeleton up for at least 200ms to avoid flashing.', resolved: false }
-      ]
-    })
-  }),
+  // ---- Redesign 10, Pull request and merge (KERNEL-1097). 10.1 to 10.8 follow the flow, and 10.9 to 10.13 are the sheets, a fixture for each state on them. ----
+  // 10.1: the Session rail with its pull request open and nothing in the way, so Merge PR is green.
+  WorkspacePROpen: scene((f) => pr10(f, { state: 'open' })),
+  // 10.2: Merge anyway asks first, and lists what the review found on the latest commit.
+  ConfirmMergeAnyway: scene((f) => pr10(f, { state: 'ready', ws: { reviews: [p10Blockers()] }, ui: { modal: { name: 'confirm', kind: 'mergeAnyway', workspaceId: ids.table } } })),
+  // 10.3: neither the rail nor the panel shows, so the title bar carries the pull request and its one action.
+  PrReadyHidden: scene((f) => pr10(f, { state: 'ready', hidden: true })),
+  // 10.4: a project with no GitHub merges the branch on this Mac, and the rail says so.
+  PrLocalReady: scene((f) => p10Local(f, 'ready')),
+  // 10.5: the Pull request tab with its acceptance criteria, one in each state, the reviewer's judgment labeled.
+  WorkspaceCriteria: scene((f) => p10Criteria(f, [0, 1, 2, 3, 4], 'codex')),
+  WorkspaceCriteriaPassed: scene((f) => p10Criteria(f, [0], 'codex')),
+  WorkspaceCriteriaFailed: scene((f) => p10Criteria(f, [2], 'codex')),
+  WorkspaceCriteriaUnverified: scene((f) => p10Criteria(f, [3])),
+  WorkspaceCriteriaReviewerMet: scene((f) => p10Criteria(f, [1], 'codex')),
+  WorkspaceCriteriaStale: scene((f) => p10Criteria(f, [4], 'claude')),
+  // 10.9: every state the Review stage can be in, on GitHub and on this Mac.
+  WorkspacePRNone: scene((f) => pr10(f, { state: 'none' })),
+  WorkspacePRCreating: scene((f) => pr10(f, { state: 'creating', pending: 'create' })),
+  WorkspaceDraftPR: scene((f) => pr10(f, { state: 'draft' })),
+  WorkspacePRNoChanges: scene((f) => pr10(f, { state: 'none', noChanges: true })),
+  WorkspacePRChecks: scene((f) => pr10(f, { state: 'checks', pr: { checks: [{ name: 'Test', state: 'pass' }, { name: 'Build', state: 'pass' }, { name: 'Release note', state: 'running' }, { name: 'Other apps', state: 'queued' }] } })),
+  // A ready PR whose repo requires only Test: Lint failed and is optional, so it doesn't hold the merge (KERNEL-388).
+  WorkspacePRChecksOptional: scene((f) => pr10(f, { state: 'ready', pr: { checks: [{ name: 'Test', state: 'pass' }, { name: 'Build', state: 'pass' }, { name: 'Lint', state: 'fail', optional: true }] } })),
+  WorkspaceCIFailed: scene((f) => pr10(f, { state: 'cifail', pr: { checks: [{ name: 'Test', state: 'fail' }, { name: 'Build', state: 'pass' }, { name: 'Release note', state: 'pass' }, { name: 'Other apps', state: 'pass' }] } })),
+  // Waiting for the reviewer: the review of the latest commit is planned and has not approved it yet (KERNEL-1071).
+  PrWaitingReview: scene((f) => pr10(f, { state: 'ready', ws: { reviewRound: { n: 1, rounds: 3, head: 'h1153', prNumber: 1153, kinds: ['code'] } } })),
+  WorkspaceReviewedByClaude: scene((f) => pr10(f, { state: 'ready', ws: { reviews: [p10Review({ provider: 'claude' })] } })),
+  WorkspaceReviewedByCodex: scene((f) => pr10(f, { state: 'ready', ws: { reviews: [p10Review({ provider: 'codex' })] } })),
+  WorkspaceChangesRequested: scene((f) => pr10(f, { state: 'changes', pr: { reviewDecision: 'changes', comments: [{ id: 'rv1', author: 'Artkin', path: 'test/journey.test.ts', line: 14, body: 'Name the threshold.', resolved: false }, { id: 'rv2', author: 'Artkin', path: 'fixtures/journey.ts', line: 3, body: 'Read the build from the release manifest.', resolved: false }] } })),
+  // Blockers on the latest commit: the review found two, the agent can address them, and a person can merge past them on purpose (KERNEL-501).
+  PrBlockers: scene((f) => pr10(f, { state: 'ready', ws: { reviews: [p10Blockers()] } })),
+  PrBlockersOverruled: scene((f) => pr10(f, { state: 'ready', ws: { reviews: [p10Blockers()], overruled: { head: 'h1153', kinds: ['code'], by: 'user', ts: J(57) } } })),
+  WorkspacePRConflict: scene((f) => pr10(f, { state: 'conflict', pr: { conflicts: ['test/journey.test.ts', 'fixtures/journey.ts'] } })),
+  WorkspacePRResolving: scene((f) => pr10(f, { state: 'resolving', pr: { conflicts: ['test/journey.test.ts', 'fixtures/journey.ts'] } })),
+  // A ready PR GitHub won't merge until someone approves it (KERNEL-388).
+  WorkspacePRBlocked: scene((f) => pr10(f, { state: 'ready', ws: { prBlocked: 'review' }, pr: { blocked: 'review' } })),
+  WorkspacePRReady: scene((f) => pr10(f, { state: 'ready', ws: { reviews: [p10Review()] } })),
+  WorkspacePRMerging: scene((f) => pr10(f, { state: 'merging', pending: 'merge' })),
+  WorkspacePRClosed: scene((f) => pr10(f, { state: 'closed' })),
+  // A branch that merges on the Mac, in a project with no GitHub (KERNEL-478).
+  PrLocalBehind: scene((f) => p10Local(f, 'behind')),
+  PrLocalDirty: scene((f) => p10Local(f, 'dirty')),
+  PrLocalConflict: scene((f) => p10Local(f, 'conflict')),
+  PrLocalMerging: scene((f) => p10Local(f, 'merging')),
+  PrLocalMerged: scene((f) => p10Local(f, 'merged')),
+  // 10.10: with the Session rail hidden, the pull request's state moves into the title bar, and its menu opens under Open PR.
+  PrNoPrHidden: scene((f) => pr10(f, { state: 'none', hidden: true })),
+  PrCiFailHidden: scene((f) => pr10(f, { state: 'cifail', hidden: true, pr: { checks: [{ name: 'Test', state: 'fail' }, { name: 'Build', state: 'pass' }] } })),
+  PrMergedHidden: scene((f) => pr10(f, { state: 'merged', hidden: true })),
+  PrMergedHiddenLong: scene((f) => pr10(f, { state: 'merged', hidden: true, ws: { title: 'Clean-account journey on a fresh Mac user with several accounts, a long brief and every shot kept' } })),
+  PrClosedHidden: scene((f) => pr10(f, { state: 'closed', hidden: true })),
+  WorkspacePRMenu: scene((f) => pr10(f, { state: 'open', ui: { menu: 'pr' } })),
+  // 10.13: the Create PR menu, the Archive and Continue pair after a merge, and the toast that says the branch's name was copied.
+  CreatePrMenu: scene((f) => pr10(f, { state: 'none', ui: { menu: 'pr' } })),
+  ContinueAfterMerge: scene((f) => pr10(f, { state: 'merged', ws: { reviews: [p10Review()], mergedAt: J(59) } })),
+  BranchCopied: scene((f) => pr10(f, { state: 'open', ws: { branch: 'feat/kernel-1075-automatic-review' }, ui: { toasts: [{ id: 'bc', glyph: 'done', title: 'Branch copied', sub: 'feat/kernel-1075-automatic-review' }] } })),
   WorkspaceMerged: prScene('merged', [
     ...prTurn('m', ['# Create a pull request', '1. Rebase on origin/main and run pnpm test', '2. Title it as a Conventional Commit'], 6, 'Opened PR #42. Artkin approved it and every check passed.'),
     prNote('m-note', 'PR #42 was squashed into main.', 'merged')
   ], { prs: prInfo('merged') }),
-  WorkspacePRClosed: prScene('closed', [prNote('x-note', 'PR #42 was closed without merging on GitHub.', 'closed')], { prs: prInfo('closed') }),
-  // The PR header in the states the fixtures above don't cover (KERNEL-274).
-  WorkspacePRNoChanges: scene((f) => ({
-    workspaces: withWorkspace(f, ids.table, { prState: 'none', stat: { files: 0, added: 0, removed: 0 } }),
-    changes: { [ids.table]: [] },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run' } }
-  })),
-  WorkspacePRNone: prScene('none', []),
-  WorkspacePRCreating: prScene('creating', []),
-  WorkspacePROpen: prScene('open', [], { prs: prInfo('open') }),
   // KERNEL-685: a project with no setup script. The Setup tab offers Kernel's suggestion, Ask Kernel and Add manually.
   WorkspaceSetupAddConductor: scene((f) => ({
     projectSettings: { [ids.projectA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
@@ -3296,41 +3315,6 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'setup'),
     ui: { ...open, workspace: { right: 'changes', bottom: 'setup' } }
   })),
-  WorkspacePRChecks: prScene('checks', [], { prs: prInfo('checks') }),
-  // A ready PR whose repo requires only Release note: Test failed and Vercel still runs, both optional (KERNEL-388).
-  WorkspacePRChecksOptional: prScene('ready', [], {
-    prs: prInfo('ready', { checks: [{ name: 'Release note', state: 'pass', meta: '28s' }, { name: 'Test', state: 'fail', optional: true }, { name: 'Vercel', state: 'running', optional: true }] })
-  }, 'pr'),
-  WorkspacePRConflict: prScene('conflict', [], { prs: prInfo('conflict') }),
-  WorkspacePRResolving: prScene('resolving', [], { prs: prInfo('resolving') }),
-  WorkspacePRReady: prScene('ready', [], { prs: prInfo('ready') }),
-  // A ready PR GitHub won't merge until someone approves it: the header reads Open, as PrOpen.png draws it (KERNEL-388).
-  WorkspacePRBlocked: blocked(prScene('ready', [], { prs: prInfo('ready', { blocked: 'review' }) })),
-  WorkspacePRMerging: prScene('merging', [], { prs: prInfo('merging') }),
-  // A branch that merges on the Mac, in a project with no GitHub (KERNEL-478).
-  PrLocalReady: localScene('ready'),
-  PrLocalBehind: localScene('behind'),
-  PrLocalConflict: localScene('conflict'),
-  PrLocalMerging: localScene('merging'),
-  PrLocalMerged: localScene('merged'),
-  PrLocalDirty: localScene('dirty'),
-  // The header and the PR capsule (KERNEL-413): the toggle ends the chat header in both states (KERNEL-425).
-  PrMergedOpen: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')], { panel: true }),
-  PrMergedHidden: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')]),
-  // KERNEL-911: the toggle takes the band's tone with the panel open. Merged is PrMergedOpen, blockers PrBlockers.
-  PrReadyOpen: headerScene('ready', [], { panel: true }),
-  PrCiFailOpen: headerScene('cifail', [prNote('h-note', 'Checks failed on PR #147.', 'cifail')], { panel: true }),
-  PrReadyHidden: headerScene('ready', []),
-  // Blockers on the latest commit: the band reads Blockers found in red, with a soft Merge anyway (KERNEL-501).
-  PrBlockers: withBlockers(headerScene('ready', [], { panel: true })),
-  PrWaitingReview: withReviewRunning(headerScene('ready', [], { panel: true })),
-  PrBlockersOverruled: withOverruled(withBlockers(headerScene('ready', [], { panel: true }))),
-  ConfirmOverrule: withBlockers(headerScene('ready', [], { panel: true })),
-  PrCiFailHidden: headerScene('cifail', [prNote('h-note', 'Checks failed on PR #147.', 'cifail')]),
-  // The capsule on a neutral band: soft Create PR with its icon and its own menu square, and a closed PR's Reopen (KERNEL-528).
-  PrNoPrHidden: headerScene('none', []),
-  PrClosedHidden: headerScene('closed', [prNote('h-note', 'PR #147 was closed without merging.', 'closed')]),
-  PrMergedHiddenLong: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')], { title: 'KERNEL-155 Home and Inbox keep asking about requests and the PRs, and show the team when a merge is waiting' }),
   WorkspaceToast: prScene('merged', [], {
     prs: prInfo('merged'),
     ui: { toasts: [

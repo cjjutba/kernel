@@ -57,16 +57,16 @@ export function Criteria({ ws }: { ws: Workspace }) {
     return () => { live = false }
   }, [ws.id, ws.prNumber, stamp])
   // A PR whose step had no criteria still says which model reviewed it (KERNEL-1077).
-  if (!evidence?.criteria.length) return by ? <span className="muted t-meta">Reviewed by {by}</span> : null
+  if (!evidence?.criteria.length) return by ? <section className="pr-section" aria-label="Review"><div className="pr-card-head"><span className="pr-card-sub">Reviewed by {by}</span></div></section> : null
   return (
-    <section className="col gap-4" aria-label="Acceptance criteria">
-      <div className="row gap-10">
-        <span className="muted t-meta t-medium">Acceptance criteria</span>
+    <section className="col" aria-label="Acceptance criteria">
+      <div className="pr-card-head">
+        <span className="pr-card-title">Acceptance criteria</span>
         <span className="grow" />
-        {by && <span className="muted t-meta">Reviewed by {by}</span>}
+        {by && <span className="pr-card-sub">Reviewed by {by}</span>}
       </div>
       <ul className="crit-list">{evidence.criteria.map((c) => <Criterion key={c.index} c={c} />)}</ul>
-      {evidence.commentUrl && <button type="button" className="crit-link" aria-label="Open the evidence comment on GitHub" onClick={() => void call('system.openExternal', { url: evidence.commentUrl as string })}><span>Evidence comment on GitHub</span><Icon name="ext" size={12} /></button>}
+      {evidence.commentUrl && <button type="button" className="crit-link crit-evidence" aria-label="Open the evidence comment on GitHub" onClick={() => void call('system.openExternal', { url: evidence.commentUrl as string })}><span>Evidence comment on GitHub</span><Icon name="ext" size={12} /></button>}
     </section>
   )
 }

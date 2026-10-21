@@ -752,6 +752,10 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceContextPopover: blurFocus,
   WorkspaceContextPopoverFull: blurFocus,
   ContextPopoverEmpty: blurFocus,
+  // Part 10 (KERNEL-1097): the pull request menus open without a pointer, so the first item doesn't wear a ring, and Continue says what it does on hover.
+  WorkspacePRMenu: blurFocus,
+  CreatePrMenu: blurFocus,
+  ContinueAfterMerge: async (page) => { await page.getByRole('button', { name: 'Continue', exact: true }).hover(); await page.waitForTimeout(900) },
   WorkspaceReplyMenu: async (page) => { await page.getByRole('menuitem', { name: 'Fork into new tab' }).hover(); await page.waitForTimeout(300) },
   WorkspaceRevertMenu: async (page) => { await page.getByRole('menuitem', { name: 'Revert files to here' }).hover(); await page.waitForTimeout(300) },
   ComposerPlusMenu: async (page) => { await page.getByRole('menuitem', { name: /Add attachment/ }).hover(); await page.waitForTimeout(300) },
