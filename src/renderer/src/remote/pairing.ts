@@ -1,13 +1,15 @@
+import { readSaved, writeSaved } from '../remember'
 import { TOKEN_KEY } from './bridge'
 
-/** Pairing from the browser's side (remote-web-client). The token lives in localStorage; the code is read from the URL's hash and never sent anywhere else. */
+/** Pairing from the browser's side (remote-web-client). The token lives in localStorage (through `remember.ts`); the code is read from the URL's hash and never sent anywhere else. */
 
 /** Why the last session ended, for the page that follows the reload. Session storage, so a new tab starts clean. */
 const NOTICE_KEY = 'kernel.remote.notice'
 
-export const storedToken = (): string | null => { try { return localStorage.getItem(TOKEN_KEY) } catch { return null } }
-export const storeToken = (token: string) => { try { localStorage.setItem(TOKEN_KEY, token) } catch { /* private mode: the page pairs again next time */ } }
-export const forgetToken = () => { try { localStorage.removeItem(TOKEN_KEY) } catch { /* nothing kept */ } }
+/** Through `remember.ts`, the one place that touches localStorage. With storage blocked the token lasts until the page closes. */
+export const storedToken = (): string | null => readSaved(TOKEN_KEY)
+export const storeToken = (token: string) => writeSaved(TOKEN_KEY, token)
+export const forgetToken = () => writeSaved(TOKEN_KEY, null)
 
 export const pairCode = (hash: string = location.hash): string | undefined => /^#pair=([A-Za-z0-9_-]+)$/.exec(hash)?.[1]
 
