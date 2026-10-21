@@ -225,3 +225,7 @@
 .nps-hint { font-size: var(--fs-meta); color: var(--muted); }
 .nps-hint .mono { color: var(--ink-2); }
 .nps-other { font-size: var(--fs-meta); color: var(--muted); }
+
+/* The setup log dialog (KERNEL-1117): the log as plain text in the code box, scrolling inside the dialog. */
+.sl-body { padding: 0 18px 18px; }
+.sl-log { margin: 0; max-height: 360px; overflow: auto; white-space: pre; border: 1px solid var(--line-2); }

@@ -214,6 +214,8 @@ const K = {
 
 /** The permission and Build here glyphs, drawn on a 24 unit grid at stroke 2, which scales to the 1.4 of the 16 grid. */
 const K24 = {
+  /** A scroll with lines, for the setup log (Pen 2.10). */
+  scrollText: <><path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 00-2-2H4"/><path d="M8 21h12a2 2 0 002-2v-1a1 1 0 00-1-1H11a1 1 0 00-1 1v1a2 2 0 11-4 0V5a2 2 0 10-4 0v2a1 1 0 001 1h3"/></>,
   unlock: <><rect x="3.5" y="11" width="17" height="10" rx="2"/><path d="M7.5 11V7.5a4.5 4.5 0 018.8-1.3"/></>,
   filePen: <><path d="M12.5 22H18a2 2 0 002-2V7l-5-5H6a2 2 0 00-2 2v9.5"/><path d="M14 2v4a2 2 0 002 2h4"/><path d="M13.4 15.6a1 1 0 10-3-3l-5 5a2 2 0 00-.5.9l-.8 2.9a.5.5 0 00.6.6l2.9-.8a2 2 0 00.9-.5z"/></>,
   shieldCheck: <><path d="M20 13c0 5-3.5 7.5-7.7 9a1 1 0 01-.7 0C7.5 20.5 4 18 4 13V6a1 1 0 011-1c2 0 4.5-1.2 6.2-2.7a1.2 1.2 0 011.5 0C14.5 3.8 17 5 19 5a1 1 0 011 1z"/><path d="M9 12l2 2 4-4"/></>,

@@ -62,6 +62,20 @@ const warnSteps: ProjectSetupStep[] = [
   { id: 'agents', title: 'Seat agents', detail: 'Kernel, Christian, Sean, Teng, Artkin from .claude/agents', state: 'ok' }
 ]
 
+/** KERNEL-1117: what Kernel logged for Client C's setup, as it stood when the Copy local files step began. One line per entry, with a tool's output under it. */
+const setupLog = [
+  '2026-10-21 14:03:12  Clone cjjutba/client-c',
+  "2026-10-21 14:03:12  Output: Clone cjjutba/client-c",
+  "                     Cloning into '/Users/you/Projects/client-c'...",
+  '2026-10-21 14:03:16  Done in 4s: ~/Projects/client-c',
+  '2026-10-21 14:03:16  Code host',
+  '2026-10-21 14:03:16  Done: GitHub, cjjutba/client-c',
+  '2026-10-21 14:03:16  Create the worktree folder',
+  '2026-10-21 14:03:16  Done: ~/kernel/worktrees/client-c',
+  '2026-10-21 14:03:16  Copy local files',
+  ''
+].join('\n')
+
 /** An owner's GitHub avatar, drawn here since fixtures load nothing remote (KERNEL-951). */
 const ownerAvatar = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" fill="#3b4a5c"/><circle cx="20" cy="16" r="7" fill="#c9d3dd"/><path d="M6 40c2-9 8-13 14-13s12 4 14 13z" fill="#c9d3dd"/></svg>')}`
 
@@ -850,6 +864,14 @@ export const teamFixtures: Record<string, Fixture> = {
     projects: [...f.projects, clientC],
     push: [{ type: 'project.setup', projectId: clientC.id, steps: setupSteps }],
     ui: { route: { name: 'leadNew', projectId: clientC.id } }
+  })),
+  // KERNEL-1117: Open the setup log in that popover opens the log of each step in the one modal shell.
+  ProjectSetupLog: scene((f) => ({
+    ...projectsScene(f),
+    projects: [...f.projects, clientC],
+    push: [{ type: 'project.setup', projectId: clientC.id, steps: setupSteps }],
+    setupLogs: { [clientC.id]: setupLog },
+    ui: { route: { name: 'leadNew', projectId: clientC.id }, modal: { name: 'setupLog', projectId: clientC.id } }
   })),
   ProjectSetupWarnings: scene((f) => ({
     ...projectsScene(f),

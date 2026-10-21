@@ -106,6 +106,9 @@ export function SetupLine({ project, steps }: { project: Project; steps: Project
                   </li>
                 ))}
               </ul>
+              <div className="su-pop-foot">
+                <button type="button" className="su-pop-log" onClick={() => { setOpen(false); actions.ui.openModal({ name: 'setupLog', projectId: project.id }) }}><Icon name="scrollText" size={14} />Open the setup log</button>
+              </div>
             </Popover>
           </span>
         </div>

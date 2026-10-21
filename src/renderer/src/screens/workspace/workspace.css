@@ -686,4 +686,8 @@ button.su-link > svg { flex-shrink: 0; color: var(--muted); }
 .su-pop-ico { width: 14px; display: inline-flex; justify-content: center; flex-shrink: 0; }
 .su-pop-text { flex: 1; min-width: 0; }
 .su-pop-meta { color: var(--muted); font-variant-numeric: tabular-nums; }
+.su-pop-foot { margin: 2px -14px -12px; padding: 6px; border-top: 1px solid var(--line-2); }
+.su-pop-log { display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; padding: 0 8px; border: 0; border-radius: var(--r-md); background: transparent; font: inherit; color: var(--ink-2); text-align: left; cursor: pointer; }
+.su-pop-log > svg { flex-shrink: 0; color: var(--muted); }
+.su-pop-log:hover { background: var(--surface-2); color: var(--ink); }
 .su-team { display: flex; align-items: center; gap: 8px; margin: 0; }

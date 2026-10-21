@@ -28,6 +28,7 @@ import { Loading } from './screens/onboarding/Loading'
 import { Onboarding } from './screens/onboarding/Onboarding'
 import { Splash } from './screens/onboarding/Splash'
 import { ConfirmRemoveProject } from './screens/projects/ConfirmRemoveProject'
+import { SetupLog } from './screens/projects/SetupLog'
 import { ConfirmDeleteHistory } from './screens/history/ConfirmDeleteHistory'
 import { ConnectRepo } from './screens/projects/ConnectRepo'
 import { NewProject } from './screens/projects/NewProject'
@@ -106,6 +107,7 @@ function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
     case 'connectRepo': return <ConnectRepo />
     case 'openFolder': return <OpenFolder />
     case 'checkHooks': return <CheckHooks />
+    case 'setupLog': return <SetupLog projectId={modal.projectId} />
     case 'newAgent': return <NewAgent projectId={modal.projectId} step={modal.step} prefill={modal.prefill} />
     case 'whatsNew': return <WhatsNew update={modal.update} />
     case 'envVar': return <EnvVarForm projectId={modal.projectId} editName={modal.editName} />
