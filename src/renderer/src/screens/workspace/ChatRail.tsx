@@ -41,8 +41,8 @@ export function RailView({ entries, current, at, open, id, button, listRef, onPi
       )}
       {open && (
         <div className="rail-pop">
-          <div className="rail-card">
-          <div className="rail-head" aria-hidden="true"><span>{entries.length} messages</span><span>Jump to</span></div>
+          <div className="rail-jump">
+          <div className="rail-jump-head" aria-hidden="true"><span>{entries.length} messages</span><span>Jump to</span></div>
           <div id={listId} ref={listRef} className="rail-list" role="listbox" aria-label="Jump to message" onMouseDown={(e) => e.preventDefault()}>
             {entries.map((e, i) => (
               <div key={e.id} id={`${id}-${i}`} className="rail-opt" role="option" aria-selected={i === current} aria-label={e.more ? `${e.label}, and ${e.more} more` : undefined}

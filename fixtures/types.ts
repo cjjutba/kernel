@@ -26,7 +26,7 @@ export interface Fixture {
   preflight: PreflightCheck[]
   /** By workspace id. */
   changes: Record<string, ChangedFile[]>
-  /** By workspace id. */
+  /** By workspace id. A diff keyed `<workspace id>:<path>` is that file's own. */
   diffs: Record<string, string>
   // Optional data for screens built after KERNEL-8. A missing field reads as empty, or as the defaults in src/main/fixtures.ts.
   /** By project id. */
@@ -66,6 +66,8 @@ export interface Fixture {
   /** By workspace id. */
   /** What a path mentioned in chat resolves to, by workspace id, then the text as the agent wrote it (`src/a.ts:12-14`). Checked before the tree, for lines, ambiguous names and folders. */
   mentions?: Record<string, Record<string, ResolvedPath>>
+  /** Paths, by workspace id, that resolve the first time and are gone by the next ask, as a file deleted after the message was drawn (the link's "This file no longer exists" toast). */
+  mentionsGone?: Record<string, string[]>
   tree?: Record<string, FileEntry[]>
   /** By workspace id. */
   hunks?: Record<string, Hunk[]>
@@ -73,6 +75,10 @@ export interface Fixture {
   commits?: Record<string, BranchCommit[]>
   /** By workspace id, then path. */
   fileText?: Record<string, Record<string, string>>
+  /** By workspace id, then path: a file whose read fails with this text, as a binary or too large one does (Pen 9.22). */
+  fileErrors?: Record<string, Record<string, string>>
+  /** By workspace id, then what the compare menu picks: the files of that pick, where they differ from the workspace's own changes (Pen 9.21). */
+  changesAgainst?: Record<string, Partial<Record<'uncommitted' | 'commit' | 'branch', ChangedFile[]>>>
   /** By workspace id, then `${at}:${path}`, what `workspaces.readImage` returns (KERNEL-409). */
   images?: Record<string, Record<string, { dataUrl: string }>>
   skills?: Skill[]

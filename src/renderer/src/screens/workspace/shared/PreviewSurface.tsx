@@ -19,11 +19,11 @@ const quiet = () => undefined
 /**
  * Where a shared file runs in its tab. An HTML page runs live in the locked-down native view main draws over `.sv-frame` (KERNEL-303), and
  * shows its still capture under that view. A PDF has no live view: Chromium's viewer doesn't render in the preview partition, so the tab
- * shows the page capture and the toolbar opens Kernel's copy in Preview. `again` counts Reload presses.
+ * shows the page capture and the toolbar opens Kernel's copy in Preview.
  */
-export function PreviewSurface({ workspaceId, file, version, width, again, comment }: { workspaceId: string; file: SharedFile; version: SharedVersion; width: PreviewWidth; again: number; comment?: CommentMode }) {
+export function PreviewSurface({ workspaceId, file, version, width, comment }: { workspaceId: string; file: SharedFile; version: SharedVersion; width: PreviewWidth; comment?: CommentMode }) {
   if (file.kind === 'pdf') return <PdfPage file={file} version={version} />
-  return <PagePreview workspaceId={workspaceId} file={file} version={version} width={width} again={again} comment={comment} />
+  return <PagePreview workspaceId={workspaceId} file={file} version={version} width={width} comment={comment} />
 }
 
 function PdfPage({ file, version }: { file: SharedFile; version: SharedVersion }) {
@@ -37,7 +37,7 @@ function replayKey(e: Extract<PushEvent, { type: 'preview.key' }>) {
   window.dispatchEvent(new KeyboardEvent('keydown', { key: e.key, code: e.code, metaKey: e.meta, shiftKey: e.shift, altKey: e.alt, ctrlKey: e.ctrl, bubbles: true, cancelable: true }))
 }
 
-function PagePreview({ workspaceId, file, version, width, again, comment }: { workspaceId: string; file: SharedFile; version: SharedVersion; width: PreviewWidth; again: number; comment?: CommentMode }) {
+function PagePreview({ workspaceId, file, version, width, comment }: { workspaceId: string; file: SharedFile; version: SharedVersion; width: PreviewWidth; comment?: CommentMode }) {
   // One view per tab, keyed by workspace and file. A fixture run has no live view, so its pushes name this key instead of a view.
   const key = `${workspaceId}:${file.id}`
   const frame = useRef<HTMLDivElement>(null)
@@ -153,8 +153,6 @@ function PagePreview({ workspaceId, file, version, width, again, comment }: { wo
     if (e.state === 'settled' && id) void refresh()
     if (e.state === 'ready' || e.state === 'crashed' || e.state === 'unresponsive') { answered.current?.(); answered.current = null }
   }), [watch])
-
-  useEffect(() => { if (again > 0 && id) void call('system.preview.reload', { viewId: id }).catch(quiet) }, [again])
 
   const reload = () => run('reload', async () => {
     if (!id) return

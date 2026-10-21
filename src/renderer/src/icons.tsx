@@ -37,7 +37,9 @@ import {
   FlaskConicalIcon,
   Folder01Icon,
   GaugeIcon,
+  GitCommitIcon,
   GitForkIcon,
+  GlobeIcon,
   GridViewIcon,
   HelpCircleIcon,
   HourglassIcon,
@@ -153,7 +155,11 @@ const H = {
   hourglass: HourglassIcon,
   ban: BanIcon,
   power: PowerIcon,
-  chatOff: MessageSquareOffIcon
+  chatOff: MessageSquareOffIcon,
+  /** A shared page (Pen 9.19). */
+  globe: GlobeIcon,
+  /** A commit in the compare menu (Pen 9.21). */
+  commit: GitCommitIcon
 }
 
 /**
@@ -195,7 +201,15 @@ const K = {
   sparkle: <path d="M8 1.8C8.5 5.5 10.5 7.5 14.2 8C10.5 8.5 8.5 10.5 8 14.2C7.5 10.5 5.5 8.5 1.8 8C5.5 7.5 7.5 5.5 8 1.8Z"/>,
   close: <><path d="M4 4L12 12"/><path d="M12 4L4 12"/></>,
   term: <><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2.4"/><path d="M4.8 6.4L7 8.4L4.8 10.4"/><path d="M8.8 10.6H11.4"/></>,
-  pen: <><path d="M10.4 2.8L13.2 5.6L5.8 13L2.6 13.4L3 10.2Z"/><path d="M8.8 4.4L11.6 7.2"/></>
+  pen: <><path d="M10.4 2.8L13.2 5.6L5.8 13L2.6 13.4L3 10.2Z"/><path d="M8.8 4.4L11.6 7.2"/></>,
+  /** The title bar's view toggles and the right panel's header (KERNEL-1096): the bottom pane, the Session rail as a list, Expand and Locate in the file tree. */
+  panelBottom: <><rect x="1.8" y="2.4" width="12.4" height="11.2" rx="2.4"/><path d="M1.8 9.4H14.2"/></>,
+  railList: <><path d="M2.4 4V4.1"/><path d="M2.4 8V8.1"/><path d="M2.4 12V12.1"/><path d="M5.6 4H13.6"/><path d="M5.6 8H13.6"/><path d="M5.6 12H13.6"/></>,
+  maximize: <><path d="M9.6 2.4H13.6V6.4"/><path d="M6.4 13.6H2.4V9.6"/><path d="M13.6 2.4L9.2 6.8"/><path d="M2.4 13.6L6.8 9.2"/></>,
+  /** The shared viewer's widths (Pen 9.13): a tablet and a phone. The desktop is `computer`. */
+  tablet: <><rect x="3" y="1.8" width="10" height="12.4" rx="2"/><path d="M7 12H9"/></>,
+  phone: <><rect x="4.4" y="1.8" width="7.2" height="12.4" rx="2"/><path d="M7 12H9"/></>,
+  locate: <><circle cx="8" cy="8" r="4.2"/><path d="M8 1.8V3.6"/><path d="M8 12.4V14.2"/><path d="M1.8 8H3.6"/><path d="M12.4 8H14.2"/></>
 }
 
 /** The permission and Build here glyphs, drawn on a 24 unit grid at stroke 2, which scales to the 1.4 of the 16 grid. */

@@ -2,7 +2,7 @@ import { Icon, type IconName } from '../../ui'
 
 /** What a new chat offers to start with, by who you're talking to (KERNEL-274): the Lead plans and checks on the team. */
 export const LEAD_SUGGESTIONS: { text: string; icon: IconName }[] = [{ text: 'Plan the next issues', icon: 'issues' }, { text: 'Who is blocked right now?', icon: 'team' }, { text: 'Review the open pull requests', icon: 'pr' }]
-export const SUGGESTIONS: { text: string; icon: IconName }[] = [{ text: 'Review the diff so far', icon: 'branch' }, { text: 'Write tests for this change', icon: 'flask' }, { text: 'Explain this branch', icon: 'doc' }]
+export const SUGGESTIONS: { text: string; icon: IconName }[] = [{ text: 'Review the diff so far', icon: 'branch' }, { text: 'Write tests for this change', icon: 'flask' }, { text: 'Explain this branch', icon: 'book' }]
 
 /**
  * The centred welcome of a new tab with nothing in it (NewChat.png): the heading, the subtitle and the suggestions. New chat with

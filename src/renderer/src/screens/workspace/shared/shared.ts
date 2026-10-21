@@ -25,6 +25,9 @@ export function kindLabel(kind: SharedKind, mime = ''): string {
   }
 }
 
+/** What a shared file is called on a card and in the Session rail (Pen 9.19): a page, an image, a note or a PDF. */
+export const typeWord = (kind: SharedKind): string => ({ html: 'Page', image: 'Image', markdown: 'Note', pdf: 'PDF' })[kind]
+
 /** "HTML · v2", or "HTML · v2 of 3" when newer versions exist than the one shown. */
 export function versionLine(file: SharedFile, n: number): string {
   const v = versionOf(file, n)

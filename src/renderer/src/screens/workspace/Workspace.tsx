@@ -5,7 +5,7 @@ import { actions, getState, loadWorkspace, panelShownIn, useStore } from '../../
 import { Icon } from '../../ui'
 import { isLeadChatWorkspace, onSharedFolder } from '@shared/leadWorkspace'
 import { leadModeOf } from '@shared/leadMode'
-import { PanelToggleSlot, RightPanelToggle, SidebarToggleSlot } from '../../components/PanelToggles'
+import { FocusChip, railShownIn, ViewToggles } from '../../components/PanelToggles'
 import { ResizeHandle, readWidth } from '../../components/ResizeHandle'
 import { isLeadWorkspace, leadOf, openProject } from '../../lead'
 import { currentThread, tabOf, threadIdOf } from '../../nav'
@@ -13,6 +13,7 @@ import { ProjectIcon } from '../../components/ProjectIcon'
 import { ChatTabs, diffTab, fileTab } from './ChatTabs'
 import { FileLinkScope } from './fileLinks'
 import { bringBoxOnAsk, leadHasNoChat, newChatOnScreen, showsNewChat } from './leadNoChat'
+import { bottomKindOf } from './bottomSplit'
 import { leadNewKey } from '../../components/sidebar/slots'
 import { NewChatHeader, NewChatTab, OneRowHeader } from './NewChatBar'
 import { NewLeadChat } from './NewLeadChat'
@@ -27,7 +28,7 @@ import { SharedView } from './shared/SharedView'
 import { LeadPrSummary } from './pr/LeadPrSummary'
 import { LocalMergeInfo } from './pr/LocalMerge'
 import { hasChanges } from './pr/model'
-import { copyBranch, PrHeader } from './pr/PrHeader'
+import { PrHeader } from './pr/PrHeader'
 import { SessionRail } from './SessionRail'
 import { SkipNotice } from './terminal/SkipNotice'
 import { TerminalView } from './terminal/Terminal'
@@ -42,19 +43,20 @@ import { issueOpen, issueUrl } from './issueKey'
 import { useProjectTracker } from '../issues/useProjectTracker'
 import { useWorkspaceShortcuts } from './shortcuts'
 import './workspace.css'
+import './panel.css'
 
 const EMPTY_CHATS: never[] = []
 const NO_TABS: string[] = []
 const NO_CHANGES: ChangedFile[] = []
 const PANEL_MIN = 320
-const PANEL_MAX = 720
+const PANEL_MAX = 960
 const PANEL_KEY = 'kernel.rightPanelWidth'
 /** Letting go below this hides the panel. The saved width stays. */
 const PANEL_HIDE_BELOW = 240
 /** The chat column keeps at least this much, however wide the panel was saved. */
 const CHAT_MIN = 420
-/** What `.ws-aside` is until the user drags: 28% of the window between 320 and 400px (D-080), so its CSS and this agree. */
-const panelDefault = () => Math.min(400, Math.max(PANEL_MIN, Math.round(window.innerWidth * 0.28)))
+/** What `.ws-aside` is until the user drags: 48% of the window between 420 and 880px, so its CSS and this agree (KERNEL-1096). */
+const panelDefault = () => Math.min(880, Math.max(420, Math.round(window.innerWidth * 0.48)))
 let imageCount = 0
 let textCount = 0
 
@@ -110,6 +112,10 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   // A chat started from New chat keeps its panel closed until the toggle is pressed in it (KERNEL-788).
   const panels = useStore((s) => panelShownIn(s.ui, workspaceId))
   const held = useStore((s) => s.ui.panelHeld.includes(workspaceId))
+  const railWanted = useStore((s) => railShownIn(s.ui, workspaceId))
+  const sidebar = useStore((s) => s.ui.sidebar)
+  // Expand: the panel takes the whole screen, chat included, until it is pressed again.
+  const [expanded, setExpanded] = useState(false)
   const bottomRatio = useStore((s) => s.ui.bottomRatio)
   // The changed files remember which workspace they were read for, so a late answer or a switch never shows another workspace's files.
   const [fetched, setFetched] = useState<{ workspaceId: string; files: ChangedFile[] }>({ workspaceId, files: NO_CHANGES })
@@ -197,7 +203,6 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   // A Lead chat with work of its own shows its PR actions, Create PR included, like a teammate's (KERNEL-405, D-106).
   // In Build here the chat is a builder from its first turn, so its PR header shows before it has changes (KERNEL-780).
   const ownPr = !isLead || (isLeadChatWorkspace(ws) && (leadModeOf(ws) === 'build' || onSharedFolder(ws) || hasChanges(ws) || !!ws.prNumber || ws.prState !== 'none'))
-  const title = headerTitle(ws)
   // the Lead's shared worktree and a current-branch workspace say what they follow instead of a branch. That label carries meaning, so it
   // stays, and it has no copy: the title is plain text there.
   const label = ws.mode === 'current' ? `current branch · ${ws.branch}` : ws.lead && ws.branch === 'HEAD' ? `latest ${leadBase(ws, project)}` : undefined
@@ -257,46 +262,39 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const alone = newChatShown && !order.length
   const changed = filePath ? changes.some((c) => c.path === filePath) : false
 
-  // The header spans the chat column only. The right panel runs the full height and carries the PR actions at its top;
-  // while it is hidden they move into the header, in a capsule, so Create PR and Merge stay one click away. The panel toggle is window
-  // chrome, not a PR action: there is one, positioned against the screen's top right corner, so it is the same element at the same
-  // coordinates whether the panel is open or closed and never takes the band's tone. The header and the band each keep an empty slot
-  // under it (KERNEL-769).
-  // A teammate's workspace shows its Session rail on the right while the panel is closed (KERNEL-1094).
-  const rail = !panels && !newChatShown && !isLead
+  // The header is one row over both columns (Pen 9.1): the project, then the chat and file tabs in one pill, then what acts on the workspace, then the view toggles. The panel and
+  // the Session rail are cards under it. A teammate's workspace shows its Session rail on the right while the panel is closed, and the title bar's toggles swap one for the
+  // other. Neither is Focus mode (KERNEL-1096).
+  const rail = railWanted && !newChatShown && !isLead
+  const focus = !sidebar && !panels && !rail
+  const tabsRow = alone ? <NewChatTab focusIn={workspaceId} /> : (
+    <ChatTabs
+      inline note={label} branch={isLead && ws.lead && ws.mode === 'worktree' && ws.branch !== 'HEAD' ? ws.branch : undefined} tip={isLead ? undefined : ws.branch}
+      workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} noChat={noChat} onNewChat={showNew} chats={chats} files={files} diffs={diffs} shared={shared}
+      images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={newChatShown ? undefined : tab}
+      onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText}
+    />
+  )
   return (
-    <div className="panel ws-panel" data-rail={rail || undefined}>
-      {isLead ? (
-        <OneRowHeader project={project} end={!newChatShown && <>
-          <IssueKey ws={ws} project={project} />
-          <OpenIn ws={ws} />
-        {!panels && (ownPr ? <PrHeader ws={ws} capsule /> : <LeadPrSummary projectId={ws.projectId} capsule quiet={held} />)}
-        {!panels && <PanelToggleSlot />}
-        </>}>
-          {alone ? <NewChatTab focusIn={workspaceId} /> : <ChatTabs inline note={label} branch={ws.lead && ws.mode === 'worktree' && ws.branch !== 'HEAD' ? ws.branch : undefined} workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} noChat={noChat} onNewChat={showNew} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={newChatShown ? undefined : tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />}
-        </OneRowHeader>
-      ) : <header className="header">
-        <SidebarToggleSlot />
-        <ProjectIcon project={project} className="crumb-avatar" />
-        <button type="button" className="crumb" onClick={() => project && void openProject(project.id)}>{project?.name}</button>
-        <span className="muted"><Icon name="right" size={12} /></span>
-        {label ? <h1 className="ellipsis">{title}</h1> : <WorkspaceTitle branch={ws.branch} title={title} />}
-        {label && <span className="mono muted ellipsis ws-label">{label}</span>}
+    <div className="panel ws-panel" data-rail={rail || undefined} data-panel={(panels && !newChatShown) || undefined} data-expanded={(expanded && panels && !newChatShown) || undefined}>
+      <OneRowHeader project={project} end={!newChatShown && <>
+        {focus && <FocusChip />}
         <IssueKey ws={ws} project={project} />
-        <span className="grow" />
+        {/* The PR's own place is the rail and the Pull request tab (Part 10). Until it moves there the capsule keeps Create PR and Merge in reach. */}
+        {ownPr ? <PrHeader ws={ws} capsule /> : <LeadPrSummary projectId={ws.projectId} capsule quiet={held} />}
         <OpenIn ws={ws} />
-        {!panels && (ownPr ? <PrHeader ws={ws} capsule /> : <LeadPrSummary projectId={ws.projectId} capsule quiet={held} />)}
-        {!panels && <PanelToggleSlot />}
-      </header>}
+        <ViewToggles rail={!isLead} kind={bottomKindOf(getState(), ws)} />
+      </>}>
+        {tabsRow}
+      </OneRowHeader>
       <FileLinkScope.Provider value={workspaceId}>
       <OpenImage.Provider value={openImage}>
       <OpenText.Provider value={openText}>
       <OpenIssue.Provider value={issueCtx}>
         <section aria-label="Agent" className="ws-main">
-          {!isLead && <ChatTabs workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} noChat={noChat} onNewChat={showNew} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={newChatShown ? undefined : tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />}
-          <div className="col grow" style={{ minHeight: 0 }}>
+          <div className={viewer || (chat?.kind === 'terminal' && !setupWait && !showNewChat) ? 'col grow view-card' : 'col grow'} style={{ minHeight: 0 }}>
             {diffPath !== undefined
-              ? <DiffView ws={ws} path={diffPath} changes={changes} />
+              ? <DiffView ws={ws} path={diffPath} changes={changes} stepper={diffPath ? { index: Math.max(0, changes.findIndex((c) => c.path === diffPath)), total: changes.length, go: (i) => { const to = changes[i]?.path; if (to !== undefined) openDiff(to) } } : undefined} />
               : sharedId
                 ? <SharedView workspaceId={workspaceId} sharedId={sharedId} />
               : filePath
@@ -328,19 +326,17 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
             targetRef={aside} edge="left" label="Resize panel" size={panelWidth ?? panelDefault()} min={PANEL_MIN} limit={panelLimit} defaultSize={panelDefault}
             storageKey={PANEL_KEY} hideBelow={PANEL_HIDE_BELOW} onHide={() => actions.ui.setRightPanel(false)} onCommit={setPanelWidth}
           />
-          <div className="ws-aside-head">
-            {ownPr ? <PrHeader ws={ws} spread toggle={<PanelToggleSlot />} /> : <LeadPrSummary projectId={ws.projectId} spread toggle={<PanelToggleSlot />} />}
-          </div>
-          {ownPr && <LocalMergeInfo ws={ws} />}
-          {/* Below the PR band the panel is two panes, 2/3 over 1/3 until the bottom is dragged. The one fraction is every chat's (KERNEL-513). */}
-          <div className="ws-split" style={{ '--bottom-ratio': bottomRatio } as CSSProperties}>
-            <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={openDiff} filePath={filePath} diffPath={diffPath || undefined} />
-            <BottomPanel ws={ws} />
-          </div>
+          <section className="side-card" aria-label="Panels">
+            {ownPr && <LocalMergeInfo ws={ws} />}
+            {/* Below its tabs the panel is two panes, 2/3 over 1/3 until the bottom is dragged. The one fraction is every chat's (KERNEL-513). */}
+            <div className="ws-split" style={{ '--bottom-ratio': bottomRatio } as CSSProperties}>
+              <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={openDiff} filePath={filePath} diffPath={diffPath || undefined} expanded={expanded} onExpand={() => setExpanded((e) => !e)} />
+              <BottomPanel ws={ws} />
+            </div>
+          </section>
         </aside>
       )}
       {rail && <SessionRail ws={ws} />}
-      {!newChatShown && <RightPanelToggle name="panels" />}
     </div>
   )
 }
@@ -358,17 +354,6 @@ export function LeadNewScreen({ projectId, source, picks }: { projectId: string;
         <div className="col grow" style={{ minHeight: 0 }}><NewLeadChat projectId={projectId} source={source} picks={picks} /></div>
       </section>
     </div>
-  )
-}
-
-/** The title, a real button: hovering shows the full branch and clicking copies it (HeaderBranchTooltip.png). It is the one thing in the header that gives way to a narrow window. */
-function WorkspaceTitle({ branch, title }: { branch: string; title: string }) {
-  return (
-    <h1 className="ws-title">
-      <button type="button" className="ws-title-btn" aria-label={`${title}, copy branch ${branch}`} data-tip={branch} data-tip-hint="Click to copy the branch" data-tip-align="start" onClick={() => void copyBranch(branch)}>
-        <span>{title}</span>
-      </button>
-    </h1>
   )
 }
 

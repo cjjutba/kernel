@@ -25,9 +25,8 @@
 .update-pill { height: 30px; flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px; padding: 0 12px 0 10px; border: 0; border-radius: var(--r-pill); background: var(--ink); color: var(--on-ink); font-size: var(--fs-code); font-weight: var(--fw-semibold); white-space: nowrap; transition: background var(--dur-fast) var(--ease-out); }
 .update-pill:hover { background: color-mix(in srgb, var(--ink) 88%, var(--on-ink)); }
 .update-pill[data-where='titlebar'] { font-size: var(--fs-ui); font-weight: var(--fw-medium); }
-/* The title bar's end, level with the sidebar toggle's row. A workspace keeps its right panel's toggle at the corner, so the pill sits left of it. Headers leave room for it. */
+/* The title bar's end, level with the sidebar toggle's row. Headers leave room for it, a workspace's view toggles included, so the pill never covers one (KERNEL-1096). */
 .titlebar-update { position: absolute; top: 10px; right: 16px; z-index: 2; -webkit-app-region: no-drag; }
-.titlebar-update[data-in-workspace] { right: 52px; }
 .app:has(> .titlebar-update) .panel > .header { padding-right: 112px; }
 /* The round button the footer shows between updates and after a failure, with the same outline as the buttons around it. Hover brightens the glyph and moves no fill. */
 .sbf-update { width: 32px; height: 32px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--line-3); border-radius: var(--r-pill); background: transparent; color: var(--muted); transition: color var(--dur-fast) var(--ease-out); }

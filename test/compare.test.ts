@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ALL, commitAge, compareEmpty, compareNote, compareTitle, targetOf, type Compare } from '../src/renderer/src/screens/workspace/compare'
+import { ALL, commitAge, compareEmpty, compareLabel, compareNote, compareTitle, targetOf, type Compare } from '../src/renderer/src/screens/workspace/compare'
 
 const uncommitted: Compare = { only: { kind: 'uncommitted' } }
 const commit: Compare = { only: { kind: 'commit', sha: '3e1f9a2c5d8b04f7a61e9d3c2b8a5f40d17e6c93' } }
@@ -29,6 +29,13 @@ describe('the Changes ⋯ menu pick', () => {
     expect(compareEmpty(uncommitted).title).toBe('Nothing uncommitted')
     expect(compareEmpty({ branch: 'origin/develop' }).title).toBe('No changes against origin/develop')
     expect(compareEmpty(commit).title).toBe('No file changes')
+  })
+
+  it('labels the Compare button with the base branch, without its remote', () => {
+    expect(compareLabel({ baseRef: 'origin/main' }, ALL)).toBe('Against main')
+    expect(compareLabel({ baseRef: 'main' }, { branch: 'origin/develop' })).toBe('Against develop')
+    expect(compareLabel({ baseRef: 'main' }, uncommitted)).toBe('Uncommitted')
+    expect(compareLabel({ baseRef: 'main' }, commit)).toBe('Commit 3e1f9a2')
   })
 })
 

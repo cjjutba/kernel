@@ -1,6 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { ResolvedFile, ResolvedPath } from '@shared/types'
+import { FileLabel } from '../../components/FileIcon'
 import { ConfirmDialog, Menu } from '../../ui'
 import { actions } from '../../store'
 import { linkLabel, openMention, resolveMatch } from './fileLinks'
@@ -25,14 +26,16 @@ export function FileLink({ workspaceId, raw, hit, children }: { workspaceId: str
       {matches && menu && (
         <Menu
           label={`Files named ${raw}`} anchorRef={anchor} onClose={() => setMenu(false)} style={{ left: 0, top: 'calc(100% + 4px)', minWidth: 240 }}
-          items={matches.map((m) => ({ id: m, label: m, onSelect: () => { setMenu(false); void resolveMatch(workspaceId, m, raw).then((file) => { if (file) open(file, false); else actions.ui.toast({ title: 'This file no longer exists' }) }) } }))}
+          items={matches.map((m) => ({ id: m, label: m, onSelect: () => { setMenu(false); void resolveMatch(workspaceId, m, raw).then((file) => { if (file) open(file, false); else actions.ui.toast({ title: 'This file no longer exists', glyph: 'error' }) }) } }))}
         />
       )}
       {ask && createPortal(
         <ConfirmDialog
           title="Show this file?" body="This file may contain secrets. Show it?" confirmLabel="Show file"
           onCancel={() => setAsk(null)} onConfirm={() => { const a = ask; setAsk(null); void openMention(workspaceId, a.file, { diff: a.diff }) }}
-        />,
+        >
+          <div className="wsc-facts"><FileLabel path={ask.file.path} /></div>
+        </ConfirmDialog>,
         document.body
       )}
     </span>

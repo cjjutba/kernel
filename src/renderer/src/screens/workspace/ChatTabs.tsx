@@ -5,7 +5,7 @@ import { actions, getState, loadWorkspace, useStore } from '../../store'
 import { FileIcon } from '../../components/FileIcon'
 import { isUnread } from '../../components/sidebar/unread'
 import { chatGlyph } from '../../components/sidebar/workspaceGlyph'
-import { Icon, IconButton, Menu, Spinner, type IconName } from '../../ui'
+import { Icon, IconButton, Menu, MENU_SEPARATOR, Spinner, type IconName } from '../../ui'
 import { closeChats, closesThread } from './ConfirmCloseChats'
 import { archiveChatFromSidebar } from './archiveChat'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
@@ -24,8 +24,8 @@ const base = (path: string) => path.split('/').pop() ?? path
  * a close button on hover. The new tab menu lists Chat and Terminal, which runs the preset chosen in Settings, Big terminal.
  * In the Lead's workspace `chats` are the tabs of the chat on screen (`threadId`), and a new tab joins that chat (KERNEL-338).
  */
-export function ChatTabs({ inline, note, branch, workspaceId, threadId, noChat, onNewChat, chats, files, diffs, shared, images, texts, active, onSelect, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText }: {
-  /** The tabs sit in the header row, after the project, and not in a row of their own. */ inline?: boolean; /** What the workspace follows ("latest main", "current branch · main"), said in a chat tab's hover card. */ note?: string; /** The branch a Build here chat works on, shown beside the open chat tab's title. */ branch?: string; workspaceId: string; /** The Lead chat on screen. A new chat tab joins it. Unset outside the Lead's workspace. */ threadId?: string
+export function ChatTabs({ inline, note, branch, tip, workspaceId, threadId, noChat, onNewChat, chats, files, diffs, shared, images, texts, active, onSelect, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText }: {
+  /** The tabs sit in the header row, after the project, and not in a row of their own. */ inline?: boolean; /** What the workspace follows ("latest main", "current branch · main"), said in a chat tab's hover card. */ note?: string; /** The branch a Build here chat works on, shown beside the open chat tab's title. */ branch?: string; /** A teammate's branch: the open chat tab's hover card names it (Pen 9.15, HeaderBranchTooltip). */ tip?: string; workspaceId: string; /** The Lead chat on screen. A new chat tab joins it. Unset outside the Lead's workspace. */ threadId?: string
   /** The Lead's workspace shows New chat, so a new tab is that box and starts no chat (KERNEL-366). */ noChat?: boolean; /** Switches the screen to that box when another tab is showing. */ onNewChat?: () => void; chats: Chat[]; files: string[]; diffs: string[]; shared: string[]; images: { id: string; name: string }[]; texts: { id: string; name: string }[]; active?: string
   onSelect: (tab: string) => void; onCloseFile: (path: string) => void; onCloseDiff: (path: string) => void; onCloseShared: (sharedId: string) => void; onCloseImage: (id: string) => void; onCloseText: (id: string) => void
 }) {
@@ -152,7 +152,7 @@ export function ChatTabs({ inline, note, branch, workspaceId, threadId, noChat, 
                   onFocus={(e) => e.currentTarget.select()} onBlur={(e) => rename(t.id, e.currentTarget.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') rename(t.id, e.currentTarget.value); else if (e.key === 'Escape') setRenaming(null) }} />
               ) : (
-                <button type="button" role="tab" aria-selected={on} tabIndex={t.id === stop ? 0 : -1} id={`ws-tab-${t.id}`} className="ws-tab" data-tip={t.title} data-tip-hint={t.kind === 'chat' ? note : undefined} data-unread={unread || undefined} onClick={() => onSelect(t.id)}
+                <button type="button" role="tab" aria-selected={on} tabIndex={t.id === stop ? 0 : -1} id={`ws-tab-${t.id}`} className="ws-tab" data-tip={tip && on && t.kind === 'chat' ? tip : t.title} data-tip-hint={t.kind === 'chat' ? (tip && on ? t.title : note) : undefined} data-tip-align={tip && on && t.kind === 'chat' ? 'start' : undefined} data-unread={unread || undefined} onClick={() => onSelect(t.id)}
                   aria-label={g?.label || unread ? name : undefined} aria-haspopup={t.kind === 'chat' ? 'menu' : undefined} aria-expanded={t.kind === 'chat' && on ? menu === 'tab' : undefined}
                   onKeyDown={(e) => { if (t.kind === 'chat' && (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey))) { e.preventDefault(); openTabMenu(t.id) } else arrow(e, t.id) }}
                   onContextMenu={(e) => { if (t.kind !== 'chat') return; e.preventDefault(); openTabMenu(t.id) }}
@@ -174,10 +174,12 @@ export function ChatTabs({ inline, note, branch, workspaceId, threadId, noChat, 
               )}
               {t.kind === 'chat' && on && menu === 'tab' && (
                 <Menu label="Tab options" anchorRef={tabAnchor} onClose={closeMenu} style={{ left: 0, top: 'calc(100% + 6px)', width: 220 }} items={[
-                  { id: 'rename', label: 'Rename', onSelect: () => { closeMenu(); setRenaming(t.id) } },
-                  { id: 'fork', label: 'Fork into new tab', onSelect: () => void fork(t.id) },
-                  { id: 'close', label: 'Close tab', shortcut: '⌘W', onSelect: () => void close([t.id]) },
-                  { id: 'others', label: 'Close other tabs', disabled: chats.length < 2, onSelect: () => void close(chats.filter((c) => c.id !== t.id).map((c) => c.id)) }
+                  { id: 'rename', label: 'Rename', icon: 'pen', onSelect: () => { closeMenu(); setRenaming(t.id) } },
+                  { id: 'fork', label: 'Fork into new tab', icon: 'fork', onSelect: () => void fork(t.id) },
+                  MENU_SEPARATOR,
+                  { id: 'close', label: 'Close tab', icon: 'close', shortcut: '⌘W', onSelect: () => void close([t.id]) },
+                  { id: 'others', label: 'Close other tabs', icon: 'xCircle', disabled: chats.length < 2, onSelect: () => void close(chats.filter((c) => c.id !== t.id).map((c) => c.id)) },
+                  { id: 'right', label: 'Close tabs to the right', icon: 'arrowRight', disabled: !chats.slice(chats.findIndex((c) => c.id === t.id) + 1).length, onSelect: () => void close(chats.slice(chats.findIndex((c) => c.id === t.id) + 1).map((c) => c.id)) }
                 ]} />
               )}
             </span>
@@ -188,8 +190,8 @@ export function ChatTabs({ inline, note, branch, workspaceId, threadId, noChat, 
         <IconButton icon="plus" size={14} label="New tab" aria-haspopup="menu" aria-expanded={menu === 'newTab'} onClick={() => actions.ui.toggleMenu('newTab')} />
         {menu === 'newTab' && (
           <Menu label="New tab" anchorRef={newAnchor} onClose={closeMenu} style={{ left: 0, top: 'calc(100% + 6px)', width: 200 }} items={[
-            { id: 'chat', label: 'Chat', shortcut: '⌘T', onSelect: () => void newTab() },
-            ...(terminalOn ? [{ id: 'terminal', label: 'Terminal', shortcut: '⌘⇧T', onSelect: () => void create('terminal') }] : [])
+            { id: 'chat', label: 'Chat', icon: 'chat' as const, shortcut: '⌘T', onSelect: () => void newTab() },
+            ...(terminalOn ? [{ id: 'terminal', label: 'Terminal', icon: 'term' as const, shortcut: '⌘⇧T', onSelect: () => void create('terminal') }] : [])
           ]} />
         )}
       </span>
