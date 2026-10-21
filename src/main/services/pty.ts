@@ -22,7 +22,7 @@ export function loginShell(env: NodeJS.ProcessEnv = process.env): string {
 
 /**
  * Real terminals for the big terminal tab and the bottom panel's Terminal tab. One pty per id:
- * a chat id for a big terminal, `shell:<workspaceId>` for the plain shell. Output goes out as `terminal.data`.
+ * a chat id for a big terminal, `shell:<workspaceId>` (or `shell:<workspaceId>:<n>`) for a plain shell. Output goes out as `terminal.data`.
  */
 export class Ptys {
   private procs = new Map<string, pty.IPty>()
@@ -115,12 +115,24 @@ export class Ptys {
     try { proc.kill() } catch { /* already gone */ }
   }
 
-  /** Every pty whose id is in `ids`, plus the workspace's plain shell. */
+  /** The ids of the workspace's plain shells that run or kept output, in the order they started. */
+  shellIds(workspaceId: string): string[] {
+    return [...new Set([...this.kept.keys(), ...this.procs.keys()])].filter((id) => shellWorkspace(id) === workspaceId)
+  }
+
+  /** Every pty whose id is in `ids`, plus all of the workspace's plain shells. */
   killWorkspace(workspaceId: string, chatIds: string[]) {
-    for (const id of [...chatIds, shellId(workspaceId)]) this.kill(id)
+    for (const id of [...chatIds, ...this.shellIds(workspaceId)]) this.kill(id)
   }
 
   killAll() { for (const id of [...this.procs.keys()]) this.kill(id) }
 }
 
-export const shellId = (workspaceId: string) => `shell:${workspaceId}`
+/** A workspace's plain shell: `shell:<workspaceId>` is the first, `shell:<workspaceId>:<n>` any other. */
+export const shellId = (workspaceId: string, n?: number) => (n ? `shell:${workspaceId}:${n}` : `shell:${workspaceId}`)
+
+/** The workspace a plain shell's id belongs to, or null when the id isn't a plain shell's (a big terminal's is a chat id). */
+export function shellWorkspace(id: string): string | null {
+  const m = /^shell:([^:]+)(?::\d+)?$/.exec(id)
+  return m ? m[1] : null
+}

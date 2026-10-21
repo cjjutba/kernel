@@ -200,3 +200,57 @@ describe('chat tabs', () => {
     await again.stop()
   }, 60_000)
 })
+
+describe('several plain shells in one workspace', () => {
+  it('runs them side by side, closes one alone, keeps the legacy id, and ends all with the workspace', async () => {
+    const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/christian.md': '---\nname: christian\ndescription: Frontend engineer.\n---\nYou are Christian.' })
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    const hookPort = await freePort()
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    const k = new Kernel({ dataDir, home })
+    await k.start()
+    k.sessions.send = async () => ({ queued: false })
+    const project = await k.addProject(repo)
+    const ws = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'christian', title: 'Shells' })
+    const other = await k.createWorkspace(project.id, { prompt: 'go', agentId: 'christian', title: 'Other' })
+    const h = k.handlers()
+    const [a, b, c] = [`shell:${ws.id}`, `shell:${ws.id}:2`, `shell:${other.id}`]
+    const out: Record<string, string> = {}
+    const on = (e: PushEvent) => { if (e.type === 'terminal.data') out[e.chatId] = (out[e.chatId] ?? '') + e.data }
+    bus.on('push', on)
+    try {
+      expect(await h['terminal.shells']({ workspaceId: ws.id })).toEqual([])
+      for (const id of [a, b, c]) await h['terminal.resize']({ chatId: id, cols: 80, rows: 24 })
+      expect(await h['terminal.shells']({ workspaceId: ws.id })).toEqual([a, b])
+      expect(await h['terminal.shells']({ workspaceId: other.id })).toEqual([c])
+      await h['terminal.write']({ chatId: a, data: 'echo one-$((1+1)) && pwd -P\r' })
+      await h['terminal.write']({ chatId: b, data: 'echo two-$((2+2))\r' })
+      await until(() => out[a]?.includes('one-2') && out[b]?.includes('two-4'), 10_000)
+      expect(out[a]).not.toContain('two-4')
+      expect(out[b]).not.toContain('one-2')
+      expect(out[a]).toContain(ws.path.split('/').pop())
+
+      // Closing one ends it and drops its output, and the others keep running.
+      const big = await h['chats.create']({ workspaceId: ws.id, kind: 'terminal' })
+      await h['terminal.resize']({ chatId: big.id, cols: 80, rows: 24 })
+      await h['terminal.close']({ chatId: b })
+      expect(k.ptys.has(b)).toBe(false)
+      expect(await h['terminal.shells']({ workspaceId: ws.id })).toEqual([a])
+      expect(k.ptys.has(a) && k.ptys.has(c) && k.ptys.has(big.id)).toBe(true)
+      await expect(h['terminal.close']({ chatId: big.id })).rejects.toThrow('Only a plain shell')
+      await h['terminal.write']({ chatId: a, data: 'echo still-$((3+4))\r' })
+      await until(() => out[a].includes('still-7'), 10_000)
+
+      // Archiving ends every shell of the workspace and none of another's.
+      await h['terminal.resize']({ chatId: b, cols: 80, rows: 24 })
+      await k.archive.archiveWorkspace(ws.id)
+      expect([a, b, big.id].some((id) => k.ptys.has(id))).toBe(false)
+      expect(await h['terminal.shells']({ workspaceId: ws.id })).toEqual([])
+      expect(k.ptys.has(c)).toBe(true)
+    } finally {
+      bus.off('push', on)
+      await k.stop({ budgetMs: 0 })
+    }
+  }, 60_000)
+})
