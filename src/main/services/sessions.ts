@@ -476,12 +476,32 @@ export class Sessions {
       this.pushQueue(id)
     }
     for (const id of this.d.store.meta<string[]>(WORKING) ?? []) this.relaunched(id, o.clean === true)
+    this.endStrandedTools()
     this.saveWorking()
     this.saveQueues()
     this.d.onCutOff?.(Object.fromEntries(this.cutOff))
     // Queues that waited for a slot or a hold go out now if nothing holds them any more, and the cut-off chats carry on.
     for (const id of [...this.queues.keys()]) if (!this.cutOff.has(id)) this.drain(id)
     this.pushLimits()
+  }
+
+  /**
+   * No process outlives a start, so a tool row still marked running belongs to a turn that is gone. `relaunched` closes the
+   * rows of the chats the journal lists. This closes the rest: a chat the journal dropped when its Stop came just before a
+   * force quit, and a closed or archived chat. They fail with no note and no carry on, since nothing was working. A row for a
+   * plan card that still waits shows done, as in `relaunched`.
+   */
+  private endStrandedTools() {
+    for (const id of this.d.store.chatsWithRunningTools()) {
+      const chat = this.d.store.chat(id)
+      const ws = chat && this.d.store.workspace(chat.workspaceId)
+      if (!chat || !ws) continue
+      const plan = this.d.approvals.waitingPlans(id, ws.projectId).length > 0
+      for (const it of this.d.store.items(id)) {
+        if (it.kind !== 'tool' || it.status !== 'running') continue
+        this.item(chat, plan && isPlanTool(it.name) ? { ...it, status: 'done' } : { ...it, status: 'failed', output: TOOL_STOPPED })
+      }
+    }
   }
 
   /** The chat is open and its workspace isn't archived. */

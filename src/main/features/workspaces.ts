@@ -1,5 +1,5 @@
-import { mkdir } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { mkdir, realpath, stat } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 import { PORT_BLOCK, type AgentDef, type Chat, type ChatPart, type CompareTarget, type Effort, type Provider, type Project, type ResolvedPath, type Workspace, type WorkspaceMode, type WorkspaceSource } from '@shared/types'
 import { chatProvider, providerOf } from '@shared/providers'
 import { isLeadChatWorkspace, ownsFolder } from '@shared/leadWorkspace'
@@ -8,7 +8,7 @@ import { bus } from '../bus'
 import { DEFAULT_BASE_REF, loadRepoSettings, referencesInProject, type RepoSettings } from '../services/settings'
 import { clock, worktreeTree, writeTree } from '../services/checkpoints'
 import { branchCommits, branchName, branchType, capBranch, changedFiles, compareRange, createWorktree, currentBranch, defaultBranch, diffText, fetchOrigin, folderGone, freeBranch, freeWorktreePath, hasCommit, isWorktreeOf, leadBase, leadBranch, listBranches, mergeBase, onRemote, rangeDiff, rangeFiles, removeWorktree, resolveBaseRef, reviewBranch, projectWorktreeRoot, shortSlug, slugify, snapshotBaseline, stripRemote, taskBranch, validBranchName } from '../services/worktrees'
-import { claimSpare as turnSpareIntoWorktree, fastForward, isAncestor, makeSpare, revParse, sweepSpares } from '../services/worktrees'
+import { claimSpare as turnSpareIntoWorktree, fastForward, isAncestor, listWorktrees, makeSpare, revParse, sweepSpares } from '../services/worktrees'
 import { linkNodeModules, NoFreePortBlock, portBlock } from '../services/scripts'
 import { exec } from '../services/exec'
 import { listTree, readImage, readWorkspaceFile, resolvePaths, scratchpadDir, searchFiles } from '../services/files'
@@ -281,6 +281,42 @@ export class Workspaces extends Feature {
 
   async sweepAllSpares(): Promise<void> {
     await Promise.all(this.store.projects().map((p) => sweepSpares(p.path)))
+    await this.reportStrays().catch(() => undefined)
+  }
+
+  /**
+   * At launch: a worktree of a project, directly under the project's worktree root, that no workspace record names. A crash
+   * between `git worktree add` and the saved record leaves one. It may hold the only copy of someone's work, so Kernel never
+   * removes it: a note in the project's feed and a toast name the folder, and say when it has uncommitted changes. Each folder
+   * is reported once, and one younger than a minute is skipped, as a workspace being made has its folder before its record.
+   * Returns the folders reported now (docs/decisions/durable-tool-calls.md).
+   */
+  async reportStrays(): Promise<string[]> {
+    const reportedBefore = new Set(this.store.meta<string[]>('strayWorktrees') ?? [])
+    const stillStray = new Set<string>()
+    const now: string[] = []
+    const real = (p: string) => realpath(p).catch(() => p)
+    const known = new Set<string>()
+    for (const w of this.store.workspaces()) { known.add(w.path); known.add(await real(w.path)) }
+    for (const project of this.store.projects().filter((p) => !p.archived)) {
+      if (this.stopped) break
+      const root = await real(projectWorktreeRoot(this.settings.worktreeRoot, project))
+      for (const w of (await listWorktrees(project.path).catch(() => [])).slice(1)) {
+        const path = await real(w.path)
+        if (dirname(path) !== root || known.has(w.path) || known.has(path) || w.branch?.startsWith('kernel-spare/')) continue
+        const made = await stat(join(path, '.git')).then((s) => s.mtimeMs, () => undefined)
+        if (made === undefined || Date.now() - made < 60_000) continue
+        stillStray.add(w.path)
+        if (reportedBefore.has(w.path)) continue
+        const dirty = (await exec('git', ['-C', path, 'status', '--porcelain'])).stdout.trim().length > 0
+        now.push(w.path)
+        const left = dirty ? ', with uncommitted changes. Kernel left it alone:' : '. Kernel left it alone:'
+        bus.activity({ kind: 'note', projectId: project.id, actor: 'kernel', text: `found a worktree no chat uses${left}`, object: w.path, warn: true })
+        bus.push({ type: 'toast', toast: { title: `Found a folder in ${project.name} that no chat uses`, sub: `${basename(path)}${w.branch ? ` on ${w.branch}` : ''} is still on disk${dirty ? ' and has uncommitted changes' : ''}. Kernel left it alone.` } })
+      }
+    }
+    if (!this.stopped) this.store.saveMeta('strayWorktrees', [...stillStray])
+    return now
   }
 
   /**

@@ -6,6 +6,7 @@ import { sharedTools } from '../services/sharedMcp'
 import { issueTools } from '../services/issueMcp'
 import { LEAD_SHARING_RULE, SHARE_RULE, TEAMMATE_RULE } from '../services/handoff'
 import { kernelTools, LEAD_INSTRUCTIONS } from '../services/kernelMcp'
+import { withReceipts } from '../services/toolReceipts'
 import { Feature } from './feature'
 
 /** The tools in each agent's `kernel` server, and the rule added to its prompt (KERNEL-329). */
@@ -22,7 +23,8 @@ export class Tools extends Feature {
       : ws.reviewOf ? reviewTools({ submit: (review) => this.k.reviews.submitReview(ws.id, review, chat.id) })
       : teammateTools(this.k.waits.teammateToolDeps(ws.id))
     const issue = issueTools({ issueKey: () => this.issueKey(ws.id), tracker: (key) => this.k.integrations.trackerOf(ws.projectId, { id: key }) })
-    return [...own, ...issue, ...(this.sharing ? sharedTools({ share: (o) => this.k.sharing.shareFile(ws.id, chat.id, o) }) : [])]
+    // A repeat of a call, by the provider's id for it, answers from the first result and does nothing twice (durable-tool-calls).
+    return withReceipts([...own, ...issue, ...(this.sharing ? sharedTools({ share: (o) => this.k.sharing.shareFile(ws.id, chat.id, o) }) : [])], { chatId: chat.id, store: this.store })
   }
 
   /** The issue a workspace builds, as saved now. A review reads the issue of the work it reviews. */

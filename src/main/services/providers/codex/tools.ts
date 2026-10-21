@@ -31,7 +31,7 @@ export function toolSpecs(tools: SdkMcpToolDefinition<any>[]): DynamicToolSpec[]
  * handler that throws all come back as a failed call with the reason, as the MCP server answers Claude. `extra` reaches the
  * handler as the MCP server's does: its `signal` aborts when the turn stops, which ends a card the tool put up (KERNEL-563).
  */
-export async function callTool(tools: SdkMcpToolDefinition<any>[], name: string, args: unknown, extra: { signal?: AbortSignal } = {}): Promise<DynamicToolCallResponse> {
+export async function callTool(tools: SdkMcpToolDefinition<any>[], name: string, args: unknown, extra: { signal?: AbortSignal; callId?: string } = {}): Promise<DynamicToolCallResponse> {
   const fail = (text: string): DynamicToolCallResponse => ({ contentItems: [{ type: 'inputText', text }], success: false })
   const bare = name.startsWith(CODEX_TOOL_PREFIX) ? name.slice(CODEX_TOOL_PREFIX.length) : name
   const tool = tools.find((t) => t.name === bare || t.name === name) ?? tools.find((t) => t.name === RENAMED[bare])

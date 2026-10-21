@@ -11,6 +11,8 @@ const DAY = 24 * 60 * 60 * 1000
 export const KEEP_ACTIVITY_MS = 30 * DAY
 /** A tool approval settled longer ago than this keeps its row and a short summary of its input. */
 export const KEEP_APPROVAL_INPUT_MS = 7 * DAY
+/** A tool receipt older than this goes. A call is only repeated within minutes, so this is generous. */
+export const KEEP_RECEIPT_MS = 30 * DAY
 /** The file compacts at start when free pages hold more than this many bytes and more than this share of it (KERNEL-333). */
 export const COMPACT_MIN_FREE_BYTES = 32 * 1024 * 1024
 export const COMPACT_MIN_FREE_SHARE = 0.2
@@ -69,6 +71,21 @@ export class Store {
 
   private safePrune() {
     try { this.prune() } catch (err) { console.warn('[db] prune failed', err) }
+    try { this.pruneReceipts() } catch (err) { console.warn('[db] receipt prune failed', err) }
+  }
+
+  // tool receipts (docs/decisions/durable-tool-calls.md)
+  /** What a chat's tool call with this provider call id returned, when it ran before. */
+  toolReceipt(chatId: string, callId: string): { tool: string; result: string } | undefined {
+    return this.db.prepare('select tool, result from tool_receipts where chat_id = ? and call_id = ?').get(chatId, callId) as { tool: string; result: string } | undefined
+  }
+  /** Keeps the first result for a call id: a second save for the same call is ignored. */
+  saveToolReceipt(r: { chatId: string; callId: string; tool: string; result: string; createdAt?: number }) {
+    this.db.prepare('insert or ignore into tool_receipts (chat_id, call_id, tool, result, created_at) values (?, ?, ?, ?, ?)').run(r.chatId, r.callId, r.tool, r.result, r.createdAt ?? Date.now())
+  }
+  /** Receipts older than 30 days go, at start and once a day. Returns how many. */
+  pruneReceipts(now = Date.now()): number {
+    return this.db.prepare('delete from tool_receipts where created_at < ?').run(now - KEEP_RECEIPT_MS).changes
   }
 
   /**
@@ -100,6 +117,7 @@ export class Store {
     this.db.transaction(() => {
       const ws = 'select id from workspaces where project_id = ?'
       this.db.prepare(`delete from chat_items where chat_id in (select id from chats where workspace_id in (${ws}))`).run(id)
+      this.db.prepare(`delete from tool_receipts where chat_id in (select id from chats where workspace_id in (${ws}))`).run(id)
       this.db.prepare(`delete from chats where workspace_id in (${ws})`).run(id)
       this.db.prepare('delete from workspaces where project_id = ?').run(id)
       this.db.prepare('delete from approvals where project_id = ?').run(id)
@@ -126,6 +144,7 @@ export class Store {
     const mine = 'select value from json_each(?)'
     this.db.transaction(() => {
       this.db.prepare(`delete from chat_items where chat_id in (select id from chats where workspace_id in (${mine}))`).run(json)
+      this.db.prepare(`delete from tool_receipts where chat_id in (select id from chats where workspace_id in (${mine}))`).run(json)
       this.db.prepare(`delete from chats where workspace_id in (${mine})`).run(json)
       this.db.prepare(`delete from workspaces where id in (${mine})`).run(json)
       this.db.prepare(`delete from shared_comments where shared_id in (select id from shared_files where workspace_id in (${mine}))`).run(json)
@@ -176,6 +195,7 @@ export class Store {
     const json = JSON.stringify(ids)
     this.db.transaction(() => {
       this.db.prepare('delete from chat_items where chat_id in (select value from json_each(?))').run(json)
+      this.db.prepare('delete from tool_receipts where chat_id in (select value from json_each(?))').run(json)
       this.db.prepare('delete from chats where id in (select value from json_each(?))').run(json)
     })()
   }
@@ -222,6 +242,11 @@ export class Store {
   }
 
   // transcript
+  /** The chats that have a tool row still marked running, for the start to close the rows a crash left. */
+  chatsWithRunningTools(): string[] {
+    const rows = this.db.prepare(`select distinct chat_id from chat_items where json_valid(data) and json_extract(data, '$.kind') = 'tool' and json_extract(data, '$.status') = 'running'`).all() as { chat_id: string }[]
+    return rows.map((r) => r.chat_id)
+  }
   items(chatId: string): ChatItem[] { return this.all('select data from chat_items where chat_id = ? order by seq', chatId) }
   saveItem(chatId: string, item: ChatItem) {
     this.db.prepare('insert or replace into chat_items (id, chat_id, seq, data) values (?, ?, coalesce((select seq from chat_items where id = ?), ?), ?)')
