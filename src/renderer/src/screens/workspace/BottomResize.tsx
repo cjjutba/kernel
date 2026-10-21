@@ -4,7 +4,7 @@ import { ResizeHandle } from '../../components/ResizeHandle'
 import { BOTTOM_MIN, bottomHeight, bottomLimits, ratioFor } from './bottomSplit'
 
 /**
- * The handle on the bottom drawer's top edge, the hairline under the chat (KERNEL-513, KERNEL-1212). It sets the one fraction every chat shares, so a
+ * The handle on the bottom drawer's top edge, the hairline under the chat (KERNEL-513). It sets the one fraction every chat shares, so a
  * drag in one chat is the height in the next. `panel` is `.bottom-panel`, and its parent `.ws-main` is the chat column that the fraction is of.
  */
 export function BottomResize({ panel }: { panel: RefObject<HTMLElement | null> }) {

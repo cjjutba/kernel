@@ -312,7 +312,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                     : <div className="grow" />}
           </div>
           {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} why={problem?.placeholder ?? (moveNotice && !banner ? 'Pick an account above to keep going' : undefined)} setupShown={setupWait} running={running} prefill={prefill} viewer={viewer ? { held: banner ? banner.actions.length > 0 : !!moveNotice } : undefined} banner={<>{isLead && chat.kind === 'chat' && <OpenItems chat={chat} />}{banner && <WorkspaceBanner view={banner} ws={ws} chat={chat} />}{chat.kind === 'chat' && <FellBackLine chat={chat} />}</>} />}
-          {/* The drawer sits under the chat and its composer, the width of the chat column. The title bar toggle and ⌘J open it (KERNEL-1212). */}
+          {/* The drawer sits under the chat and its composer, the width of the chat column. The title bar toggle and ⌘J open it. */}
           {!newChatShown && <BottomDrawer ws={ws} />}
         </section>
       </OpenIssue.Provider>

@@ -2636,7 +2636,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspacePullRequest: scene((f) => review9(f, { right: 'pr', reviewed: true, ws: { reviews: [{ ...R9_REVIEW[0], verdict: 'approved', summary: 'Looks right.', blockers: undefined, ts: Date.now() - 4 * MIN }] } })),
   // 9.9 and 9.10: the panel over its bottom pane, on the Terminal tab and on the Run tab with `shots` running.
   PanelSplit: scene((f) => { const s = review9(f, { right: 'changes', bottom: 'run', pane: true }); return { ...s, push: [...s.push!, ...['$ git status --short', ' M test/journey.test.ts', '?? fixtures/journey.ts', '$ pnpm test test/journey.test.ts', '✓ test/journey.test.ts (3 tests) 9.8s', '  Tests  3 passed (3)'].map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', name: 'app', lines: [{ line, stream: 'stdout' }] }))] } }),
-  // KERNEL-1212: the terminal drawer under the chat and its composer, open on Run and folded to its tab bar. The right panel keeps only its own tabs.
+  // the terminal drawer under the chat and its composer, open on Run and folded to its tab bar. The right panel keeps only its own tabs.
   TerminalDrawerOpen: scene((f) => { const s = review9(f, { right: 'changes', bottom: 'run', pane: true }); return { ...s, push: [...s.push!, ...['$ pnpm dev', 'VITE v6.2.0  ready in 412 ms', '➜  Local:   http://localhost:5173/'].map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', name: 'app', lines: [{ line, stream: 'stdout' }] }))] } }),
   TerminalDrawerClosed: scene((f) => review9(f, { right: 'changes', bottom: 'run' })),
   WorkspaceRunScripts: scene((f) => {

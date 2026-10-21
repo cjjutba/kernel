@@ -3,7 +3,7 @@ import { isLeadWorkspace, leadOf } from '../../lead'
 import { actions, BOTTOM_RATIO_DEFAULT, getState, type State } from '../../store'
 
 /**
- * The chat column and the drawer under it (KERNEL-513, moved out of the right panel by KERNEL-1212). The drawer is a fraction of the chat column's height, and `.bottom-panel`
+ * The chat column and the drawer under it (KERNEL-513, moved out of the right panel). The drawer is a fraction of the chat column's height, and `.bottom-panel`
  * in workspace.css clamps it to the same limits: the chat keeps `TOP_MIN` for the transcript and composer and the drawer its tab bar plus about 120px, so a window of any height keeps both.
  */
 export const TAB_BAR = 40

@@ -113,7 +113,7 @@ function RunSplit({ label, commands, none, running, names, runningNames, busy, o
 }
 
 /**
- * The bottom drawer: Setup, Run and Terminal under the chat and its composer, the full width of the chat column (KERNEL-1212, amends KERNEL-512 and KERNEL-513). It is
+ * The bottom drawer: Setup, Run and Terminal under the chat and its composer, the full width of the chat column (amends KERNEL-512 and KERNEL-513). It is
  * a third of the column until it is dragged. The chevron folds it to its tab bar, and pressing a tab opens it again. Lead chats and teammates' workspaces each remember
  * whether it is folded. Folded, the bar still says when something runs (Pen 9.18). The space at the right of the strip after Run is left for terminal actions.
  */
