@@ -213,7 +213,8 @@ const WAITS: Partial<Record<QueueReason, { because: string; until: string }>> = 
   moving: { because: 'Other chats are moving to the new account, two at a time', until: 'when one of them is done' },
   paused: { because: 'The project is paused', until: 'when the user resumes it' },
   offline: { because: 'Kernel is offline or signed out', until: 'once it is back' },
-  limit: { because: 'Usage is close to the limit', until: 'when it resets or usage drops' }
+  limit: { because: 'Usage is close to the limit', until: 'when it resets or usage drops' },
+  folder: { because: 'Another chat is working in the same folder', until: 'when it finishes there' }
 }
 
 /**
@@ -499,8 +500,8 @@ export function kernelTools(d: KernelToolDeps) {
     tool('request_plan_approval', 'Show a plan to the user and wait for approval. Only while the chat is in plan mode. With plan mode off it refuses, and you ask in the chat before handing off. Put the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat. Returns "approved" with what to do next, or the requested changes.', {
       title: z.string().describe('Short plan title, for example "T-15 Export invoices as PDF"'),
       plan: z.string().describe('The full plan as markdown: context, approach, files, checks. The tasks go in steps, not here'),
-      steps: z.array(z.union([z.string(), z.object({ task: z.string().describe('The task line, ideally "<task> · <agent name>"'), criteria: z.array(z.union([z.string(), z.object({ text: z.string().describe('The criterion'), check: z.string().optional().describe('The exact name of the CI check that proves this criterion. Leave it out unless a green check really proves it') })])).describe('2 to 5 testable acceptance criteria: what must be true for the task to be done. A plain string, or { text, check } when one CI check decides it') })])).min(1)
-        .describe('One entry per task: { task: "<task> · <agent name>", criteria: [...] }, with 2 to 5 testable criteria each. create_workspace puts them in the teammate\'s brief')
+      steps: z.array(z.union([z.string(), z.object({ task: z.string().describe('"<task> · <owner>": a teammate\'s name, or "Kernel" for work you do yourself'), criteria: z.array(z.union([z.string(), z.object({ text: z.string().describe('The criterion'), check: z.string().optional().describe('The exact name of the CI check that proves this criterion. Leave it out unless a green check really proves it') })])).describe('2 to 5 testable acceptance criteria: what must be true for the task to be done. A plain string, or { text, check } when one CI check decides it') })])).min(1)
+        .describe('One entry per task: { task: "<task> · <owner>", criteria: [...] }, with 2 to 5 testable criteria each. Name an owner on every step, "Kernel" for your own. The user can change owners before approving. create_workspace puts the criteria in the teammate\'s brief')
     }, async ({ title, plan, steps }, extra) => {
       // The chat's plan toggle decides, so a plan never shows with Copy and Approve in a chat that isn't planning (KERNEL-176).
       if (!d.planMode?.()) return { ...text(PLAN_MODE_OFF), isError: true }

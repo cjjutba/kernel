@@ -31,7 +31,7 @@ export const toggleRightPanel = () => {
   const { ui } = getState()
   actions.ui.setRightPanel(!panelShownIn(ui, inView(ui.route)))
 }
-/** The Session rail is what the right side shows: wanted, and no panel over it. Only a teammate's workspace has one (KERNEL-1096). */
+/** The Session rail is what the right side shows: wanted, and no panel over it. A teammate's workspace and a chat with Kernel have one (KERNEL-1096). */
 export const railShownIn = (ui: Pick<UiState, 'rail' | 'rightPanel' | 'panelHeld'>, workspaceId?: string) => ui.rail && !panelShownIn(ui, workspaceId)
 
 /**
@@ -97,9 +97,9 @@ export function SidebarToggleSlot() {
 
 /**
  * The title bar's view toggles of a workspace (Pen 9.1): the bottom pane, the Session rail and the right panel, in the header's right corner. The rail and the panel switch
- * places, and the one that is on turns off when it is pressed. `rail` is false in a chat with Kernel, which has no Session rail, so its toggle goes. `kind` says whose bottom pane it is.
+ * places, and the one that is on turns off when it is pressed. `kind` says whose bottom pane it is.
  */
-export function ViewToggles({ rail, kind }: { rail: boolean; kind: BottomKind }) {
+export function ViewToggles({ kind }: { kind: BottomKind }) {
   const ui = useStore((s) => s.ui)
   const id = inView(ui.route)
   const panel = panelShownIn(ui, id)
@@ -107,7 +107,7 @@ export function ViewToggles({ rail, kind }: { rail: boolean; kind: BottomKind })
   return (
     <div className="view-toggles" role="group" aria-label="Views">
       <IconButton icon="panelBottom" size={16} label={bottomOpen ? 'Hide bottom panel' : 'Show bottom panel'} aria-pressed={bottomOpen} data-tip-kbd="⌘J" onClick={toggleBottomPanel} />
-      {rail && <IconButton icon="railList" size={16} label={railShownIn(ui, id) ? 'Hide Session' : 'Show Session'} aria-pressed={railShownIn(ui, id)} onClick={toggleRail} />}
+      <IconButton icon="railList" size={16} label={railShownIn(ui, id) ? 'Hide Session' : 'Show Session'} aria-pressed={railShownIn(ui, id)} onClick={toggleRail} />
       <IconButton icon="panelRight" size={16} label={panel ? 'Hide panels' : 'Show panels'} aria-pressed={panel} data-tip-kbd="⌘⇧B" onClick={toggleRightPanel} />
     </div>
   )

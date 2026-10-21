@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Kernel } from '../src/main/kernel'
+import { PR_BODY_SHAPE } from '../src/shared/prTexts'
 import { installHooks, uninstallHooks, withKernelHooks } from '../src/main/services/hooksInstaller'
 import { discoverSkills } from '../src/main/services/files'
 import { saveLinearToken, storedLinearToken } from '../src/main/services/integrations'
@@ -285,6 +286,13 @@ describe("the repo's PR conventions (KERNEL-468)", () => {
     expect(await readConventions(await tempRepo({ '.claude/skills/issue/SKILL.md': skill }))).toEqual({})
   })
 
+  it('asks for the three evidence sections in every PR body, with or without a template (pr-evidence)', () => {
+    for (const text of [createPrText(), createPrText({ template: '.github/pull_request_template.md' }), createPrText({ template: '.github/PULL_REQUEST_TEMPLATE/' })]) {
+      for (const part of ['"What changed"', '"How it was checked"', '"What could go wrong"', '"not checked"', 'never say a check passed that you did not run']) expect(text).toContain(part)
+      expect(text).not.toMatch(/[\u2013\u2014]/)
+    }
+  })
+
   it('has the generic texts Settings, Pull requests shows, word for word (KERNEL-564)', () => {
     const opening = "Your project instructions and the repo's own docs on pull requests come first. Where they differ from these steps, follow them."
     const last = "If a step fails and you can't fix it, stop and say what failed."
@@ -295,7 +303,7 @@ describe("the repo's PR conventions (KERNEL-468)", () => {
       '3. Run the checks the repo asks for before a push. If it names none, run the tests that cover what you changed.',
       '4. Push the branch and set its upstream.',
       "5. Title it in the style of the repo's recent commits.",
-      "6. Write the body about every change on the branch, not only this chat's. Fill in summary, scope and risk.",
+      `6. Write the body about every change on the branch, not only this chat's. ${PR_BODY_SHAPE}`,
       '7. Open it with `gh pr create` and print the URL.', last
     ].join('\n'))
     expect(resolveText()).toBe([
@@ -334,11 +342,11 @@ describe("the repo's PR conventions (KERNEL-468)", () => {
       '4. Run the checks the repo asks for before a push. If it names none, run the tests that cover what you changed.',
       '5. Push the branch and set its upstream.',
       '6. Title it and write its commits as Conventional Commits. The repo checks them with commitlint (`commitlint.config.js`).',
-      "7. Write the body about every change on the branch, not only this chat's. Write the body from the repo's PR template, `.github/pull_request_template.md`, filling in each of its sections.",
+      `7. Write the body about every change on the branch, not only this chat's. Write the body from the repo's PR template, \`.github/pull_request_template.md\`, filling in each of its sections. ${PR_BODY_SHAPE}`,
       '8. Open it with `gh pr create` and print the URL.',
       "If a step fails and you can't fix it, stop and say what failed."
     ])
-    expect(createPrText({ template: '.github/PULL_REQUEST_TEMPLATE/' })).toContain("6. Write the body about every change on the branch, not only this chat's. Write the body from the template in `.github/PULL_REQUEST_TEMPLATE/` that fits the change, filling in each of its sections.")
+    expect(createPrText({ template: '.github/PULL_REQUEST_TEMPLATE/' })).toContain(`6. Write the body about every change on the branch, not only this chat's. Write the body from the template in \`.github/PULL_REQUEST_TEMPLATE/\` that fits the change, filling in each of its sections. ${PR_BODY_SHAPE}`)
   })
 
   it("names the branch, the base, the remote and the repo's PR skill when fitted to a workspace (KERNEL-564)", () => {

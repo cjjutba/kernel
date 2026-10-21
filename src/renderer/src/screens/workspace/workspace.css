@@ -401,6 +401,17 @@ button.fold-head:hover { color: var(--ink-2); }
 .rail-row svg { flex: none; color: var(--muted); }
 button.rail-row { cursor: pointer; }
 button.rail-row:hover { background: var(--surface); color: var(--ink-2); }
+/* A chat with Kernel's rail lists what it handed off: a button per workspace, the stage word at the right, amber while it waits on you. */
+.rail-card .handed-list { margin: 0; padding: 0 10px 10px; list-style: none; }
+.handed-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 4px 6px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-3); text-align: left; cursor: pointer; }
+.handed-row:hover { background: var(--surface); }
+.handed-row:focus-visible { outline: 1px solid var(--line-3); outline-offset: -1px; }
+.handed-row .agent-avatar { flex: none; }
+.handed-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.handed-name { color: var(--ink-2); font-size: var(--fs-ui); font-weight: var(--fw-medium); }
+.handed-task { color: var(--muted); font-size: var(--fs-meta); }
+.handed-word { flex: none; color: var(--ink-3); font-size: var(--fs-meta); }
+.handed-word[data-needs] { color: var(--needs); }
 /* Under 1024px the panel folds (D-080), and the rail with it. */
 @media (max-width: 1023px) { .ws-rail { display: none; } .ws-panel[data-rail] > .header { grid-column: 1; } }
 

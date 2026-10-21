@@ -3,7 +3,9 @@ import { answerItemId, answerParts } from '@shared/approvalAnswer'
 import { call } from '../../../api'
 import { actions, getState } from '../../../store'
 import { attempt } from '../MessageActions'
+import { applyOwners } from '@shared/planOwners'
 import { isPlanApproval } from './steps'
+import { withOwners } from './planOwners'
 
 /**
  * The row the engine will place for a decision made in the chat (`placeAnswer`), built from the decision before the call returns. A typed send shows at
@@ -31,7 +33,10 @@ const statusOf = (d: Decision): Approval['status'] => (d.behavior === 'allow' ? 
 export function placeAnswerNow(a: Approval, decision: Decision): () => void {
   const row = a.chatId ? answerRow(a, decision) : undefined
   const chatId = a.chatId
-  const settled: Approval | undefined = isPlanApproval(a) ? { ...a, status: statusOf(decision) } : undefined
+  // The card keeps the owners the user chose while the answer is on its way.
+  const owners = withOwners(a, decision)
+  const steps = a.steps && owners.behavior === 'allow' && owners.owners ? applyOwners(a.steps, owners.owners, new Set(owners.owners.filter((o): o is string => !!o))) : a.steps
+  const settled: Approval | undefined = isPlanApproval(a) ? { ...a, status: statusOf(decision), ...(steps ? { steps } : {}) } : undefined
   const chat = chatId && a.workspaceId ? getState().chats[a.workspaceId]?.find((c) => c.id === chatId) : undefined
   const left = settled && decision.behavior === 'allow' && chat?.plan ? { ...chat, plan: false } : undefined
   if (row && chatId) actions.chats.upsertItem(chatId, row)
@@ -47,7 +52,7 @@ export function placeAnswerNow(a: Approval, decision: Decision): () => void {
 /** A decision made in the chat: the answer shows at once, and goes again when the call fails, with the same toast as any decision (`title` names it). */
 export async function decideInChat(a: Approval, decision: Decision, title = 'Could not send your answer'): Promise<boolean> {
   const undo = placeAnswerNow(a, decision)
-  const ok = await attempt(title, () => call('approvals.decide', { id: a.id, decision }))
+  const ok = await attempt(title, () => call('approvals.decide', { id: a.id, decision: withOwners(a, decision) }))
   if (!ok) undo()
   return ok
 }

@@ -119,6 +119,8 @@ export function refusal(channel: string, req: unknown): string | undefined {
     case 'approvals.decide': {
       const d = isObject(r.decision) ? r.decision : {}
       if (d.always !== undefined || d.scope !== undefined) return 'A rule that always allows a tool can only be added in the app'
+      // Who does each plan step is the one thing besides allow, deny and answer that a plan decision adds. Main keeps only teammates who take tasks.
+      if (d.owners !== undefined && !(Array.isArray(d.owners) && d.owners.every((o) => o === null || typeof o === 'string'))) return 'Plan owners must be a list of agent ids or null'
       return undefined
     }
     case 'pr.merge':

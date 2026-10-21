@@ -20,6 +20,7 @@ import { gitStatus } from '../services/archive'
 import { firstLine } from '../services/text'
 import { isNudge } from '../services/sessions'
 import { buildOpen, kernelMcpServer, type KernelToolDeps, queuedNote } from '../services/kernelMcp'
+import { ownerLines } from '../services/handoff'
 import { briefParts } from '../services/issueMcp'
 import type { From } from '../services/leadUpdates'
 import { branchType, fastForward, fetchOrigin, folderGone, freeBranch, freeWorktreePath, leadBase, leadBranch, moveWorktree, renameBranch, projectWorktreeRoot, slugify, snapshotBaseline, currentBranch, taskBranch, worktreeFolder } from '../services/worktrees'
@@ -863,8 +864,18 @@ export class Lead extends Feature {
     return kernelMcpServer(this.leadToolDeps(projectId, lead, chat))
   }
 
+  /** Who does each step of an approved plan, for the Lead's reply (plan-step-owners). Nothing for a plan with no steps. */
+  async ownerNote(projectId: string, planId: string | undefined): Promise<string | undefined> {
+    const steps = planId ? this.store.approval(planId)?.steps : undefined
+    if (!steps?.length) return undefined
+    const agents = await this.k.team.agents(projectId)
+    return ownerLines(steps, (id) => agents.find((a) => a.id === id)?.name ?? id)
+  }
+
   /** What the Lead's tools call, apart from the server so tests can run the tools against a real Kernel. */
   leadToolDeps(projectId: string, lead: AgentDef, chat: Chat): KernelToolDeps {
+    // The plan this chat last put up, whose owners the approval's reply lists.
+    let planId: string | undefined
     return {
       projectId, lead,
       agents: () => this.k.team.agents(projectId),
@@ -959,9 +970,10 @@ export class Lead extends Feature {
         // The turn stopping, as when the user writes in the message box instead, ends the card as expired (KERNEL-496).
         const { approval, decision } = this.approvals.request({
           kind: o.kind, source: 'sdk', projectId, workspaceId: chat.workspaceId, chatId: chat.id, agentId: lead.id, title: o.title, detail: o.detail, options: o.options, questions: o.questions, about: o.about,
-          steps: o.steps && parsePlanSteps(o.steps, agents), agentFile: o.agentFile
+          steps: o.steps && parsePlanSteps(o.steps, agents, lead), agentFile: o.agentFile
         }, { signal })
         this.sessions.placeApproval(chat.id, approval.id)
+        if (o.kind === 'plan') planId = approval.id
         // Saved like ExitPlanMode's plan, so a chat can build from it after the card is gone (D-092, KERNEL-373).
         const ws = this.store.workspace(chat.workspaceId)
         // `update` skips an approval that is gone. The catch covers a store closed while the file was written, as on quit
@@ -986,7 +998,7 @@ export class Lead extends Feature {
       // The sidebar's check before a one-click archive. A current-branch workspace removes no files, and neither does a
       // worktree whose folder is already gone (KERNEL-109).
       unsaved: (id) => this.k.archive.unsavedOf(id),
-      planApproved: () => this.sessions.planApproved(chat.id),
+      planApproved: async () => this.sessions.planApproved(chat.id, { owners: await this.ownerNote(projectId, planId) }),
       acted: (a) => {
         if ('messaged' in a) this.k.openItems.messaged(chat.id, a.messaged)
         else if ('created' in a) this.k.openItems.created(chat.id, a.created)

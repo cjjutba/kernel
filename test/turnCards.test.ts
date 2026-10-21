@@ -101,6 +101,20 @@ describe('Lead requests', () => {
     ])
   })
 
+  it('reads "· Kernel" and the Lead\'s own name as Kernel doing the step, and leaves an unknown owner in the title', async () => {
+    const { parsePlanSteps } = await import('../src/main/services/approvals')
+    const agents = [{ id: 'kernel', name: 'Kernel' }, { id: 'sean', name: 'Sean' }]
+    const lead = { id: 'kernel', name: 'Kernel' }
+    expect(parsePlanSteps([{ task: 'T-1 Wire it up · Kernel' }, { task: 'Docs · kernel' }, { task: 'Renderer · Sean' }, { task: 'Polish · Nobody' }, { task: 'Bare step' }], agents, lead)).toEqual([
+      { title: 'T-1 Wire it up', criteria: [], taskId: 'T-1' },
+      { title: 'Docs', criteria: [] },
+      { title: 'Renderer', criteria: [], agentId: 'sean' },
+      { title: 'Polish · Nobody', criteria: [] },
+      { title: 'Bare step', criteria: [] }
+    ])
+    expect(parsePlanSteps([{ task: 'Wire it up · Atlas' }], [{ id: 'k1', name: 'Atlas' }], { id: 'k1', name: 'Atlas' })).toEqual([{ title: 'Wire it up', criteria: [] }])
+  })
+
   it('updates an approval in place and tells the windows', async () => {
     const { Approvals } = await import('../src/main/services/approvals')
     const { Store } = await import('../src/main/db')

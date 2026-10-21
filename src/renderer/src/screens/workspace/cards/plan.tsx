@@ -1,8 +1,9 @@
 import { useContext, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { AgentDef, Approval, AttentionKind, PlanAttention, PlanStep } from '@shared/types'
 import { call } from '../../../api'
-import { go, useStore } from '../../../store'
-import { AgentAvatar, Button, CopyButton, Icon, useScreenEscape } from '../../../ui'
+import { actions, go, useStore } from '../../../store'
+import { AgentAvatar, Button, CopyButton, Icon, Menu, useScreenEscape, type MenuEntry } from '../../../ui'
 import { Markdown } from '../markdown'
 import { leadingTitle, parseBlocks } from '../mdParse'
 import { attempt } from '../MessageActions'
@@ -12,7 +13,9 @@ import { openMention } from '../fileLinks'
 import { decideInChat } from './optimisticAnswer'
 import { planAnswer } from '@shared/approvalAnswer'
 import { criterionText } from '@shared/criteria'
+import { KERNEL_OWNER } from '@shared/planOwners'
 import { outcome, planSteps, planText } from './steps'
+import { pickOwner, teammates, useOwners } from './planOwners'
 import './cards.css'
 
 // A plan in its chat (D-092): the transcript shows a "Propose plan" row and the plan as a
@@ -48,6 +51,49 @@ export function Criteria({ step, className }: { step: PlanStep; className: strin
   return <ul className={className} aria-label={`Acceptance criteria for ${step.title}`}>{step.criteria.map((c, i) => <li key={i}>{criterionText(c)}</li>)}</ul>
 }
 
+/** The owner menu, drawn over the window at the button's edge: the transcript scrolls and would cut it off. It opens upward when it would run past the window's bottom. */
+function OwnerMenu({ anchor, label, items }: { anchor: React.RefObject<HTMLElement | null>; label: string; items: MenuEntry[] }) {
+  const [style, setStyle] = useState<React.CSSProperties>({ position: 'fixed', visibility: 'hidden', width: 220 })
+  // An effect, not a layout effect: when the card mounts with the menu open, the anchor's ref is attached after a child's layout effects.
+  useEffect(() => {
+    const r = anchor.current?.getBoundingClientRect()
+    if (!r) return
+    const height = items.length * 32 + 16
+    const up = r.bottom + 8 + height > window.innerHeight - 8 && r.top - 8 - height > 8
+    setStyle({ position: 'fixed', width: 220, left: Math.max(8, r.right - 220), ...(up ? { bottom: window.innerHeight - r.top + 8 } : { top: r.bottom + 8 }) })
+  }, [anchor, items.length])
+  return createPortal(<Menu label={label} anchorRef={anchor} onClose={actions.ui.closeMenu} style={style} items={items} />, document.body)
+}
+
+/**
+ * Who does step `i`: Kernel, or a teammate. While the plan waits it is a button with a menu of Kernel and the project's teammates,
+ * so the user can change who does what before approving (plan-step-owners). Once it is decided it is plain text.
+ */
+export function StepOwner({ a, i, agents }: { a: Approval; i: number; agents: AgentDef[] }) {
+  const owner = useOwners(a)[i] ?? null
+  const agent = owner ? agents.find((x) => x.id === owner) : undefined
+  const name = owner ? agent?.name ?? owner : KERNEL_OWNER
+  const menu = `owner:${a.id}:${i}` as const
+  const open = useStore((s) => s.ui.menu === menu)
+  const anchor = useRef<HTMLSpanElement>(null)
+  const team = teammates(agents)
+  const face = <><AgentAvatar name={name} size={16} />{name}{agent?.role && <span className="plan-role">{agent.role}</span>}</>
+  if (a.status !== 'pending' || !team.length) return <span className="plan-who">{face}</span>
+  const pick = (id: string | null) => { actions.ui.closeMenu(); pickOwner(a, i, id) }
+  const entries = [{ id: 'kernel', label: KERNEL_OWNER, note: 'does it itself', checked: owner === null, onSelect: () => pick(null) },
+    ...team.map((x) => ({ id: x.id, label: x.name, note: x.role, checked: owner === x.id, onSelect: () => pick(x.id) }))]
+  // A teammate who no longer takes tasks but owns the step in the Lead's proposal stays in the list, so the proposal can be put back.
+  if (owner && !team.some((x) => x.id === owner)) entries.push({ id: owner, label: name, note: agent?.role ?? '', checked: true, onSelect: () => pick(owner) })
+  return (
+    <span className="plan-owner" ref={anchor}>
+      <button type="button" className="plan-who plan-who-btn" aria-label={`Who does step ${i + 1}: ${name}. Change`} aria-haspopup="menu" aria-expanded={open} onClick={() => actions.ui.toggleMenu(menu)}>
+        {face}<Icon name="chevron" size={12} />
+      </button>
+      {open && <OwnerMenu anchor={anchor} label={`Who does step ${i + 1}`} items={entries} />}
+    </span>
+  )
+}
+
 /** The Lead's tasks as numbered rows, the agent's name muted beside each, with a way into its workspace once the plan is handed off. */
 export function PlanTasks({ a, agents }: { a: Approval; agents: AgentDef[] }) {
   const tasks = useStore((s) => (a.projectId ? s.tasks[a.projectId] : undefined))
@@ -58,13 +104,12 @@ export function PlanTasks({ a, agents }: { a: Approval; agents: AgentDef[] }) {
         const ws = s.workspaceId ?? (s.taskId ? tasks?.find((t) => t.id === s.taskId)?.workspaceId : undefined)
         const w = ws ? workspaces.find((x) => x.id === ws) : undefined
         const merged = w?.prState === 'merged' && w.prNumber
-        const agent = agents.find((x) => x.id === s.agentId)
-        const who = agent?.name
+        const who = agents.find((x) => x.id === s.agentId)?.name
         return (
           <li key={i}>
             <span className="plan-n" aria-hidden="true">{i + 1}.</span>
             <span className="plan-task">{s.title}<Criteria step={s} className="plan-criteria" /></span>
-            {who && <span className="plan-who"><AgentAvatar name={who} size={16} />{who}{agent?.role && <span className="plan-role">{agent.role}</span>}</span>}
+            <StepOwner a={a} i={i} agents={agents} />
             {a.status === 'allowed' && ws && (
               <Button size="xs" className="plan-open" icon={merged ? 'merged' : undefined} aria-label={`Open ${who ?? 'the'} workspace for ${s.title}`} onClick={() => go({ name: 'workspace', workspaceId: ws })}>
                 {merged ? `#${w.prNumber} merged` : <>Open workspace <Icon name="arrowRight" size={12} /></>}

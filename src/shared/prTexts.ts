@@ -21,6 +21,12 @@ export interface PrContext {
   draft?: boolean
 }
 
+/**
+ * The shape of every PR body Kernel or its agents write, so a reader who doesn't read code can see what changed, how it was
+ * checked and what might go wrong. Skipped checks are named, never implied (pr-evidence).
+ */
+export const PR_BODY_SHAPE = 'Give the body three headings: "What changed" (2 to 5 plain sentences about behavior), "How it was checked" (the exact commands and their results, and a screenshot or the preview for anything visible), "What could go wrong" (risks and anything not checked). Write "not checked" for anything you skipped, and never say a check passed that you did not run.'
+
 const OPENING = "Your project instructions and the repo's own docs on pull requests come first. Where they differ from these steps, follow them."
 const LAST = "If a step fails and you can't fix it, stop and say what failed."
 
@@ -40,9 +46,9 @@ export function prText(heading: string, steps: string[], c: RepoConventions, ctx
  * them, and otherwise for titles like the repo's own. With a workspace it names the remote to push to and the base to open on.
  */
 export function createPrText(c: RepoConventions = {}, ctx?: PrContext): string {
-  const body = !c.template ? 'Fill in summary, scope and risk.'
-    : c.template.endsWith('/') ? `Write the body from the template in \`${c.template}\` that fits the change, filling in each of its sections.`
-    : `Write the body from the repo's PR template, \`${c.template}\`, filling in each of its sections.`
+  const body = !c.template ? PR_BODY_SHAPE
+    : c.template.endsWith('/') ? `Write the body from the template in \`${c.template}\` that fits the change, filling in each of its sections. ${PR_BODY_SHAPE}`
+    : `Write the body from the repo's PR template, \`${c.template}\`, filling in each of its sections. ${PR_BODY_SHAPE}`
   const create = ctx ? `gh pr create --base ${ctx.base}${ctx.draft ? ' --draft' : ''}` : 'gh pr create'
   return prText('# Create a pull request', [
     ...(c.contributing ? [`Read \`${c.contributing}\` and follow what it says about pull requests.`] : []),

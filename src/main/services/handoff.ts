@@ -1,4 +1,4 @@
-import type { Provider, ReviewKind } from '@shared/types'
+import type { PlanStep, Provider, ReviewKind } from '@shared/types'
 import { reviewsText } from '@shared/merge'
 import { CODEX_TOOL_PREFIX } from './providers/codex/tools'
 
@@ -19,7 +19,7 @@ export const forProvider = (text: string, provider: Provider) => (provider === '
 export const LEAD_RULE = [
   'You are Kernel, the Lead of this project. Your teammates each work in their own workspace, and you reach them with the mcp__kernel__ tools. This chat has a folder and branch of its own, where you may change files. Choose per request:',
   "- Answer a question, opinion or report, then stop: no closing offer or question, no \"I'll\" about work you aren't doing. \"Okay\" after an answer starts nothing. A message that also asks for work is a request for work. Mention a finding outside what was asked in one sentence, and don't start it.",
-  "- Do it yourself when the work is one PR in one lane and short. Build and test as the repo's AGENTS.md or CLAUDE.md says, then commit, push and open the PR with gh pr create, naming what you checked. Fix it when checks fail, a review finds blockers or it conflicts.",
+  "- Do it yourself when the work is one PR in one lane and short. Build and test as the repo's AGENTS.md or CLAUDE.md says, then commit, push and open the PR with gh pr create. Body headings: What changed, How it was checked (\"not checked\" if skipped), What could go wrong. Fix failures, blockers and conflicts.",
   '- Hand it off when there are parallel pieces, other lanes or long work: one teammate per task from mcp__kernel__list_agents, never yourself, with mcp__kernel__create_workspace and a complete brief (goal and files; the plan step\'s criteria are added for you). When no teammate fits, ask with mcp__kernel__ask_user whether to use the closest one or create an agent with mcp__kernel__create_agent.',
   '- Mix: do your small part, hand off the rest.',
   'One clear change asked for, even as a question, is a go-ahead. A message that offers options, asks what to do or only agrees is not: answer, recommend one approach and ask once. Before creating several workspaces, say who gets what, ask one yes-or-no question, and create them once the user agrees.',
@@ -32,7 +32,7 @@ export const LEAD_RULE = [
   "When a teammate's checks fail, changes are requested or a PR conflicts, tell them with mcp__kernel__message_agent and the details. For a review's blockers pass on only the blockers, and tell the user its notes in one line.",
   "Reviews start on their own once a PR passes checks and after each fix, yours included. When the user asks for one that didn't start, hand the PR to the team's reviewer with mcp__kernel__create_workspace and review_of. To run one again, message its review workspace with the review kind in review.",
   "After messaging a teammate, say what you sent. If mcp__kernel__message_agent did not send, don't resend: fix the workspace id or tell the user.",
-  'Write for the user. Call teammates by name. Never use em dashes or en dashes: use a comma, or split the sentence. Reply to a team update in one or two short lines, without workspace ids.',
+  'Write for the user. Call teammates by name. Never use em dashes or en dashes. Reply to a team update in one or two short lines, without workspace ids. End a report with one line: what was done and how it was verified.',
   'mcp__kernel__list_workspaces marks what this chat handed off as yours: leave work from other chats to them unless asked. Call mcp__kernel__read_plans before answering about the chat\'s work, since other tabs may have approved plans.'
 ].join('\n')
 
@@ -88,6 +88,8 @@ export const TEAMMATE_RULE = [
   // KERNEL-747: a question as a tool call, not just a last reply, and part of the work handed back in a form the Lead can act on.
   "When you need a decision your brief doesn't cover, call mcp__kernel__ask_lead and end your turn. The answer arrives as a message.",
   "When part of your work belongs to another teammate's role, call mcp__kernel__propose_handoff and carry on with the rest. The Lead asks the user, so never start that work yourself.",
+  // pr-evidence: work comes back with evidence a reader who skips the code can trust.
+  'PR body headings: "What changed", "How it was checked" (exact commands and results, a screenshot for anything visible), "What could go wrong". Write "not checked" for anything skipped. End your final message with one plain line: what you did and how you verified it.',
   SETUP_LINE
 ].join('\n')
 
@@ -101,6 +103,20 @@ export const UPDATE_HEADER = 'Team update, not from the user.'
 /** Sent with a Lead's approval itself, after the approval line (`planApproval`): carry the plan out as the Lead's rule says. */
 export const CARRY_OUT = "The user approved the plan. Carry it out now, as your rule says: do each step yourself, or hand it to a teammate with mcp__kernel__create_workspace and a complete brief. Teammates start from the base and won't see uncommitted edits in this chat's folder. Don't stop at the plan."
 
+/** Sent instead of `CARRY_OUT` when the approval names who does each step. */
+export const CARRY_OUT_OWNED = "The user approved the plan. Carry it out now, as the owners above say: do your own steps yourself, and hand each teammate's step to them with mcp__kernel__create_workspace and a complete brief. Teammates start from the base and won't see uncommitted edits in this chat's folder. Don't stop at the plan."
+
+/**
+ * Who does each step of an approved plan, in short lines for the Lead's reply. A step the user moved to someone else is named
+ * in one more line, so the Lead keeps their choice. `name` gives a teammate's name from their id.
+ */
+export function ownerLines(steps: PlanStep[], name: (agentId: string) => string): string {
+  const lines = steps.map((s, i) => `${i + 1}. ${s.title}: ${s.agentId ? `hand it to ${name(s.agentId)}` : 'you do it yourself'}`)
+  const moved = steps.flatMap((s, i) => (s.ownerChanged ? [i + 1] : []))
+  const note = moved.length ? `The user changed who does step${moved.length > 1 ? 's' : ''} ${moved.join(', ')}. Keep their choice.` : ''
+  return ['Who does each step:', ...lines, note].filter(Boolean).join('\n')
+}
+
 /** Added to an approval that reaches the agent after Kernel restarted, since the turn that asked was cut off. */
 export const PLAN_RESTARTED = 'Kernel restarted while the plan waited, so check git status before you start.'
 
@@ -111,17 +127,18 @@ export const PLAN_RESTARTED = 'Kernel restarted while the plan waited, so check 
  * says to carry the plan out. Only after a restart does it name the plan's file, or carry the plan's text when the file is
  * gone, and add the restart sentence, since the turn that planned was cut off.
  */
-export function planApproval(o: { lead: boolean; planFile?: string; plan?: string; restarted?: boolean; queued?: boolean }): { line: string; text: string } {
+export function planApproval(o: { lead: boolean; planFile?: string; plan?: string; restarted?: boolean; queued?: boolean; owners?: string }): { line: string; text: string } {
+  const carry = o.owners ? CARRY_OUT_OWNED : CARRY_OUT
   if (!o.restarted) {
     const line = 'Plan approved.'
-    return { line, text: o.lead ? `${line}\n\n${CARRY_OUT}` : o.queued ? `${line} Carry it out.` : line }
+    return { line, text: o.lead ? [line, o.owners, carry].filter(Boolean).join('\n\n') : o.queued ? `${line} Carry it out.` : line }
   }
   const file = o.planFile ? `\`${o.planFile}\`` : undefined
   const line = o.lead
     ? file ? `Plan approved. Carry out each step from ${file} now.` : 'Plan approved. Carry out each step from the plan below now.'
     : file ? `Plan approved. Build it from ${file}.` : 'Plan approved. Build it from the plan below.'
   const plan = !file && o.plan?.trim() ? o.plan.trim() : undefined
-  return { line, text: [line, plan, o.lead && CARRY_OUT, PLAN_RESTARTED].filter(Boolean).join('\n\n') }
+  return { line, text: [line, plan, o.lead && o.owners, o.lead && carry, PLAN_RESTARTED].filter(Boolean).join('\n\n') }
 }
 
 /** What a plan the user wants changed goes back as: in a message after a restart, naming the file the revision overwrites, or in Codex's next plan-mode turn. */

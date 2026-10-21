@@ -76,7 +76,7 @@ export class Tasks {
 
   detach() { this.off() }
 
-  /** One task per step of an approved plan, in Plan until the Lead hands it to someone. Safe to call twice for one plan. */
+  /** One task per step of an approved plan, in Plan until the Lead hands it to someone. A step Kernel does itself records the Lead as its agent. Safe to call twice for one plan. */
   fromPlan(plan: Approval): Task[] {
     if (!plan.projectId || !plan.steps?.length) return []
     const made = this.list(plan.projectId).filter((t) => t.approvalId === plan.id)
@@ -88,7 +88,7 @@ export class Tasks {
       const wanted = step.taskId && !existing.some((t) => t.id === step.taskId) ? step.taskId : nextTaskId(existing)
       const title = step.taskId ? step.title.replace(new RegExp(`^${step.taskId}\\s*`), '').trim() || step.title : step.title
       const task = this.save({
-        id: wanted, projectId: plan.projectId, title, column: 'plan', state: 'idle', agentId: step.agentId, parentId: parentOf(wanted),
+        id: wanted, projectId: plan.projectId, title, column: 'plan', state: 'idle', agentId: step.agentId ?? plan.agentId, parentId: parentOf(wanted),
         spec: plan.detail && plan.steps.length === 1 ? plan.detail : undefined, steps: [], approvalId: plan.id, createdAt: now, updatedAt: now
       })
       bus.activity({ kind: 'task.created', projectId: plan.projectId, taskId: task.id, actor: 'you', text: 'approved the plan', object: task.id })

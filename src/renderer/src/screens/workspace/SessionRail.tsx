@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import type { SharedFile, Workspace } from '@shared/types'
 import { toolView } from '@shared/toolView'
 import { call } from '../../api'
@@ -18,7 +18,7 @@ import { clock } from './shared/shared'
 import { fmtClock } from './thread'
 
 /** What the agent is doing now, in its own step's words: the newest step still running in any of the workspace's chats. */
-function useDoing(workspaceId: string): string | undefined {
+export function useDoing(workspaceId: string): string | undefined {
   return useStore((s) => {
     for (const chat of s.chats[workspaceId] ?? []) {
       const items = s.items[chat.id] ?? []
@@ -112,7 +112,7 @@ function StageButtons({ ws, buttons, run }: { ws: Workspace; buttons: PrButton[]
   )
 }
 
-function StageRow({ stage, last, ws, run }: { stage: Stage; last: boolean; ws: Workspace; run: ReturnType<typeof usePrActions> }) {
+export function StageRow({ stage, last, ws, run }: { stage: Stage; last: boolean; ws: Workspace; run: ReturnType<typeof usePrActions> }) {
   return (
     <li className="stage" data-mark={stage.mark} data-id={stage.id} aria-current={stage.mark === 'current' ? 'step' : undefined}>
       <span className="stage-rail"><Mark mark={stage.mark} />{!last && <span className="stage-conn" aria-hidden="true" />}</span>
@@ -176,9 +176,26 @@ function PreviewRow({ ws }: { ws: Workspace }) {
   )
 }
 
+/** The rail's rows under its stages: the branch to copy, the port, the preview and the scripts. `children` follow them. */
+export function WorkspaceRows({ ws, children }: { ws: Workspace; children?: ReactNode }) {
+  return (
+    <>
+      <button type="button" className="rail-row" aria-label={`Copy branch name ${ws.branch}`} data-tip="Copy branch name" onClick={() => void copyBranch(ws.branch)}>
+        <Icon name="branch" size={14} /><span className="mono ellipsis">{ws.branch}</span>
+      </button>
+      <span className="rail-row"><Icon name="computer" size={14} />Runs on port {ws.port}</span>
+      <PreviewRow ws={ws} />
+      <button type="button" className="rail-row" onClick={() => { actions.ui.setWorkspaceView({ bottom: 'run' }); actions.ui.setRightPanel(true) }}>
+        <Icon name="term" size={14} /><span className="grow">Scripts</span><Icon name="right" size={12} />
+      </button>
+      {children}
+    </>
+  )
+}
+
 /**
  * The Session rail (KERNEL-1094): where an agent's session stands, as stages that finish one after another, then the workspace's branch, port and scripts. It takes the right
- * side while the right panel is closed, and the panel's toggle swaps one for the other. A teammate's workspace has one; the Lead's chats have none.
+ * side while the right panel is closed, and the panel's toggle swaps one for the other. A teammate's workspace has one, and a chat with Kernel has its own (LeadRail).
  */
 export function SessionRail({ ws }: { ws: Workspace }) {
   const running = useStore((s) => (s.chats[ws.id] ?? []).some((c) => !!s.running[c.id]))
@@ -204,19 +221,13 @@ export function SessionRail({ ws }: { ws: Workspace }) {
         <header className="rail-head"><h2>Session</h2><span className="rail-id">{ws.name}</span></header>
         <ol className="rail-stages">{stages.map((s, i) => <StageRow key={s.id} stage={s} last={i === stages.length - 1} ws={ws} run={run} />)}</ol>
         <div className="rail-rows">
-          <button type="button" className="rail-row" aria-label={`Copy branch name ${ws.branch}`} data-tip="Copy branch name" onClick={() => void copyBranch(ws.branch)}>
-            <Icon name="branch" size={14} /><span className="mono ellipsis">{ws.branch}</span>
-          </button>
-          <span className="rail-row"><Icon name="computer" size={14} />Runs on port {ws.port}</span>
-          <PreviewRow ws={ws} />
-          <button type="button" className="rail-row" onClick={() => { actions.ui.setWorkspaceView({ bottom: 'run' }); actions.ui.setRightPanel(true) }}>
-            <Icon name="term" size={14} /><span className="grow">Scripts</span><Icon name="right" size={12} />
-          </button>
-          {sharing && (
-            <button type="button" className="rail-row" aria-expanded={listed} onClick={() => setListed((o) => !o)}>
-              <Icon name="image" size={14} /><span className="grow">Shared files</span>{files.length > 0 && <span className="rail-count">{files.length}</span>}<Icon name={listed ? 'chevron' : 'right'} size={12} />
-            </button>
-          )}
+          <WorkspaceRows ws={ws}>
+            {sharing && (
+              <button type="button" className="rail-row" aria-expanded={listed} onClick={() => setListed((o) => !o)}>
+                <Icon name="image" size={14} /><span className="grow">Shared files</span>{files.length > 0 && <span className="rail-count">{files.length}</span>}<Icon name={listed ? 'chevron' : 'right'} size={12} />
+              </button>
+            )}
+          </WorkspaceRows>
         </div>
       </section>
       {sharing && listed && (

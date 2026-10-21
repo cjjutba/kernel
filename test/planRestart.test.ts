@@ -8,7 +8,7 @@ import { setUp, tempRepo, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { Store } from '../src/main/db'
 import { kernelTools } from '../src/main/services/kernelMcp'
-import { CARRY_OUT, planApproval, planChanges } from '../src/main/services/handoff'
+import { CARRY_OUT, CARRY_OUT_OWNED, ownerLines, planApproval, planChanges } from '../src/main/services/handoff'
 import { RELAUNCH_NUDGE } from '../src/main/services/sessions'
 
 // A scripted SDK, as in restore.test.ts: each query() records its options and yields what the test feeds it. An interrupt
@@ -260,7 +260,7 @@ describe('plan cards outlive a restart', () => {
     store.saveChat(codex)
     store.saveApproval({ id: 'codex-plan', kind: 'plan', source: 'sdk', projectId: project.id, workspaceId: ws.id, chatId: codex.id, title: 'Plan for invoice-table', detail: PLAN, status: 'pending', createdAt: Date.now() })
     store.db.close()
-    const { k: k2 } = await relaunch(where)
+    const { k: k2, before } = await relaunch(where)
     expect(k2.store.approval('codex-plan')?.status).toBe('pending')
     // Paused, so the message waits instead of starting Codex.
     k2.sessions.pause(project.id)
@@ -269,6 +269,9 @@ describe('plan cards outlive a restart', () => {
     expect(k2.sessions.queued(codex.id)).toEqual([expect.objectContaining({ from: 'kernel', approvalId: 'codex-plan', parts: text(planApproval({ lead: false, plan: PLAN, restarted: true }).text) })])
     // The queued message keeps the approval when it goes out.
     k2.sessions.resume(project.id)
+    // The chat that was working carries on in the same folder, so the message goes when its turn ends (one-writer-per-folder).
+    const carried = await until(() => callIn(ws.path, before))
+    carried.feed({ type: 'result', subtype: 'success', uuid: 'r-carried', duration_ms: 5 })
     expect(answers(k2, codex.id).map((r) => r.item)).toEqual([expect.objectContaining({ id: 'answer-codex-plan', parts: text('Approved') })])
     await until(() => k2.store.items(codex.id).find((i) => i.kind === 'user' && i.from))
     expect(k2.store.items(codex.id).find((i) => i.kind === 'user' && i.from)).toMatchObject({ from: 'kernel', approvalId: 'codex-plan' })
@@ -310,11 +313,39 @@ describe('plan cards outlive a restart', () => {
     expect(users(k2, lead)).not.toContain(RELAUNCH_NUDGE)
 
     await k2.handlers()['approvals.decide']({ id: card.id, decision: { behavior: 'allow' } })
-    const note = planApproval({ lead: true, planFile: card.planFile, restarted: true }).text
-    expect(note.startsWith(`Plan approved. Carry out each step from \`${card.planFile}\` now.\n\n${CARRY_OUT}`)).toBe(true)
+    const owners = ownerLines([{ title: 'Build the table', agentId: 'christian' }], () => 'Christian')
+    const note = planApproval({ lead: true, planFile: card.planFile, restarted: true, owners }).text
+    expect(note.startsWith(`Plan approved. Carry out each step from \`${card.planFile}\` now.\n\n${owners}\n\n${CARRY_OUT_OWNED}`)).toBe(true)
     expect(users(k2, lead).at(-1)).toBe(note)
-    expect(users(k2, lead).filter((u) => u.includes(CARRY_OUT))).toHaveLength(1)
+    expect(users(k2, lead).filter((u) => u.includes(CARRY_OUT_OWNED))).toHaveLength(1)
     expect(k2.store.chat(lead.id)?.plan).toBe(false)
+  }, 30000)
+
+  it("tells a restarted Lead who does each step, and that the user moved one", async () => {
+    const { k, where, project } = await kernel()
+    const lead = await k.leadChat(project.id)
+    const leadWs = await setUp(k, lead.id)
+    await k.sessions.configure(lead.id, { plan: true })
+    await k.sessions.send(lead.id, text('Plan the invoice table'))
+    callIn(leadWs.path)!.feed({ type: 'system', subtype: 'init', session_id: 'kernel-session', apiKeySource: 'none' })
+    const leadAgent = (await k.team.agents(project.id)).find((a) => a.lead)!
+    const tool = kernelTools(k.lead.leadToolDeps(project.id, leadAgent, k.store.chat(lead.id)!)).find((t) => t.name === 'request_plan_approval')!
+    const asked = tool.handler({ title: 'Invoice table', plan: PLAN, steps: ['Build the table · Christian'] } as never, {})
+    const card = await until(() => plans(k, lead).find((a) => a.planFile))
+    await k.stop()
+    expect(await asked).toMatchObject({ content: [{ text: 'No answer yet. Wait and ask again later.' }] })
+    const { k: k2 } = await relaunch(where)
+    expect(k2.store.approval(card.id)?.status).toBe('pending')
+    expect(k2.sessions.isRunning(lead.id)).toBe(false)
+    expect(users(k2, lead)).not.toContain(RELAUNCH_NUDGE)
+
+    await k2.handlers()['approvals.decide']({ id: card.id, decision: { behavior: 'allow', owners: [null] } })
+    const owners = ownerLines([{ title: 'Build the table', ownerChanged: true }], () => 'Christian')
+    expect(owners).toContain('you do it yourself')
+    expect(owners).toContain('The user changed who does step 1. Keep their choice.')
+    const note = planApproval({ lead: true, planFile: card.planFile, restarted: true, owners }).text
+    expect(users(k2, lead).at(-1)).toBe(note)
+    expect(k2.store.approval(card.id)?.steps).toEqual([{ title: 'Build the table', criteria: [], ownerChanged: true }])
   }, 30000)
 })
 

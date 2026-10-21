@@ -26,6 +26,7 @@ import { DiffView, FileView, ImageView, TextView } from './FileView'
 import { BottomPanel, RightPanel } from './Panels'
 import { SharedView } from './shared/SharedView'
 import { PrTitleBar } from './pr/PrTitleBar'
+import { LeadRail } from './LeadRail'
 import { SessionRail } from './SessionRail'
 import { SkipNotice } from './terminal/SkipNotice'
 import { TerminalView } from './terminal/Terminal'
@@ -259,9 +260,9 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const changed = filePath ? changes.some((c) => c.path === filePath) : false
 
   // The header is one row over both columns (Pen 9.1): the project, then the chat and file tabs in one pill, then what acts on the workspace, then the view toggles. The panel and
-  // the Session rail are cards under it. A teammate's workspace shows its Session rail on the right while the panel is closed, and the title bar's toggles swap one for the
+  // the Session rail are cards under it. A teammate's workspace and a chat with Kernel show their Session rail on the right while the panel is closed, and the title bar's toggles swap one for the
   // other. Neither is Focus mode (KERNEL-1096).
-  const rail = railWanted && !newChatShown && !isLead
+  const rail = railWanted && !newChatShown
   const focus = !sidebar && !panels && !rail
   const tabsRow = alone ? <NewChatTab focusIn={workspaceId} /> : (
     <ChatTabs
@@ -279,7 +280,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
         {/* The pull request's own place is the Session rail and the Pull request tab. With neither on screen, its state moves here: an icon, its number, a few words and the one action (Pen 10.3). */}
         {ownPr && !rail && !(panels && !newChatShown) && <PrTitleBar ws={ws} />}
         {!isRemote() && <OpenIn ws={ws} />}
-        <ViewToggles rail={!isLead} kind={bottomKindOf(getState(), ws)} />
+        <ViewToggles kind={bottomKindOf(getState(), ws)} />
       </>}>
         {tabsRow}
       </OneRowHeader>
@@ -331,7 +332,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
           </section>
         </aside>
       )}
-      {rail && <SessionRail ws={ws} />}
+      {rail && (isLead ? <LeadRail ws={ws} threadId={threadId} /> : <SessionRail ws={ws} />)}
     </div>
   )
 }
