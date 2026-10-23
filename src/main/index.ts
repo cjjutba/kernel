@@ -35,6 +35,7 @@ import type { Channel, KernelApi, PushEvent } from '@shared/ipc'
 import type { TelemetryEvent } from '@shared/telemetry'
 import type { Toast } from '@shared/types'
 import { isWebUrl } from '@shared/previewUrl'
+import { DEFAULT_HOTKEYS, fromInput, matches, resolveHotkeys, type Hotkeys } from '@shared/hotkeys'
 
 const here = dirname(fileURLToPath(import.meta.url))
 let win: BrowserWindow | null = null
@@ -166,6 +167,8 @@ function focusWindow() {
 const toast = (t: Omit<Toast, 'id'>) => bus.push({ type: 'toast', toast: t })
 /** The hook port for Copy diagnostics. Unknown until the kernel exists, and in fixture runs. */
 let hookPort: () => number | undefined = () => undefined
+/** The shortcuts in force, from Settings, Shortcuts (configurable-hotkeys). The defaults until the kernel exists, and in fixture runs. */
+let hotkeysNow: () => Hotkeys = () => DEFAULT_HOTKEYS
 /** The latest usage events for Copy diagnostics (KERNEL-397). None until the kernel exists. */
 let usageEvents: () => string[] | undefined = () => undefined
 
@@ -235,11 +238,16 @@ function createWindow() {
       void win?.webContents.executeJavaScript(`(document.activeElement ?? window).dispatchEvent(new KeyboardEvent('keydown', { key: '?', code: 'Slash', metaKey: true, shiftKey: true, bubbles: true, cancelable: true }))`)
       return
     }
-    if (input.type !== 'keyDown' || !input.meta || input.shift || input.alt || input.control) return
-    const event = { w: 'kernel:close-tab', r: 'kernel:run-script' }[input.key.toLowerCase()]
-    if (!event) return
+    if (input.type !== 'keyDown') return
+    // Close tab and Run dev script go by the keys Settings, Shortcuts binds. Plain ⌘W and ⌘R never reach the menu even when
+    // rebound, so they can't close the window or reload the page by surprise.
+    const keys = hotkeysNow()
+    const ev = fromInput(input)
+    const event = matches(ev, keys.closeTab) ? 'kernel:close-tab' : matches(ev, keys.runScript) ? 'kernel:run-script' : undefined
+    const plain = input.meta && !input.shift && !input.alt && !input.control && (input.code === 'KeyW' || input.code === 'KeyR')
+    if (!event && !plain) return
     e.preventDefault()
-    void win?.webContents.executeJavaScript(`window.dispatchEvent(new Event('${event}'))`)
+    if (event) void win?.webContents.executeJavaScript(`window.dispatchEvent(new Event('${event}'))`)
   })
   attachImageMenu(win.webContents)
   if (!headless) win.once('ready-to-show', () => win?.show())
@@ -389,7 +397,7 @@ app.whenReady().then(async () => {
       quiet: headless
     })
     // Draws shared HTML in locked-down views and thumbnails shared files for their cards (KERNEL-303).
-    preview = new PreviewHost({ window: mainWindow, file: (id, n) => kernel.sharedFile(id, n), push: (e) => bus.push(e), dev: !app.isPackaged })
+    preview = new PreviewHost({ window: mainWindow, file: (id, n) => kernel.sharedFile(id, n), push: (e) => bus.push(e), dev: !app.isPackaged, hotkeys: () => hotkeysNow() })
     const installed = isInstalledCopy(copy)
     // Usage data goes out only from a packaged release built with a key, after the user says yes, and never from a smoke
     // test, a fixture or headless run, or when DO_NOT_TRACK=1 or KERNEL_TELEMETRY=0 is set (KERNEL-397).
@@ -461,6 +469,13 @@ app.whenReady().then(async () => {
     app.on('browser-window-focus', (_e, w) => { if (w === mainWindow()) void started.then(() => kernel.prs.pollSoon(), () => undefined) })
     handlers = kernel.handlers() as typeof handlers
     hookPort = () => kernel.settings?.hookPort
+    let hotkeysFrom: unknown
+    let hotkeysResolved = DEFAULT_HOTKEYS
+    hotkeysNow = () => {
+      const o = kernel.settings?.hotkeys
+      if (o !== hotkeysFrom) { hotkeysFrom = o; hotkeysResolved = resolveHotkeys(o) }
+      return hotkeysResolved
+    }
     usageEvents = () => kernel.telemetry.lines()
   }
   // The page asks for nothing: clipboard writes back the copy buttons, and every other request is refused.

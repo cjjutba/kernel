@@ -2,6 +2,7 @@ import type { TeamConfig } from './agents'
 import type { Effort, Provider } from './chats'
 import type { TrackerKind } from './trackers'
 import type { WorkspaceMode } from './workspaces'
+import type { HotkeyOverrides } from '../hotkeys'
 
 export type Theme = 'dark' | 'light'
 export type SettingsPage =
@@ -125,6 +126,11 @@ export interface AppSettings {
    * `kernel-reviewer` or `none`). A project seeded with the starter team afterwards reads both.
    */
   onboarding: { done: boolean; out: string[]; reviewer: string }
+  /**
+   * Settings, Shortcuts: the combos the user rebound, by shortcut id (`HOTKEYS` in shared/hotkeys.ts). Only changed ones are kept,
+   * so `resolveHotkeys` fills in the rest. A `null` in a patch puts one back to its default (configurable-hotkeys).
+   */
+  hotkeys: HotkeyOverrides
 }
 
 /**

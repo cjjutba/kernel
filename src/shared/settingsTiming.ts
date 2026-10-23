@@ -144,7 +144,9 @@ export const APP_SETTING_TIMING: Record<string, SettingTiming> = {
   // Onboarding's choices seed the team of a project added after them (KERNEL-1088).
   'onboarding.done': 'now',
   'onboarding.out': 'newProjects',
-  'onboarding.reviewer': 'newProjects'
+  'onboarding.reviewer': 'newProjects',
+  // The renderer and main's window keys read the bindings on each key press (configurable-hotkeys).
+  hotkeys: 'now'
 }
 
 type Project = Omit<Required<ProjectSettings>, 'sources' | 'missingReferences'>

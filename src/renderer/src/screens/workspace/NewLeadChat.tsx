@@ -32,6 +32,7 @@ import { useModelKeys } from './composer/useModelKeys'
 import { stripRemote } from '../settings/remote'
 import { SetupLine } from './SetupLine'
 import { PartChip, TurnLine } from './Transcript'
+import { pressed } from '../../hotkeys'
 
 /**
  * The New chat page, the one way to start a chat (KERNEL-788): the title, which names the project and picks it, and a composer, in the
@@ -115,7 +116,7 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
   useEffect(() => {
     const onKeyL = (e: globalThis.KeyboardEvent) => {
       if (e.defaultPrevented || getState().ui.modal) return
-      if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey && e.code === 'KeyL') { e.preventDefault(); d.focus() }
+      if (pressed(e, 'focusComposer')) { e.preventDefault(); d.focus() }
     }
     window.addEventListener('keydown', onKeyL)
     return () => window.removeEventListener('keydown', onKeyL)
@@ -214,10 +215,10 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
   const onKey = (e: React.KeyboardEvent) => {
     if (e.nativeEvent.isComposing) return
     if (sendsOn(e, sendWith)) { e.preventDefault(); start(); return }
-    if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); cycleMode(); return }
+    if (pressed(e, 'planMode')) { e.preventDefault(); cycleMode(); return }
     if (!['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) cycle.current = null
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'u') { e.preventDefault(); filePick.current?.click() }
-    if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'i') { e.preventDefault(); setMenu('linkIssue') }
+    if (pressed(e, 'attach')) { e.preventDefault(); filePick.current?.click() }
+    if (pressed(e, 'linkIssue')) { e.preventDefault(); setMenu('linkIssue') }
   }
 
   /** Another project: the typed text moves to that project's box, and its status, Up next, model and branch follow. */

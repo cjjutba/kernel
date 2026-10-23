@@ -6,6 +6,7 @@ import { bus } from '../bus'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import { COMPACT_WINDOWS, EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, PORT_BLOCK, RUN_SCRIPT_NAME, type AppSettings, type AutoMerge, type ClaudePlan, type CompactWindow, type DeepPartial, type Effort, type HookBuild, type MergeMethod, type PermissionMode, type Provider, type Role, type RoleChoice, type RoleSide, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type ProjectSettingSource, type ProjectSettings, type ProjectSettingsPatch, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools, REVIEW_KINDS } from '@shared/types'
 import { effortMemory } from '@shared/effort'
+import { hotkeyOverrides } from '@shared/hotkeys'
 import { terminalSettingsOf } from './terminalPresets'
 import { addressReviewText, createPrText, fixChecksText, resolveText } from './conventions'
 
@@ -80,7 +81,8 @@ export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSet
   privacy: { telemetry: 'ask' },
   // Off until the user turns it on, and this Mac only until they choose the network (remote-access-server).
   remote: { enabled: false, host: 'local', port: 47100 },
-  onboarding: { done: false, out: [], reviewer: 'artkin' }
+  onboarding: { done: false, out: [], reviewer: 'artkin' },
+  hotkeys: {}
 })
 
 /**
@@ -161,6 +163,7 @@ export function resolveSettings(defaults: AppSettings, saved: DeepPartial<AppSet
   s.terminal = terminalSettingsOf(s.terminal, defaults.terminal)
   s.pr.autoMerge = autoMergeOf(s.pr.autoMerge, defaults.pr.autoMerge)
   s.remote = remoteAccessOf(s.remote, defaults.remote)
+  s.hotkeys = hotkeyOverrides(s.hotkeys)
   return { ...s, plan, planDefaulted: PLAN_KEYS.filter((k) => at(saved, k) === undefined) }
 }
 
@@ -342,6 +345,8 @@ export function applySettingsPatch(current: AppSettings, patch: DeepPartial<AppS
   next.terminal = terminalSettingsOf(next.terminal, current.terminal)
   next.pr.autoMerge = autoMergeOf(next.pr.autoMerge, current.pr.autoMerge)
   next.remote = remoteAccessOf(next.remote, current.remote)
+  // A combo that isn't valid, is reserved or is the default is dropped, so the shortcut keeps or goes back to its default.
+  next.hotkeys = hotkeyOverrides(next.hotkeys)
   return next
 }
 

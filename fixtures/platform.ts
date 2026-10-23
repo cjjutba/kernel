@@ -564,6 +564,8 @@ export const platformFixtures: Record<string, Fixture> = {
   // Redesign 15: quiet hours on for the night, and a finished workspace stays quiet.
   SettingsNotifications: settingsPage('notifications', { settings: { ...DEFAULT_SETTINGS('/Users/you'), notifications: { ...DEFAULT_SETTINGS('/Users/you').notifications, finished: false, quietHours: { from: '22:00', to: '08:00' } } } }),
   SettingsShortcuts: settingsPage('shortcuts'),
+  // configurable-hotkeys: the command palette and Merge PR rebound, each with its reset, and Reset all on.
+  SettingsShortcutsChanged: settingsPage('shortcuts', { settings: { ...DEFAULT_SETTINGS('/Users/you'), hotkeys: { palette: 'meta+alt+KeyP', mergePr: 'ctrl+meta+KeyM' } } }),
   // KERNEL-406, KERNEL-974: Frontend runs on Codex and Backend on Opus, each on its own row. The rest stay on their defaults.
   // KERNEL-974: Christian and Sean in two projects, Mira on her own model, and Rio with a custom role that lands under Backend. QA has no one.
   SettingsModels: settingsPage('models', { agents: modelsAgents(), status: {}, settings: withRoles({ frontend: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }, engineers: { provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh' } }), models: { codex: codexModels } }),

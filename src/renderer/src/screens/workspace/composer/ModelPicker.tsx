@@ -8,6 +8,7 @@ import { effortLabel, nextEffort, useEffortMemory } from './modelPrefs'
 import { useFavoriteModels, toggleFavoriteModel } from './favoriteModels'
 import { COMPACT_LABELS, effortsOf, fitEffort, providerLabel, useProviderModels } from './providerModels'
 import { isCycleEffortKey, shortcutNumber } from './modelShortcuts'
+import { hotkeys, pressedDigit } from '../../../hotkeys'
 
 export { EFFORTS }
 
@@ -144,8 +145,9 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
   const stepEffort = (dir: 1 | -1) => { const i = efforts.indexOf(effort); const next = efforts[Math.min(efforts.length - 1, Math.max(0, i + dir))]; if (next && next !== effort) pickEffort(next) }
 
   const onKey = (e: React.KeyboardEvent) => {
-    if (!settings && e.ctrlKey && e.metaKey && /^[1-9]$/.test(e.key)) { e.preventDefault(); const m = all.find((r) => r.n === Number(e.key)); if (m) pickModel(m); return }
-    if (isCycleEffortKey(e)) { e.preventDefault(); pickEffort(nextEffort(effort, efforts)); return }
+    const n = settings ? null : pressedDigit(e, 'pickModel')
+    if (n !== null) { e.preventDefault(); const m = all.find((r) => r.n === n); if (m) pickModel(m); return }
+    if (isCycleEffortKey(e, hotkeys().cycleEffort)) { e.preventDefault(); pickEffort(nextEffort(effort, efforts)); return }
     if (e.metaKey && !e.shiftKey && !e.ctrlKey && e.key.toLowerCase() === 'd') {
       e.preventDefault()
       const it = items[at]

@@ -33,6 +33,19 @@ const roleChoice = (model: string, effort: string, base: RoleChoice): RoleChoice
 
 describe('applySettingsPatch', () => {
   const base = DEFAULT_SETTINGS('/home/cj')
+  it('keeps a rebound shortcut, drops an invalid one, and a null puts it back (configurable-hotkeys)', () => {
+    const next = applySettingsPatch(base, { hotkeys: { palette: 'meta+alt+KeyP', sidebar: 'meta+KeyC' } })
+    expect(next.hotkeys).toEqual({ palette: 'meta+alt+KeyP' })
+    expect(applySettingsPatch(next, { hotkeys: { palette: null } }).hotkeys).toEqual({})
+  })
+
+  it('saves rebound shortcuts to settings.json and reads them back', async () => {
+    const file = join(await mkdtemp(join(tmpdir(), 'kernel-hotkeys-')), 'settings.json')
+    await saveAppSettings(file, { hotkeys: { palette: 'meta+alt+KeyP', back: 'nonsense' } })
+    const { resolved } = await loadAppSettings(file, '/home/cj')
+    expect(resolved.hotkeys).toEqual({ palette: 'meta+alt+KeyP' })
+  })
+
   it('merges nested fields and replaces lists', () => {
     const next = applySettingsPatch(base, { appearance: { theme: 'light' }, permissions: { alwaysAsk: ['rm -rf'] } })
     expect(next.appearance.theme).toBe('light')

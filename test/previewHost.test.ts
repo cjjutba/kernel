@@ -33,6 +33,15 @@ describe('appShortcut', () => {
     expect(appShortcut(key('KeyZ', { meta: true, shift: true }))).toBeNull()
   })
 
+  it('forwards the keys the user bound instead of the defaults', async () => {
+    const { resolveHotkeys } = await import('../src/shared/hotkeys')
+    const keys = resolveHotkeys({ palette: 'meta+alt+KeyP', nthChat: 'meta+alt+Digit#' })
+    expect(appShortcut(key('KeyP', { meta: true, alt: true }), keys)).toBe('forward')
+    expect(appShortcut(key('Digit4', { meta: true, alt: true }), keys)).toBe('forward')
+    expect(appShortcut(key('KeyK', meta), keys)).toBeNull()
+    expect(appShortcut(key('Digit4', meta), keys)).toBeNull()
+  })
+
   it('matches modifiers exactly and only on key down', () => {
     expect(appShortcut(key('KeyK'))).toBeNull()
     expect(appShortcut(key('KeyK', { meta: true, alt: true }))).toBeNull()
