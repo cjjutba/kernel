@@ -4,6 +4,7 @@ import { call, cleanError } from '../../api'
 import { actions, getState } from '../../store'
 import { Icon, Menu, MENU_SEPARATOR, SplitButton, type IconName, type MenuEntry } from '../../ui'
 import './openIn.css'
+import { pressed } from '../../hotkeys'
 
 interface OpenApps { apps: OpenApp[]; defaultId?: string }
 
@@ -65,7 +66,7 @@ export function OpenIn({ ws }: { ws: Workspace }) {
   latest.current = { path: ws.path, current }
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (!e.metaKey || e.altKey || e.ctrlKey || e.shiftKey || e.repeat || e.key.toLowerCase() !== 'o') return
+      if (e.defaultPrevented || e.repeat || !pressed(e, 'openIn')) return
       if (document.activeElement?.closest('.term') || getState().ui.modal) return
       e.preventDefault()
       void openIn(latest.current.path, latest.current.current)

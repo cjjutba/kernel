@@ -1,4 +1,5 @@
 import type { Provider, ProviderModel } from '@shared/types'
+import { DEFAULT_HOTKEYS, matches } from '@shared/hotkeys'
 
 /** ^⌘1 to 9 reach this many models. ⌘1 to 9 alone switch chats, so the keys carry Control too. */
 export const SHORTCUT_MAX = 9
@@ -22,5 +23,9 @@ export function shortcutModel(key: string, models: ProviderModel[]): ProviderMod
  * ⌘⇧/ cycles the effort. With Shift held the slash key reports '?', and another layout puts '/' elsewhere, so the physical key counts too.
  * Both boxes listen on the window (useModelKeys) and the open picker on itself, and all three ask here.
  */
-export const isCycleEffortKey = (e: { key: string; code?: string; metaKey: boolean; shiftKey: boolean; ctrlKey: boolean; altKey: boolean }): boolean =>
-  e.metaKey && e.shiftKey && !e.ctrlKey && !e.altKey && (e.code === 'Slash' || e.key === '/' || e.key === '?')
+export const isCycleEffortKey = (e: { key: string; code?: string; metaKey: boolean; shiftKey: boolean; ctrlKey: boolean; altKey: boolean }, combo = DEFAULT_HOTKEYS.cycleEffort): boolean => {
+  const ev = { ...e, code: e.code ?? '' }
+  if (matches(ev, combo)) return true
+  // The default's slash may sit elsewhere on another layout, so the character counts for it too.
+  return combo === 'meta+shift+Slash' && e.metaKey && e.shiftKey && !e.ctrlKey && !e.altKey && (e.key === '/' || e.key === '?')
+}

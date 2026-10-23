@@ -11,6 +11,7 @@ import { sendMessage } from '../composer/sendMessage'
 import { blockerFacts, NO_RULES, actionKey, busyLabel, failTitle, type PrAction } from './model'
 import type { PrButtonId, PrFacts } from './prStage'
 import { useLocalMerge } from './useLocalMerge'
+import { pressed } from '../../../hotkeys'
 
 /** What each action calls on the main process. Shared with `MergeButton`. */
 export const request: Record<PrAction, (workspaceId: string) => Promise<unknown>> = {
@@ -113,9 +114,8 @@ export function usePrActions(ws: Workspace, o: { key?: PrButtonId; archivable?: 
   useEffect(() => {
     if (!listen) return
     const onKey = (e: KeyboardEvent) => {
-      if (!e.metaKey || !e.shiftKey || e.altKey || e.ctrlKey || getState().ui.modal) return
-      const k = e.key.toLowerCase()
-      if (o.key && k === key) { e.preventDefault(); press(o.key) } else if (o.archivable && k === 'a') { e.preventDefault(); archive() }
+      if (e.defaultPrevented || getState().ui.modal) return
+      if (o.key && key && pressed(e, key)) { e.preventDefault(); press(o.key) } else if (o.archivable && pressed(e, 'archivePr')) { e.preventDefault(); archive() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

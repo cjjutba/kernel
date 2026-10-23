@@ -5,6 +5,7 @@ import { actions, getState } from '../../store'
 import { attempt } from './MessageActions'
 import { bottomKindOf } from './bottomSplit'
 import { runningRuns } from './runScripts'
+import { pressed } from '../../hotkeys'
 
 /** The request ⌘↵ and ⌘⌫ answer: the oldest permission request waiting in the open chat. A plan or a question has its own keys. */
 export function pendingRequest(approvals: Approval[], chatId: string | undefined): Approval | undefined {
@@ -35,14 +36,17 @@ export function useWorkspaceShortcuts(o: { workspaceId: string; chatId?: string;
   useEffect(() => {
     const decide = (a: Approval, decision: Decision) => attempt('Could not send your answer', async () => actions.approvals.upsert(await call('approvals.decide', { id: a.id, decision })))
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || !e.metaKey || e.ctrlKey || e.altKey || e.isComposing || getState().ui.modal) return
+      if (e.defaultPrevented || e.isComposing || getState().ui.modal) return
       const { chatId, openDiff } = latest.current
-      if (e.shiftKey && e.key.toLowerCase() === 'd') { e.preventDefault(); openDiff(''); return }
-      if (e.shiftKey || (e.key !== 'Enter' && e.key !== 'Backspace') || typingIn(document.activeElement)) return
+      if (pressed(e, 'openDiff')) { e.preventDefault(); openDiff(''); return }
+      // The run script's key comes from main as kernel:run-script while it is ⌘R, which the View menu's Reload would take. Any other key is heard here.
+      if (pressed(e, 'runScript')) { e.preventDefault(); onRun(); return }
+      const allow = pressed(e, 'approve')
+      if ((!allow && !pressed(e, 'deny')) || typingIn(document.activeElement)) return
       const a = pendingRequest(getState().approvals, chatId)
       if (!a) return
       e.preventDefault()
-      void decide(a, e.key === 'Enter' ? { behavior: 'allow' } : { behavior: 'deny', message: 'Denied in Kernel.' })
+      void decide(a, allow ? { behavior: 'allow' } : { behavior: 'deny', message: 'Denied in Kernel.' })
     }
     const onRun = () => {
       const s = getState()
