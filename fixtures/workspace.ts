@@ -3204,6 +3204,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // KERNEL-781: New chat's box is a chat's box. NewChat is the page at rest and ChatComposer an open chat, to compare the box's top edge and toolbar. NewChatLongDraft is eight lines in the box, which grows up
   // with Up next and the title moving ahead of it. NewChatPlan has plan mode on: the box is hatched and the permission slot reads Plan.
   NewChat: scene((f) => noPlan(leadNoChats(f))),
+  // The right panel's toggle pressed on New chat: its empty state takes the rail's place.
+  NewChatPanelMotion: { ...scene((f) => noPlan(leadNoChats(f))), motion: { action: { click: 'Show panels' }, ms: 600 } },
   NewChatLongDraft: scene((f) => {
     const g = noPlan(leadNoChats(f))
     const draft = ['Settings search should land on the setting, not only open its page. When I pick a result:', '1. Open the Settings page the setting belongs to.', '2. Scroll the matching row into view, centered when it fits.', '3. Outline the row for about a second, then let the outline fade.', '4. Put focus on the row\'s control so I can change it from the keyboard.', 'Enter in the search field opens the first match.', 'If I come back to search, my query is still in the field.'].join('\n')
