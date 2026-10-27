@@ -230,6 +230,8 @@ const listeners = new Set<() => void>()
 
 export function getState() { return state }
 /** Whether the right panel shows in a workspace: the global setting, unless a New chat holds it closed there (KERNEL-788). */
+/** The id New chat holds its panel closed under, as a chat started from New chat does, so the Session rail is what shows until the panel's toggle is pressed. */
+export const NEW_CHAT_HELD = 'new-chat'
 export const panelShownIn = (ui: Pick<UiState, 'rightPanel' | 'panelHeld'>, workspaceId?: string) => ui.rightPanel && !(workspaceId && ui.panelHeld.includes(workspaceId))
 export function setState(patch: Partial<State> | ((s: State) => Partial<State>)) {
   state = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) }
@@ -586,8 +588,8 @@ export const actions = {
     setRightPanel: (open: boolean) => {
       folded.delete('rightPanel')
       const { route, panelHeld } = state.ui
-      const held = route.name === 'workspace' && panelHeld.includes(route.workspaceId)
-      setUi({ rightPanel: open, ...(held && { panelHeld: panelHeld.filter((id) => id !== route.workspaceId) }) })
+      const id = route.name === 'workspace' ? route.workspaceId : route.name === 'leadNew' ? NEW_CHAT_HELD : undefined
+      setUi({ rightPanel: open, ...(id && panelHeld.includes(id) && { panelHeld: panelHeld.filter((h) => h !== id) }) })
       keep('rightPanel', open)
     },
     /** The workspace's panel stays closed until the toggle is pressed in it, whatever the global setting says. The panel never opens by itself (KERNEL-788). */

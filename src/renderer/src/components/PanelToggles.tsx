@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import type { BottomKind, UiState } from '@shared/types'
-import { actions, getState, panelShownIn, useStore } from '../store'
+import { actions, getState, NEW_CHAT_HELD, panelShownIn, useStore } from '../store'
 import { IconButton, Kbd } from '../ui'
 import { useHotkeyLabel } from '../hotkeys'
 import { toggleBottomPanel } from '../screens/workspace/bottomSplit'
@@ -25,8 +25,8 @@ export function useFoldPanels() {
 }
 
 export const toggleSidebar = () => actions.ui.setSidebar(!getState().ui.sidebar)
-/** The workspace in view, for a panel a New chat holds closed (KERNEL-788). */
-const inView = (route: ReturnType<typeof getState>['ui']['route']) => (route.name === 'workspace' ? route.workspaceId : undefined)
+/** The workspace in view, or New chat's own id, for a panel held closed (KERNEL-788). */
+const inView = (route: ReturnType<typeof getState>['ui']['route']) => (route.name === 'workspace' ? route.workspaceId : route.name === 'leadNew' ? NEW_CHAT_HELD : undefined)
 /** What the toggle flips is what the screen shows: in a held chat the panel is closed even while the global flag is on, so one press opens it. */
 export const toggleRightPanel = () => {
   const { ui } = getState()
@@ -101,18 +101,18 @@ export function SidebarToggleSlot() {
 
 /**
  * The title bar's view toggles of a workspace (Pen 9.1): the bottom pane, the Session rail and the right panel, in the header's right corner. The rail and the panel switch
- * places, and the one that is on turns off when it is pressed. `kind` says whose bottom pane it is.
+ * places, and the one that is on turns off when it is pressed. `kind` says whose bottom pane it is. New chat has no workspace and so no bottom pane: it passes no `kind`, and the button is left out.
  */
-export function ViewToggles({ kind }: { kind: BottomKind }) {
+export function ViewToggles({ kind }: { kind?: BottomKind }) {
   const ui = useStore((s) => s.ui)
   const id = inView(ui.route)
   const panel = panelShownIn(ui, id)
-  const bottomOpen = panel && !ui.bottomCollapsed[kind]
+  const bottomOpen = !!kind && panel && !ui.bottomCollapsed[kind]
   const bottomKey = useHotkeyLabel('bottomPanel')
   const panelKey = useHotkeyLabel('rightPanelAlt')
   return (
     <div className="view-toggles" role="group" aria-label="Views">
-      <IconButton icon="panelBottom" size={16} label={bottomOpen ? 'Hide bottom panel' : 'Show bottom panel'} aria-pressed={bottomOpen} data-tip-kbd={bottomKey} onClick={toggleBottomPanel} />
+      {kind && <IconButton icon="panelBottom" size={16} label={bottomOpen ? 'Hide bottom panel' : 'Show bottom panel'} aria-pressed={bottomOpen} data-tip-kbd={bottomKey} onClick={toggleBottomPanel} />}
       <IconButton icon="railList" size={16} label={railShownIn(ui, id) ? 'Hide Session' : 'Show Session'} aria-pressed={railShownIn(ui, id)} onClick={toggleRail} />
       <IconButton icon="panelRight" size={16} label={panel ? 'Hide panels' : 'Show panels'} aria-pressed={panel} data-tip-kbd={panelKey} onClick={toggleRightPanel} />
     </div>

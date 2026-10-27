@@ -76,3 +76,15 @@ export function LeadRail({ ws, threadId }: { ws: Workspace; threadId: string | u
     </aside>
   )
 }
+
+/** The Session rail of New chat: no workspace exists before the first message, so it says so and shows nothing made up. */
+export function NewChatRail() {
+  return (
+    <aside className="ws-rail" aria-label="Session">
+      <section className="rail-card">
+        <header className="rail-head"><h2>Session</h2></header>
+        <div className="rail-nothing"><EmptyState icon="railList" title="Nothing yet">Progress on this chat and the work it hands to teammates show up here once you send the first message.</EmptyState></div>
+      </section>
+    </aside>
+  )
+}
