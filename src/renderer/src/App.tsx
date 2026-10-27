@@ -221,7 +221,7 @@ export function App() {
         else if (!s.ui.modal) actions.ui.leaveSettings()
       }
       if (e.key === '\\') { e.preventDefault(); toggleFocus() }
-      // ⌘J collapses or opens the right panel's bottom pane (KERNEL-513). Match the physical key, as ⌘B does.
+      // ⌘J folds or opens the terminal drawer under the chat (KERNEL-513). Match the physical key, as ⌘B does.
       if (e.code === 'KeyJ' && !e.shiftKey && !e.altKey && !e.ctrlKey) { e.preventDefault(); toggleBottomPanel() }
       // ⌘B is the sidebar; ⌘⌥B and ⌘⇧B are the right panel (KERNEL-425). Option turns B into ∫, so match the physical key.
       if (e.code === 'KeyB' && !(e.shiftKey && e.altKey)) { e.preventDefault(); if (e.altKey || e.shiftKey) toggleRightPanel(); else toggleSidebar() }

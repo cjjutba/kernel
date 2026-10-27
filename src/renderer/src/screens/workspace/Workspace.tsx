@@ -22,7 +22,8 @@ import { followIssue, OpenImage, OpenIssue, OpenText, type ImagePart, type TextP
 import { Composer } from './composer/Composer'
 import { OpenItems } from './composer/OpenItems'
 import { DiffView, FileView, ImageView, TextView } from './FileView'
-import { BottomPanel, RightPanel } from './Panels'
+import { BottomDrawer } from './BottomDrawer'
+import { RightPanel } from './Panels'
 import { SharedView } from './shared/SharedView'
 import { PrTitleBar } from './pr/PrTitleBar'
 import { LeadRail, NewChatRail } from './LeadRail'
@@ -87,7 +88,7 @@ export function headerTitle(ws: Pick<WorkspaceModel, 'title' | 'name' | 'source'
   return rest.replace(/^[\s:·|\-–—.]+/, '') || title
 }
 
-/** Header, tabs, transcript, composer, and the right and bottom panels (Workspace.png). */
+/** Header, tabs, transcript, composer, the bottom drawer, and the right panel (Workspace.png). */
 export function Workspace({ workspaceId }: { workspaceId: string }) {
   const ws = useStore((s) => s.workspaces.find((w) => w.id === workspaceId))
   const project = useStore((s) => s.projects.find((r) => r.id === ws?.projectId))
@@ -112,7 +113,6 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const sidebar = useStore((s) => s.ui.sidebar)
   // Expand: the panel takes the whole screen, chat included, until it is pressed again.
   const [expanded, setExpanded] = useState(false)
-  const bottomRatio = useStore((s) => s.ui.bottomRatio)
   // The changed files remember which workspace they were read for, so a late answer or a switch never shows another workspace's files.
   const [fetched, setFetched] = useState<{ workspaceId: string; files: ChangedFile[] }>({ workspaceId, files: NO_CHANGES })
   const changes = fetched.workspaceId === workspaceId ? fetched.files : NO_CHANGES
@@ -311,6 +311,8 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                     : <div className="grow" />}
           </div>
           {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} why={problem?.placeholder ?? (moveNotice && !banner ? 'Pick an account above to keep going' : undefined)} setupShown={setupWait} running={running} prefill={prefill} viewer={viewer ? { held: banner ? banner.actions.length > 0 : !!moveNotice } : undefined} banner={<>{isLead && chat.kind === 'chat' && <OpenItems chat={chat} />}{banner && <WorkspaceBanner view={banner} ws={ws} chat={chat} />}{chat.kind === 'chat' && <FellBackLine chat={chat} />}</>} />}
+          {/* The drawer sits under the chat and its composer, the width of the chat column. The title bar toggle and ⌘J open it. */}
+          {!newChatShown && <BottomDrawer ws={ws} />}
         </section>
       </OpenIssue.Provider>
       </OpenText.Provider>
@@ -323,11 +325,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
             storageKey={PANEL_KEY} hideBelow={PANEL_HIDE_BELOW} onHide={() => actions.ui.setRightPanel(false)} onCommit={setPanelWidth}
           />
           <section className="side-card" aria-label="Panels">
-            {/* Below its tabs the panel is two panes, 2/3 over 1/3 until the bottom is dragged. The one fraction is every chat's (KERNEL-513). */}
-            <div className="ws-split" style={{ '--bottom-ratio': bottomRatio } as CSSProperties}>
-              <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={openDiff} filePath={filePath} diffPath={diffPath || undefined} expanded={expanded} onExpand={() => setExpanded((e) => !e)} />
-              <BottomPanel ws={ws} />
-            </div>
+            <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={openDiff} filePath={filePath} diffPath={diffPath || undefined} expanded={expanded} onExpand={() => setExpanded((e) => !e)} />
           </section>
         </aside>
       )}

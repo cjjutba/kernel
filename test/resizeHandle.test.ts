@@ -33,7 +33,7 @@ describe('the width the sidebar and the Settings nav share', () => {
   })
 })
 
-describe('a top edge, as on the right panel\'s bottom pane', () => {
+describe('a top edge, as on the bottom drawer', () => {
   it('grows with ArrowUp and shrinks with ArrowDown, and takes the big step with Shift', () => {
     expect(keyedSize('top', 'ArrowUp', false, 272, 160, 600)).toBe(280)
     expect(keyedSize('top', 'ArrowDown', false, 272, 160, 600)).toBe(264)

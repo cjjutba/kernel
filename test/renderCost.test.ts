@@ -104,7 +104,7 @@ const queue = (chatId: string) => (): PushEvent => ({ type: 'chat.queue', chatId
 const workspace = (id: string) => (i: number): PushEvent => ({ type: 'workspace', workspace: { ...workspaceOf(id), branch: `${workspaceOf(id).branch}-${i}` } })
 
 /** Parts of the screen in view. */
-const SCREEN_PARTS = ['Workspace', 'ChatTranscript', 'Composer', 'ChatTabs', 'RightPanel', 'BottomPanel']
+const SCREEN_PARTS = ['Workspace', 'ChatTranscript', 'Composer', 'ChatTabs', 'RightPanel', 'BottomDrawer']
 const named = (list: string[], names: string[]) => list.filter((r) => names.some((n) => r === n || r.startsWith(`${n}[`)))
 const ofOtherWorkspace = (list: string[], mine: string) => list.filter((r) => /\[ws-[^\]]+\]$/.test(r) && !r.endsWith(`[${mine}]`))
 
@@ -118,7 +118,7 @@ describe('what a store event redraws', () => {
     expect(list).toContain('ChatTranscript')
     expect(named(list, ['AppSidebar', 'ProjectItem', 'ChatItemRow', 'WorkspaceItemRow', 'Toasts'])).toEqual([])
     expect(ofOtherWorkspace(list, SCREEN)).toEqual([])
-    expect(named(list, ['Workspace', 'Composer', 'RightPanel', 'BottomPanel', 'ChatTabs'])).toEqual([])
+    expect(named(list, ['Workspace', 'Composer', 'RightPanel', 'BottomDrawer', 'ChatTabs'])).toEqual([])
   })
 
   it('draws only the chat\'s own sidebar row when an off-screen chat starts or stops', async () => {

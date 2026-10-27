@@ -29,11 +29,11 @@ function endText(ws: Workspace): string | undefined {
   return `Setup script failed after ${took}`
 }
 
-/** Opens the Setup tab of the bottom pane, with the right panel open. `open` says it already is. */
+/** Opens the Setup tab of the bottom drawer. `open` says it already is. */
 function useShowLog(ws: Workspace) {
   const kind = useStore((s) => bottomKindOf(s, ws))
-  const open = useStore((s) => s.ui.rightPanel && s.ui.workspace.bottom === 'setup' && !s.ui.bottomCollapsed[kind])
-  return { open, show: () => { actions.ui.setRightPanel(true); actions.ui.setWorkspaceView({ bottom: 'setup' }); actions.ui.setBottomCollapsed(kind, false, false) } }
+  const open = useStore((s) => s.ui.workspace.bottom === 'setup' && !s.ui.bottomCollapsed[kind])
+  return { open, show: () => { actions.ui.setWorkspaceView({ bottom: 'setup' }); actions.ui.setBottomCollapsed(kind, false, false) } }
 }
 
 /** A chat that still works in the main folder, not in a copy of its own, says so once (a Lead chat from before every chat got a folder of its own). */
