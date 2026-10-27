@@ -11,6 +11,7 @@ import { McpSetUp } from './screens/settings/pages/McpSetUp'
 import { actions, getState, useStore } from './store'
 import { Tooltips } from './ui'
 import { openLead, openNewChat } from './lead'
+import { pressed, pressedDigit } from './hotkeys'
 // Settings loads lazily (below), but its stylesheet stays eager, in the slot the screen's import used to fill. Other screens lean on
 // rules in settings.css (the compact .nav-item). A new stylesheet under screens/settings has to be imported here too, or it becomes
 // a lazy chunk that lands after tokens.css.
@@ -185,58 +186,49 @@ export function App() {
   useEffect(() => { if (booted && route.name !== 'onboarding' && !modal) void askAboutTelemetry() }, [booted, projects, route.name, modal])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return
+      // Every key here is the one Settings, Shortcuts binds (configurable-hotkeys), read as the key is pressed.
+      const s = getState()
+      const setup = s.ui.route.name === 'onboarding'
       // ⌃1 to ⌃9 open the workspaces of the chat in view (KERNEL-814). With no such chat they do nothing and are left to the page.
-      if (e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
-        const key = /^Digit([1-9])$/.exec(e.code)
-        const s = getState()
-        if (key && !s.ui.modal && s.ui.route.name !== 'onboarding' && openWorkspaceSlot(Number(key[1]))) e.preventDefault()
-        return
-      }
-      if (!e.metaKey) return
-      // ⌘1 to ⌘9 open the project in view's Lead chats, not its workspaces (KERNEL-357). Ctrl is left out because ^⌘1 to 4 pick a model in the composer.
-      const digit = /^Digit([1-9])$/.exec(e.code)
-      if (digit && !e.ctrlKey && !e.altKey && !e.shiftKey) {
-        const s = getState()
-        if (!s.ui.modal && s.ui.route.name !== 'onboarding') { e.preventDefault(); openSlot(Number(digit[1])) }
-        return
-      }
-      // ⌘[ and ⌘] go back and forward, as in Slack and Linear. Not with a modal open or during setup, like ⌘1 to ⌘9.
-      if ((e.code === 'BracketLeft' || e.code === 'BracketRight') && !e.ctrlKey && !e.altKey && !e.shiftKey) {
-        e.preventDefault()
-        stepHistory(e.code === 'BracketLeft' ? 'back' : 'forward')
-        return
-      }
+      const ws = pressedDigit(e, 'nthWorkspace')
+      if (ws !== null) { if (!s.ui.modal && !setup && openWorkspaceSlot(ws)) e.preventDefault(); return }
+      // ⌘1 to ⌘9 open the project in view's Lead chats, not its workspaces (KERNEL-357).
+      const slot = pressedDigit(e, 'nthChat')
+      if (slot !== null) { if (!s.ui.modal && !setup) { e.preventDefault(); openSlot(slot) } return }
+      // ⌘[ and ⌘] go back and forward. Not with a modal open or during setup, like ⌘1 to ⌘9.
+      if (pressed(e, 'back') || pressed(e, 'forward')) { e.preventDefault(); stepHistory(pressed(e, 'back') ? 'back' : 'forward'); return }
       // ⌘K opens search, and closes it when it is already open (like Esc). Over any other modal it does nothing (it would replace that modal) and so it does during onboarding.
-      if (e.key === 'k') {
+      if (pressed(e, 'palette')) {
         e.preventDefault()
-        const s = getState()
         if (s.ui.modal?.name === 'search') actions.ui.closeModal()
-        else if (!s.ui.modal && s.ui.route.name !== 'onboarding') actions.ui.openModal({ name: 'search' })
+        else if (!s.ui.modal && !setup) actions.ui.openModal({ name: 'search' })
+        return
       }
       // ⌘, opens Settings, and goes back to the app when Settings is already open (like Back to app). A modal over Settings keeps it open.
-      if (e.key === ',') {
+      if (pressed(e, 'settings')) {
         e.preventDefault()
-        const s = getState()
         if (s.ui.route.name !== 'settings') actions.ui.openSettings()
         else if (!s.ui.modal) actions.ui.leaveSettings()
+        return
       }
-      if (e.key === '\\') { e.preventDefault(); toggleFocus() }
-      // ⌘J collapses or opens the right panel's bottom pane (KERNEL-513). Match the physical key, as ⌘B does.
-      if (e.code === 'KeyJ' && !e.shiftKey && !e.altKey && !e.ctrlKey) { e.preventDefault(); toggleBottomPanel() }
-      // ⌘B is the sidebar; ⌘⌥B and ⌘⇧B are the right panel (KERNEL-425). Option turns B into ∫, so match the physical key.
-      if (e.code === 'KeyB' && !(e.shiftKey && e.altKey)) { e.preventDefault(); if (e.altKey || e.shiftKey) toggleRightPanel(); else toggleSidebar() }
+      if (pressed(e, 'focusMode')) { e.preventDefault(); toggleFocus(); return }
+      // ⌘J collapses or opens the right panel's bottom pane (KERNEL-513).
+      if (pressed(e, 'bottomPanel')) { e.preventDefault(); toggleBottomPanel(); return }
+      // ⌘B is the sidebar; ⌘⌥B and ⌘⇧B are the right panel (KERNEL-425).
+      if (pressed(e, 'sidebar')) { e.preventDefault(); toggleSidebar(); return }
+      if (pressed(e, 'rightPanel') || pressed(e, 'rightPanelAlt')) { e.preventDefault(); toggleRightPanel(); return }
       // ⌘N and ⌘⇧N open the New chat page, and go back from it when it is already open (like Esc, so the draft is kept). Over a modal they do nothing, and so do they during onboarding.
-      if (e.key.toLowerCase() === 'n' && !e.altKey && !e.ctrlKey) {
+      if (pressed(e, 'newChat') || pressed(e, 'newChatAlt')) {
         e.preventDefault()
-        const s = getState()
-        if (s.ui.modal || s.ui.route.name === 'onboarding') return
+        if (s.ui.modal || setup) return
         if (s.ui.route.name === 'leadNew') actions.ui.back()
         else openNewChat(currentProject())
+        return
       }
       // The Lead's chat in the project in view, or the first project when none is (Inbox, History).
-      if (e.code === 'KeyL' && e.shiftKey && !e.altKey) {
+      if (pressed(e, 'openLead')) {
         e.preventDefault()
-        const s = getState()
         const project = projectInView(s.ui.route, s.projects, s.workspaces)
         if (project) void openLead(project.id)
       }

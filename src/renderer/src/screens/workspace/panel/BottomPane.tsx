@@ -17,6 +17,7 @@ import { ScriptView } from '../ScriptView'
 import { TerminalView } from '../terminal/Terminal'
 import { SHARED_NOTHING, sharedWhy } from './ChangesTab'
 import { TabStrip } from './TabStrip'
+import { comboLabel, hotkeys } from '../../../hotkeys'
 
 /** Setup is running from its first line until it exits. A new start clears the exit, so the lines of its last run don't count as a stop. */
 function setupRunning(s: Pick<State, 'scripts' | 'scriptExit'>, workspaceId: string) {
@@ -99,7 +100,7 @@ function RunSplit({ label, commands, none, running, names, runningNames, busy, o
       data-running={running || undefined}
       disabled={none || (busy !== null && !playing)}
       busy={playing}
-      mainProps={{ 'aria-label': playing ? (running ? 'Stopping' : 'Starting') : none ? 'Run' : `${running ? 'Stop' : 'Run'} ${label}`, 'data-tip-kbd': running ? undefined : '⌘R' }}
+      mainProps={{ 'aria-label': playing ? (running ? 'Stopping' : 'Starting') : none ? 'Run' : `${running ? 'Stop' : 'Run'} ${label}`, 'data-tip-kbd': running ? undefined : comboLabel(hotkeys().runScript) }}
       onClick={onPlay}
       caretLabel="Run scripts"
       expanded={open}
@@ -183,7 +184,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
     ? noRun ? (
       <EmptyList icon="play" title="No run script yet" action={<Button onClick={addScript}>Add a run script</Button>}>Add one in Settings, Project setup, and Run starts your app here.</EmptyList>
     ) : (
-      <EmptyList icon="play" title={`Run ${selected}`} action={!selectedRunning && <Button variant="primary" className="idle-run" busy={busy === 'play'} busyPattern="snake" busyLabel="Starting" disabled={busy !== null} onClick={() => void play()}>Run<kbd className="kbd-on-ink">⌘R</kbd></Button>}>
+      <EmptyList icon="play" title={`Run ${selected}`} action={!selectedRunning && <Button variant="primary" className="idle-run" busy={busy === 'play'} busyPattern="snake" busyLabel="Starting" disabled={busy !== null} onClick={() => void play()}>Run<kbd className="kbd-on-ink">{comboLabel(hotkeys().runScript)}</kbd></Button>}>
         {commands[selected] ? `${commands[selected]} in ${ws.name}` : `Runs on port ${ws.port}. Output shows here.`}
       </EmptyList>
     )
@@ -197,7 +198,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
     <div ref={panel} className="bottom-panel" data-collapsed={collapsed || undefined}>
       {!collapsed && <BottomResize panel={panel} />}
       <div className="bottom-tabs">
-        <IconButton icon="chevron" size={14} label={collapsed ? 'Expand bottom panel' : 'Collapse bottom panel'} aria-expanded={!collapsed} data-tip-kbd="⌘J" onClick={() => actions.ui.setBottomCollapsed(kind, !collapsed)} />
+        <IconButton icon="chevron" size={14} label={collapsed ? 'Expand bottom panel' : 'Collapse bottom panel'} aria-expanded={!collapsed} data-tip-kbd={comboLabel(hotkeys().bottomPanel)} onClick={() => actions.ui.setBottomCollapsed(kind, !collapsed)} />
         <TabStrip label="Scripts" value={collapsed ? '' : bottom} onChange={pick} tabs={[{ id: 'setup', label: 'Setup', busy: setupBusy }, { id: 'run', label: 'Run', busy: bottom === 'run' && selectedRunning && !collapsed }, { id: 'terminal', label: 'Terminal' }]} />
         {/* Folded, the bar says what the scripts are doing, so you can tell the app is up without opening it (KERNEL-529). */}
         {collapsed && word && <span className="bottom-word" role="status">{word}</span>}

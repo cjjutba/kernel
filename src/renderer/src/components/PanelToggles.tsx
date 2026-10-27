@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import type { BottomKind, UiState } from '@shared/types'
 import { actions, getState, NEW_CHAT_HELD, panelShownIn, useStore } from '../store'
 import { IconButton, Kbd } from '../ui'
+import { useHotkeyLabel } from '../hotkeys'
 import { toggleBottomPanel } from '../screens/workspace/bottomSplit'
 
 /** Window widths below which a panel folds: the right panel first, then the sidebar (D-080). */
@@ -66,10 +67,12 @@ export const toggleFocus = () => {
 export function HistoryButtons({ inHeader }: { inHeader?: boolean }) {
   const { canBack, canForward } = useStore((s) => s.ui.nav)
   const cls = inHeader ? 'nodrag hist-in-header' : 'nodrag'
+  const backKey = useHotkeyLabel('back')
+  const forwardKey = useHotkeyLabel('forward')
   return (
     <>
-      <IconButton className={cls} icon="arrowLeft" size={16} label="Back" data-tip-kbd="⌘[" disabled={!canBack} onClick={() => actions.ui.back()} />
-      <IconButton className={cls} icon="arrowRight" size={16} label="Forward" data-tip-kbd="⌘]" disabled={!canForward} onClick={() => actions.ui.forward()} />
+      <IconButton className={cls} icon="arrowLeft" size={16} label="Back" data-tip-kbd={backKey} disabled={!canBack} onClick={() => actions.ui.back()} />
+      <IconButton className={cls} icon="arrowRight" size={16} label="Forward" data-tip-kbd={forwardKey} disabled={!canForward} onClick={() => actions.ui.forward()} />
     </>
   )
 }
@@ -81,7 +84,8 @@ export function HistoryButtons({ inHeader }: { inHeader?: boolean }) {
  */
 export function SidebarToggle() {
   const open = useStore((s) => s.ui.sidebar)
-  return <IconButton className="sidebar-toggle" icon="sidebar" size={16} label={open ? 'Hide sidebar' : 'Show sidebar'} data-tip-kbd="⌘B" onClick={toggleSidebar} />
+  const kbd = useHotkeyLabel('sidebar')
+  return <IconButton className="sidebar-toggle" icon="sidebar" size={16} label={open ? 'Hide sidebar' : 'Show sidebar'} data-tip-kbd={kbd} onClick={toggleSidebar} />
 }
 
 /** First in every screen header. The project the toggle sits over, right of the traffic lights, while the sidebar is hidden. Back and Forward follow it. */
@@ -104,11 +108,13 @@ export function ViewToggles({ kind }: { kind?: BottomKind }) {
   const id = inView(ui.route)
   const panel = panelShownIn(ui, id)
   const bottomOpen = !!kind && panel && !ui.bottomCollapsed[kind]
+  const bottomKey = useHotkeyLabel('bottomPanel')
+  const panelKey = useHotkeyLabel('rightPanelAlt')
   return (
     <div className="view-toggles" role="group" aria-label="Views">
-      {kind && <IconButton icon="panelBottom" size={16} label={bottomOpen ? 'Hide bottom panel' : 'Show bottom panel'} aria-pressed={bottomOpen} data-tip-kbd="⌘J" onClick={toggleBottomPanel} />}
+      {kind && <IconButton icon="panelBottom" size={16} label={bottomOpen ? 'Hide bottom panel' : 'Show bottom panel'} aria-pressed={bottomOpen} data-tip-kbd={bottomKey} onClick={toggleBottomPanel} />}
       <IconButton icon="railList" size={16} label={railShownIn(ui, id) ? 'Hide Session' : 'Show Session'} aria-pressed={railShownIn(ui, id)} onClick={toggleRail} />
-      <IconButton icon="panelRight" size={16} label={panel ? 'Hide panels' : 'Show panels'} aria-pressed={panel} data-tip-kbd="⌘⇧B" onClick={toggleRightPanel} />
+      <IconButton icon="panelRight" size={16} label={panel ? 'Hide panels' : 'Show panels'} aria-pressed={panel} data-tip-kbd={panelKey} onClick={toggleRightPanel} />
     </div>
   )
 }

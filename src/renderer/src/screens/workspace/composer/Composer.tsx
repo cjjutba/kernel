@@ -36,6 +36,7 @@ import { sendsOn, useSendWith } from './sendKey'
 import { NoteText } from '../NoteText'
 import { UncommittedNote } from './UncommittedNote'
 import { heldLine, waitersLine } from '../waitLines'
+import { pressed } from '../../../hotkeys'
 
 const EMPTY_QUEUE: QueuedMessage[] = []
 const EMPTY_TEAM: AgentDef[] = []
@@ -313,10 +314,10 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
     // Up in an empty box pulls the last queued message back, as clicking its text does.
     if (e.key === 'ArrowUp' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && d.empty && queue.length && !(queueWhy === 'worktree' && setupShown)) { e.preventDefault(); editQueued(queue[queue.length - 1]); return }
     if (sendsOn(e, sendWith)) { e.preventDefault(); void send(); return }
-    if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); cycleMode(); return }
+    if (pressed(e, 'planMode')) { e.preventDefault(); cycleMode(); return }
     if (!['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) run.current = null
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'u') { e.preventDefault(); filePick.current?.click() }
-    if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'i' && projectId) { e.preventDefault(); setMenu('linkIssue') }
+    if (pressed(e, 'attach')) { e.preventDefault(); filePick.current?.click() }
+    if (pressed(e, 'linkIssue') && projectId) { e.preventDefault(); setMenu('linkIssue') }
   }
 
   const configure = (patch: { model?: string; effort?: Effort; plan?: boolean; mode?: PermissionMode | undefined }, onDone?: () => void) => attempt('Could not change the chat', async () => { await call('chats.configure', { chatId: chat.id, ...patch }); onDone?.(); await loadWorkspace(chat.workspaceId) })
@@ -340,7 +341,7 @@ export function Composer({ chat, agent, blocked, why, running, prefill, banner, 
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.defaultPrevented || getState().ui.modal) return
-      if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey && e.code === 'KeyL') {
+      if (pressed(e, 'focusComposer')) {
         if (blocked) return
         e.preventDefault()
         d.focus()

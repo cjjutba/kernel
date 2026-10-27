@@ -13,6 +13,7 @@ import { kindFile, sharedTab } from './shared/shared'
 import { attempt } from './MessageActions'
 import { focusComposerIn, focusComposerWhenOpen } from './composer/bus'
 import { newChatTab, tabAfterKey, tabStop } from './leadNoChat'
+import { comboLabel, hotkeys, pressed } from '../../hotkeys'
 
 export const fileTab = (path: string) => `file:${path}`
 /** An empty path is the diff of every changed file. */
@@ -103,14 +104,11 @@ export function ChatTabs({ inline, note, branch, tip, workspaceId, threadId, noC
       else if (cs.some((x) => x.id === a)) void c([a])
     }
     const onKey = (e: KeyboardEvent) => {
-      if (!e.metaKey || e.altKey || e.ctrlKey) return
-      const k = e.key.toLowerCase()
-      if (k === 't') {
-        e.preventDefault()
-        if (!e.shiftKey) void latest.current.newTab()
-        else if (latest.current.terminalOn) void latest.current.create('terminal')
-      }
-      else if (k === 'w' && !e.shiftKey) { e.preventDefault(); closeActive() }
+      if (e.defaultPrevented) return
+      if (pressed(e, 'newTab')) { e.preventDefault(); void latest.current.newTab() }
+      else if (pressed(e, 'terminalTab')) { e.preventDefault(); if (latest.current.terminalOn) void latest.current.create('terminal') }
+      // ⌘W reaches the page as kernel:close-tab, since the menu would close the window. Any other key is heard here.
+      else if (pressed(e, 'closeTab')) { e.preventDefault(); closeActive() }
     }
     window.addEventListener('keydown', onKey)
     window.addEventListener('kernel:close-tab', closeActive)
@@ -168,7 +166,7 @@ export function ChatTabs({ inline, note, branch, tip, workspaceId, threadId, noC
               {/* One slot after the title: the open tab shows its close button, and another tab shows it on hover or keyboard focus. */}
               {!editing && (
                 <span className="tab-end">
-                  <IconButton className="tab-caret more" icon="close" size={12} label={`Close ${t.title}`} data-tip-kbd={on ? '⌘W' : undefined}
+                  <IconButton className="tab-caret more" icon="close" size={12} label={`Close ${t.title}`} data-tip-kbd={on ? comboLabel(hotkeys().closeTab) : undefined}
                     onClick={() => (t.kind === 'file' && t.path ? onCloseFile(t.path) : t.kind === 'diff' ? onCloseDiff(t.path ?? '') : t.kind === 'shared' ? onCloseShared(t.id.slice(7)) : t.kind === 'image' ? onCloseImage(t.id) : t.kind === 'text' ? onCloseText(t.id) : void close([t.id]))} />
                 </span>
               )}
@@ -177,7 +175,7 @@ export function ChatTabs({ inline, note, branch, tip, workspaceId, threadId, noC
                   { id: 'rename', label: 'Rename', icon: 'pen', onSelect: () => { closeMenu(); setRenaming(t.id) } },
                   { id: 'fork', label: 'Fork into new tab', icon: 'fork', onSelect: () => void fork(t.id) },
                   MENU_SEPARATOR,
-                  { id: 'close', label: 'Close tab', icon: 'close', shortcut: '⌘W', onSelect: () => void close([t.id]) },
+                  { id: 'close', label: 'Close tab', icon: 'close', shortcut: comboLabel(hotkeys().closeTab), onSelect: () => void close([t.id]) },
                   { id: 'others', label: 'Close other tabs', icon: 'xCircle', disabled: chats.length < 2, onSelect: () => void close(chats.filter((c) => c.id !== t.id).map((c) => c.id)) },
                   { id: 'right', label: 'Close tabs to the right', icon: 'arrowRight', disabled: !chats.slice(chats.findIndex((c) => c.id === t.id) + 1).length, onSelect: () => void close(chats.slice(chats.findIndex((c) => c.id === t.id) + 1).map((c) => c.id)) }
                 ]} />

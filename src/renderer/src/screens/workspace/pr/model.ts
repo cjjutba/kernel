@@ -274,8 +274,8 @@ function localHeaderView(stand: LocalStand, base: string, changed: boolean): PrH
 export const busyLabel: Record<PrAction, string> = { create: 'Creating PR', resolve: 'Sending', merge: 'Merging', ready: 'Marking ready', reopen: 'Reopening', update: 'Sending' }
 /** The toast title when an action's call fails. */
 export const failTitle: Record<PrAction, string> = { create: 'Could not create the PR', resolve: 'Could not send to the agent', merge: 'Could not merge', ready: 'Could not mark it ready', reopen: 'Could not reopen', update: 'Could not send to the agent' }
-/** The letter that runs an action with ⌘⇧ while its button shows (KERNEL-341). Reopen has none. */
-export const actionKey: Partial<Record<PrAction, string>> = { create: 'p', ready: 'p', merge: 'm', resolve: 'f' }
+/** The shortcut that runs an action while its button shows (KERNEL-341), as Settings, Shortcuts binds it. Reopen has none. */
+export const actionKey: Partial<Record<PrAction, 'createPr' | 'mergePr' | 'fixPr'>> = { create: 'createPr', ready: 'createPr', merge: 'mergePr', resolve: 'fixPr' }
 
 /** The PR instruction files Kernel sends (create, resolve conflicts, fix checks, address review). They show as a "sent" card. */
 export const PR_FILES = ['create-pr.md', 'resolve-conflicts.md', 'fix-checks.md', 'address-review.md']

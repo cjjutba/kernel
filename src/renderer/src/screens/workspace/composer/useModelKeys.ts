@@ -5,6 +5,7 @@ import { getState } from '../../../store'
 import { nextEffort, useEffortMemory } from './modelPrefs'
 import { effortsOf, fitEffort, useProviderModels } from './providerModels'
 import { isCycleEffortKey, shortcutModel } from './modelShortcuts'
+import { hotkeys, pressedDigit } from '../../../hotkeys'
 
 /**
  * The model and effort keys, for a chat's composer and New chat's alike, with the picker open or closed: ^⌘1 to 9 pick the Nth current model of the
@@ -21,12 +22,13 @@ export function useModelKeys({ provider, model, effort, fallback, onModel, onEff
     if (!enabled) return
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || getState().ui.modal) return
-      if (e.ctrlKey && e.metaKey && !e.shiftKey && !e.altKey) {
-        const m = shortcutModel(e.key, models)
+      const n = pressedDigit(e, 'pickModel')
+      if (n !== null) {
+        const m = shortcutModel(String(n), models)
         if (!m) return
         e.preventDefault()
         onModel(m.id, m.id === model ? effort : fitEffort(effortFor(m.id, memory, fallback), m.id, models))
-      } else if (isCycleEffortKey(e)) {
+      } else if (isCycleEffortKey(e, hotkeys().cycleEffort)) {
         e.preventDefault()
         onEffort(nextEffort(effort, effortsOf(model, models)))
       }

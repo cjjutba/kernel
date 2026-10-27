@@ -1,3 +1,4 @@
+import { DEFAULT_HOTKEYS, forwardedCombos, type Hotkeys } from '@shared/hotkeys'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, readdirSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
@@ -48,23 +49,21 @@ export interface KeyInput { type: string; key: string; code: string; meta: boole
 const combo = (i: Pick<KeyInput, 'code' | 'meta' | 'shift' | 'alt' | 'control'>) =>
   [i.control && 'ctrl', i.meta && 'meta', i.alt && 'alt', i.shift && 'shift', i.code].filter(Boolean).join('+')
 
-/** App shortcuts typed in a preview that Kernel runs. ⌘C, ⌘V, ⌘Q and the rest stay with the page or the system. */
-const FORWARD = new Set([
-  'meta+KeyK', 'meta+KeyN', 'meta+shift+KeyN', 'meta+KeyT', 'meta+shift+KeyT', 'meta+KeyW', 'meta+KeyB', 'meta+alt+KeyB', 'meta+shift+KeyB',
-  'meta+Backslash', 'meta+Comma', 'meta+BracketLeft', 'meta+BracketRight', 'meta+shift+KeyL', 'meta+shift+KeyP', 'meta+KeyL',
-  'meta+shift+Slash', 'meta+shift+KeyM', 'meta+shift+KeyF', 'meta+shift+KeyA',
-  ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `meta+Digit${n}`),
-  ...[1, 2, 3, 4].map((n) => `ctrl+meta+Digit${n}`)
-])
+/**
+ * App shortcuts typed in a preview that Kernel runs, as Settings, Shortcuts binds them (configurable-hotkeys). ⌘C, ⌘V, ⌘Q and
+ * the rest stay with the page or the system.
+ */
+let forwardCache: { keys: Hotkeys; set: Set<string> } | undefined
+const forwardSet = (keys: Hotkeys) => (forwardCache?.keys === keys ? forwardCache.set : (forwardCache = { keys, set: forwardedCombos(keys) }).set)
 
 /**
  * What a key typed in a preview does: `forward` it to Kernel, `reload` the preview (⌘R) or `return` focus to Kernel (F6).
  * Null leaves it to the page, and to the menu for ⌘Q, ⌘H and ⌘M.
  */
-export function appShortcut(input: KeyInput): 'forward' | 'reload' | 'return' | null {
+export function appShortcut(input: KeyInput, keys: Hotkeys = DEFAULT_HOTKEYS): 'forward' | 'reload' | 'return' | null {
   if (input.type !== 'keyDown') return null
   const c = combo(input)
-  if (FORWARD.has(c)) return 'forward'
+  if (forwardSet(keys).has(c)) return 'forward'
   if (c === 'meta+KeyR') return 'reload'
   if (c === 'F6') return 'return'
   return null
@@ -290,6 +289,8 @@ export interface PreviewHostOptions {
   push: (e: PushEvent) => void
   /** Allows DevTools. True when the app isn't packaged. */
   dev: boolean
+  /** The shortcuts in force, so a preview hands back the keys the user bound. The defaults when unset. */
+  hotkeys?: () => Hotkeys
 }
 
 export class PreviewHost {
@@ -492,7 +493,7 @@ export class PreviewHost {
     wc.on('responsive', () => state('ready'))
     wc.on('input-event', () => this.settleSoon(v))
     wc.on('before-input-event', (e, input) => {
-      const act = appShortcut(input)
+      const act = appShortcut(input, this.o.hotkeys?.() ?? DEFAULT_HOTKEYS)
       if (!act) return
       e.preventDefault()
       if (act === 'reload') return wc.reload()

@@ -8,6 +8,7 @@ import { usePrToasts } from '../screens/workspace/pr/usePrToasts'
 import { runToastAction } from './toastAction'
 import { UpdateCard } from './UpdateCard'
 import './toasts.css'
+import { pressed } from '../hotkeys'
 
 const UNDO_KBD = '⌘⌥Z'
 
@@ -43,7 +44,7 @@ export function Toasts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const { live: now, undoable: can, press: go } = keys.current
-      if (e.code === 'KeyZ' && e.metaKey && e.altKey && !e.shiftKey && !e.ctrlKey) {
+      if (pressed(e, 'toastAction')) {
         const target = [...now].reverse().find((t) => t.action && can(t.action))
         if (!target?.action) return
         e.preventDefault()

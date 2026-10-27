@@ -7,6 +7,7 @@ import { isWebUrl } from '@shared/previewUrl'
 import { call } from '../../../api'
 import { appended } from './buffer'
 import { getState, replayTerminal, useStore } from '../../../store'
+import { pressed } from '../../../hotkeys'
 
 export const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 /** The terminal palette, read from the tokens of the theme in force (tokens.css). Bright colours reuse the normal ones so contrast holds in both themes. */
@@ -73,8 +74,7 @@ export function TerminalView({ id, label, compact }: { id: string; label: string
         return false
       }
       // The app's own tab shortcuts are not for the shell. ⌘L goes to the composer.
-      if (e.metaKey && ['t', 'w'].includes(e.key.toLowerCase())) return false
-      if (e.metaKey && !e.shiftKey && e.code === 'KeyL') return false
+      if (pressed(e, 'newTab') || pressed(e, 'terminalTab') || pressed(e, 'closeTab') || pressed(e, 'focusComposer')) return false
       return true
     })
     const ro = new ResizeObserver(() => requestAnimationFrame(resize))
