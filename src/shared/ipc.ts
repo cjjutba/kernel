@@ -279,6 +279,13 @@ export interface KernelApi {
   'terminal.resize': { req: { chatId: string; cols: number; rows: number }; res: Ok }
   /** Pushes the terminal's kept output as one `terminal.data` with `replace`, for a window that wasn't there to see it (KERNEL-340). */
   'terminal.replay': { req: { chatId: string }; res: Ok }
+  /**
+   * Ends one plain shell and drops its kept output, leaving the workspace's other shells and its big terminals alone. A workspace's
+   * shells are `shell:<workspaceId>` (the first) and `shell:<workspaceId>:<n>`; a shell starts the first time its id is written to or resized.
+   */
+  'terminal.close': { req: { chatId: string }; res: Ok }
+  /** The ids of the workspace's plain shells that are running or kept output, oldest first, so a window can bring its panes back after a reload. */
+  'terminal.shells': { req: { workspaceId: string }; res: string[] }
   /** The presets a new big terminal tab can run: the built-ins, the CLIs on the PATH, then the custom ones (KERNEL-248). */
   'terminal.presets': { req: { workspaceId?: string } | void; res: TerminalPreset[] }
 

@@ -278,6 +278,8 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'terminal.write': async () => ok,
     'terminal.resize': async () => ok,
     'terminal.replay': async () => ok,
+    'terminal.close': async () => ok,
+    'terminal.shells': async () => [],
     'checkpoints.list': async ({ workspaceId }) => f.checkpoints?.[workspaceId] ?? [],
     'checkpoints.preview': async ({ workspaceId, checkpointId }) => f.checkpointPreviews?.[workspaceId]?.[checkpointId] ?? { files: [], stat: { files: 0, added: 0, removed: 0 }, commitsAhead: 0, pushed: false, conflicts: [] },
     'checkpoints.revert': async ({ workspaceId }) => ({ backupBranch: `backup/${workspace(workspaceId).name}` }),
