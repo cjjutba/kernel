@@ -6,7 +6,7 @@ import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { chatProvider, providerOf } from '@shared/providers'
 import type { PushEvent } from '@shared/ipc'
 import { sessionEnv } from '../services/sessions'
-import { shellId } from '../services/pty'
+import { shellWorkspace } from '../services/pty'
 import { askCodexTitle, askTitle, titleText } from '../services/titles'
 import { claudeExecutable } from '../services/providers/binary'
 import { resolvePreset, terminalCommand, terminalPresets, terminalTitle } from '../services/terminalPresets'
@@ -352,21 +352,22 @@ export class Chats extends Feature {
     return fork
   }
 
-  /** Starts the pty for a big terminal chat, or the workspace's plain shell (`shell:<workspaceId>`), the first time it is used. */
+  /** Starts the pty for a big terminal chat, or one of the workspace's plain shells (`shell:<workspaceId>`, `shell:<workspaceId>:<n>`), the first time it is used. */
   private ensurePty(id: string, size?: { cols: number; rows: number }) {
     if (this.ptys.has(id)) return
     // A Lead chat's folder isn't there until its worktree is made. The shell starts on the first keystroke or resize after (KERNEL-542).
-    const wsId = id.startsWith('shell:') ? id.slice('shell:'.length) : this.store.chat(id)?.workspaceId
+    const wsId = shellWorkspace(id) ?? this.store.chat(id)?.workspaceId
     if (wsId && this.store.workspace(wsId)?.worktreePending) return
     this.ptys.start(id, { ...this.ptyOptions(id), ...size })
   }
 
   /** Where a terminal starts, with what, and the command it types: its workspace's folder as it is now. */
   private ptyOptions(id: string) {
-    const plain = id.startsWith('shell:')
+    const plainWs = shellWorkspace(id)
+    const plain = plainWs !== null
     const chat = plain ? undefined : this.mustChat(id)
     if (chat && (chat.kind !== 'terminal' || chat.closed)) throw new Error('That tab is not a terminal.')
-    const ws = this.mustWs(plain ? id.slice('shell:'.length) : chat!.workspaceId)
+    const ws = this.mustWs(plainWs ?? chat!.workspaceId)
     const env = sessionEnv(this.k.env.envFor(ws), {}, { agentTeams: this.settings.models.agentTeams })
     const command = (plain ? null : terminalCommand(chat!)) ?? undefined
     return { cwd: ws.path, env, command }
@@ -382,9 +383,9 @@ export class Chats extends Feature {
     for (const id of this.terminalIds(workspaceId)) if (this.ptys.has(id)) this.ptys.restart(id, this.ptyOptions(id))
   }
 
-  /** The ids of the workspace's terminals: its open big terminal tabs and its plain shell. */
+  /** The ids of the workspace's terminals: its open big terminal tabs and its plain shells. */
   private terminalIds(workspaceId: string) {
-    return [...this.chatTabs(workspaceId).filter((c) => c.kind === 'terminal').map((c) => c.id), shellId(workspaceId)]
+    return [...this.chatTabs(workspaceId).filter((c) => c.kind === 'terminal').map((c) => c.id), ...this.ptys.shellIds(workspaceId)]
   }
 
   /** The preset a new big terminal tab runs, resolved here so the renderer never names the command (KERNEL-248). */
@@ -413,6 +414,8 @@ export class Chats extends Feature {
       'chats.fork': async ({ chatId, itemId }) => this.forkChat(chatId, itemId),
       'terminal.write': async ({ chatId, data }) => { this.ensurePty(chatId); this.ptys.write(chatId, data); return { ok: true } },
       'terminal.resize': async ({ chatId, cols, rows }) => { this.ensurePty(chatId, { cols, rows }); this.ptys.resize(chatId, cols, rows); return { ok: true } },
+      'terminal.close': async ({ chatId }) => { if (shellWorkspace(chatId) === null) throw new Error('Only a plain shell can be closed here. Close a big terminal as a tab.'); this.ptys.kill(chatId); return { ok: true } },
+      'terminal.shells': async ({ workspaceId }) => this.ptys.shellIds(workspaceId),
       'terminal.replay': async ({ chatId }) => { this.ptys.replay(chatId); return { ok: true } },
       'chats.create': async ({ workspaceId, kind, preset, threadId, provider, model: asked, effort }) => {
         const ws = this.mustWs(workspaceId)

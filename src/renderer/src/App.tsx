@@ -20,7 +20,6 @@ import { History } from './screens/history/History'
 import { Inbox } from './screens/inbox/Inbox'
 import { ConfirmIssueTaken } from './screens/issues/ConfirmIssueTaken'
 import { backToNewChat, startHeld } from './screens/new-workspace/start'
-import { useWarmUpNext } from './screens/workspace/warmUpNext'
 import { Issues } from './screens/issues/Issues'
 import { PullRequests } from './screens/prs/PullRequests'
 import { CheckHooks } from './screens/onboarding/CheckHooks'
@@ -171,7 +170,6 @@ export function App() {
   const route = useStore((s) => s.ui.route)
   const modal = useStore((s) => s.ui.modal)
   const booted = useStore((s) => s.system.booted)
-  useWarmUpNext(booted)
   const sidebar = useStore((s) => s.ui.sidebar)
   // Settings shows the column even with the sidebar hidden (⌘B), so it never counts as hidden: its panel starts at the column's edge, like the app's.
   const settingsOpen = route.name === 'settings'

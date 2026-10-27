@@ -1,12 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import type { Project, ProjectSetupStep } from '@shared/types'
-import { KERNEL_REVIEWER, NO_REVIEWER, reviewerChoice } from '@shared/team'
-import { actions, go, useStore } from '../../store'
-import { projectAgents } from '../../nav'
+import { actions } from '../../store'
 import { Icon, Popover, Spinner } from '../../ui'
-import { useProjectSettings } from '../settings/useSettings'
-
-const NO_AGENTS: never[] = []
 
 /** The toasts already raised for a step's state, so leaving New chat and coming back doesn't raise them twice. */
 const toasted = new Set<string>()
@@ -45,22 +40,11 @@ function stepToast(project: Project, s: ProjectSetupStep) {
   }
 }
 
-function teamText(project: Project, team: { id: string; name: string; lead?: boolean }[], reviewer: string, steps: ProjectSetupStep[]): string {
-  const names = team.map((a) => a.name)
-  const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]
-  const lead = team.find((a) => a.lead)?.name ?? 'Kernel'
-  if (reviewer === NO_REVIEWER) return `${project.name} brought ${list}. ${lead} leads, and no one reviews pull requests yet.`
-  const by = reviewer === KERNEL_REVIEWER ? 'Kernel' : team.find((a) => a.id === reviewer)?.name ?? 'Kernel'
-  return `${project.name} brought its own agents: ${list}. ${by === lead ? `${lead} leads and reviews pull requests.` : `${lead} leads and ${by} reviews pull requests.`}`
-}
-
 /**
  * Project setup as one line under the composer (KERNEL-1089): the project, the step in progress, how far along, and Details. It
  * never blocks the box. A step that fails or is skipped turns the line into "<project> is ready" and raises a toast with the error.
  */
 export function SetupLine({ project, steps }: { project: Project; steps: ProjectSetupStep[] }) {
-  const settings = useProjectSettings(project.id)
-  const agents = useStore((s) => s.agents[project.id] ?? NO_AGENTS)
   const [open, setOpen] = useState(false)
   const anchor = useRef<HTMLSpanElement>(null)
   const counted = steps.filter((s) => s.id !== 'host')
@@ -75,12 +59,7 @@ export function SetupLine({ project, steps }: { project: Project; steps: Project
     for (const s of counted) if (s.state === 'run' || s.state === 'wait') for (const st of ['fail', 'warn']) toasted.delete(`${project.id}:${s.id}:${st}`)
     if (ended) for (const s of problems) stepToast(project, s)
   }, [ended, steps])
-  const team = agents.filter((a) => !a.retired)
-  const brought = !!steps.find((s) => s.id === 'agents' && s.state === 'ok')?.brought
-  const reviewer = settings && team.length ? reviewerChoice(team, settings.team) : undefined
-  const noReviewer = reviewer === NO_REVIEWER
-  const done = ended && !problems.length && !(brought && reviewer)
-  if (done) return null
+  if (ended && !problems.length) return null
   return (
     <div className="su-line" aria-label="Project setup" aria-busy={!ended}>
       {(!ended || problems.length > 0) && (
@@ -114,13 +93,6 @@ export function SetupLine({ project, steps }: { project: Project; steps: Project
         </div>
       )}
       {!ended && <div className="su-track" role="progressbar" aria-label="Setup progress" aria-valuemin={0} aria-valuemax={counted.length} aria-valuenow={settled}><span className="su-fill" style={{ width: `${counted.length ? (settled / counted.length) * 100 : 0}%` }} /></div>}
-      {ended && brought && reviewer && team.length > 0 && (
-        <p className="su-team">
-          <Icon name="team" size={14} />
-          <span>{teamText(project, team, reviewer, steps)}</span>
-          <button type="button" className="su-details" onClick={() => go(projectAgents(project.id))}>{noReviewer ? 'Pick a reviewer' : 'Review team'}</button>
-        </p>
-      )}
     </div>
   )
 }

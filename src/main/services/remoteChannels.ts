@@ -74,7 +74,7 @@ export const REFUSED_CHANNELS = [
   'system.preview.close', 'system.preview.crop', 'system.preview.focus', 'system.preview.hit', 'system.preview.locate', 'system.preview.open', 'system.preview.place', 'system.preview.reload', 'system.preview.scroll', 'system.preview.still',
   'system.fixture', 'system.openExternal', 'system.openInEditor', 'system.pickFolder', 'system.pickImage', 'system.zoomChanged',
   'telemetry.recent', 'telemetry.track',
-  'terminal.presets', 'terminal.replay', 'terminal.resize', 'terminal.write',
+  'terminal.close', 'terminal.presets', 'terminal.replay', 'terminal.resize', 'terminal.shells', 'terminal.write',
   'threads.archive', 'threads.archivePreview',
   'update.check', 'update.get', 'update.install',
   'usage.notifyOnReset',

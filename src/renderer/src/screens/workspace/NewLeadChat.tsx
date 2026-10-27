@@ -30,13 +30,12 @@ import { sendsOn, useSendWith } from './composer/sendKey'
 import { ProjectPicker } from './composer/WherePickers'
 import { useModelKeys } from './composer/useModelKeys'
 import { stripRemote } from '../settings/remote'
-import { UpNext } from './UpNext'
 import { SetupLine } from './SetupLine'
 import { PartChip, TurnLine } from './Transcript'
 
 /**
- * The New chat page, the one way to start a chat (KERNEL-788): the title, which names the project and picks it, a composer and the tracker's
- * issues up next. Sending calls `lead.start`, so the chat, its own worktree and its sidebar row begin with the first message
+ * The New chat page, the one way to start a chat (KERNEL-788): the title, which names the project and picks it, and a composer, in the
+ * middle of the page. Sending calls `lead.start`, so the chat, its own worktree and its sidebar row begin with the first message
  * (KERNEL-405), on a new branch from the one the composer names. The box keeps the project's own draft, so typed text survives
  * leaving the page and never shows in another project. `focusIn` is the workspace whose focus requests it takes, for the shared Lead
  * workspace from before, else the project's New chat key.
@@ -199,13 +198,6 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
   const refocus = useRef(false)
   useEffect(() => { if (!busy && refocus.current) { refocus.current = false; d.focus() } }, [busy])
 
-  /** Up next's Plan: the issue goes in the box as a chip, plan mode turns on, and nothing sends until you do. */
-  const planIssue = (part: ChatPart) => {
-    d.insert(part)
-    if (!plan) pickMode('plan')
-    d.focus()
-  }
-
   /** As in a chat: Plan sets `plan` and leaves the picked mode, every other mode sets `mode` and clears plan. Bypass permissions asks once first. */
   const setMode = (next: ComposerMode, patch: (m: ComposerMode) => DraftPicks = modePatch) => {
     if (next === shown.picked) return
@@ -280,7 +272,6 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
           {usable
             ? <>
               <h2 className="lead-ask">What's next for {projectPicker('title')}?</h2>
-              <p className="lead-note">Brief the Lead. It answers, makes small changes itself, or hands tasks to your team.</p>
             </>
             : projects.length
               ? <>
@@ -308,7 +299,7 @@ export function NewLeadChat({ projectId: routeProject, focusIn, source, picks }:
         below={project && setupSteps ? <SetupLine project={project} steps={setupSteps} /> : undefined}
         hidden={<input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />}
       />
-      <div className="lead-up" style={sent ? GONE : undefined}>{usable && <UpNext projectId={projectId} projectName={project?.name} lead={name} onPlan={planIssue} />}</div>
+      <div className="lead-up" style={sent ? GONE : undefined} />
     </div>
     </OpenIssue.Provider>
   )

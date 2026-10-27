@@ -2,8 +2,8 @@ import { isRemote } from '../../remote/isRemote'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { ChangedFile, NewChatPicks, Project, Workspace as WorkspaceModel, WorkspaceSource } from '@shared/types'
 import { call } from '../../api'
-import { actions, getState, loadWorkspace, panelShownIn, useStore } from '../../store'
-import { Icon } from '../../ui'
+import { actions, getState, loadWorkspace, NEW_CHAT_HELD, panelShownIn, useStore } from '../../store'
+import { EmptyState, Icon } from '../../ui'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { FocusChip, railShownIn, ViewToggles } from '../../components/PanelToggles'
 import { ResizeHandle, readWidth } from '../../components/ResizeHandle'
@@ -14,7 +14,6 @@ import { ChatTabs, diffTab, fileTab } from './ChatTabs'
 import { FileLinkScope } from './fileLinks'
 import { bringBoxOnAsk, leadHasNoChat, newChatOnScreen, showsNewChat } from './leadNoChat'
 import { bottomKindOf } from './bottomSplit'
-import { leadNewKey } from '../../components/sidebar/slots'
 import { NewChatHeader, NewChatTab, OneRowHeader } from './NewChatBar'
 import { NewLeadChat } from './NewLeadChat'
 import { nextTab } from './nextTab'
@@ -27,7 +26,7 @@ import { BottomDrawer } from './BottomDrawer'
 import { RightPanel } from './Panels'
 import { SharedView } from './shared/SharedView'
 import { PrTitleBar } from './pr/PrTitleBar'
-import { LeadRail } from './LeadRail'
+import { LeadRail, NewChatRail } from './LeadRail'
 import { SessionRail } from './SessionRail'
 import { SkipNotice } from './terminal/SkipNotice'
 import { TerminalView } from './terminal/Terminal'
@@ -264,7 +263,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   // other. Neither is Focus mode (KERNEL-1096).
   const rail = railWanted && !newChatShown
   const focus = !sidebar && !panels && !rail
-  const tabsRow = alone ? <NewChatTab focusIn={workspaceId} /> : (
+  const tabsRow = alone ? <NewChatTab /> : (
     <ChatTabs
       inline note={label} branch={isLead && ws.lead && ws.mode === 'worktree' && ws.branch !== 'HEAD' ? ws.branch : undefined} tip={isLead ? undefined : ws.branch}
       workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} noChat={noChat} onNewChat={showNew} chats={chats} files={files} diffs={diffs} shared={shared}
@@ -337,16 +336,30 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
 
 /**
  * The New chat page (KERNEL-788): the `leadNew` route, the same two header rows as a chat and the box below. No workspace exists before
- * the first message, which makes the chat's own worktree (KERNEL-405), so there is no right panel. `source` and `picks` are the route's.
+ * the first message, which makes the chat's own worktree (KERNEL-405), so the Session rail and the right panel show an empty state and the
+ * toggles work as in a chat, bar the bottom pane. `source` and `picks` are the route's.
  */
 export function LeadNewScreen({ projectId, source, picks }: { projectId: string; source?: WorkspaceSource; picks?: NewChatPicks }) {
   const project = useStore((s) => s.projects.find((r) => r.id === projectId))
+  // Each visit starts on the Session rail, as a chat started from here does. The panel's toggle opens the panel, and that releases the hold.
+  useEffect(() => { actions.ui.holdPanel(NEW_CHAT_HELD) }, [])
+  const panels = useStore((s) => panelShownIn(s.ui, NEW_CHAT_HELD))
+  const rail = useStore((s) => railShownIn(s.ui, NEW_CHAT_HELD))
+  const focus = useStore((s) => !s.ui.sidebar && !panelShownIn(s.ui, NEW_CHAT_HELD) && !railShownIn(s.ui, NEW_CHAT_HELD))
   return (
-    <div className="panel ws-panel">
-      <NewChatHeader project={project} focusIn={leadNewKey(projectId)} />
+    <div className="panel ws-panel" data-rail={rail || undefined} data-panel={panels || undefined}>
+      <NewChatHeader project={project} end={<>{focus && <FocusChip />}<ViewToggles /></>} />
       <section aria-label="Agent" className="ws-main">
         <div className="col grow" style={{ minHeight: 0 }}><NewLeadChat projectId={projectId} source={source} picks={picks} /></div>
       </section>
+      {panels && (
+        <aside aria-label="Workspace panels" className="ws-aside">
+          <section className="side-card" aria-label="Panels">
+            <div className="rail-nothing grow"><EmptyState icon="panelRight" title="No panels yet">Files, changes and the terminal of this chat show up here once you send the first message.</EmptyState></div>
+          </section>
+        </aside>
+      )}
+      {rail && <NewChatRail />}
     </div>
   )
 }
